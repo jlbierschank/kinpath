@@ -98,8 +98,8 @@ export async function seed(db: Db, now = new Date("2026-10-26T09:00:00-04:00")):
       ["Put the needle straight into your sharps container. Never recap it.", "Pon la aguja directamente en tu contenedor de objetos punzantes. Nunca le vuelvas a poner la tapa."],
     ];
     await tx.query(
-      `INSERT INTO med_guides (clinic_id, medication, steps, approved_by) VALUES
-       ($1,'Gonal-f',$2,'Maria Lopez, RN'), ($1,'Menopur',$3,'Maria Lopez, RN'), ($1,'Cetrotide',$4,'Maria Lopez, RN')`,
+      `INSERT INTO med_guides (clinic_id, medication, steps, approved_by, sort_order) VALUES
+       ($1,'Gonal-f',$2,'Maria Lopez, RN',1), ($1,'Menopur',$3,'Maria Lopez, RN',2), ($1,'Cetrotide',$4,'Maria Lopez, RN',3)`,
       [i.bayside,
        steps([...common, ["Attach a new needle to the pen and dial to your dose.", "Coloca una aguja nueva en la pluma y gira hasta tu dosis."], ...finish]),
        steps([...common, ["Mix the powder with the liquid as your nurse showed you. Swirl gently; don't shake.", "Mezcla el polvo con el líquido como te enseñó tu enfermera. Gira suavemente; no agites."], ...finish]),

@@ -6,7 +6,8 @@ import {
   approveAndSend, classifyMessage, draftFromProtocol, labelResult, HandoffError,
   type ClinicRange, type Handoff, type Lang, type TriageResult,
 } from "@kinpath/core";
-import { asActor, audit, type Actor, type Db } from "./client";
+import { asActor, audit, type Actor, type Db, type Tx } from "./client";
+import type { ClinicTerm } from "@kinpath/core";
 import { DEFAULT_PREFS, type ReminderPrefs } from "@kinpath/core";
 
 export interface QueueItem {
@@ -27,6 +28,11 @@ interface HandoffRow {
   dose_log_id: string | null; created_at: string; sent_at: string | null; read_at: string | null;
 }
 
+async function clinicTerms(tx: Tx): Promise<ClinicTerm[]> {
+  const r = await tx.query<{ term: string; level: "urgent" | "crisis" }>(`SELECT term, level FROM clinic_triage_terms`);
+  return r.rows;
+}
+
 function toHandoff(r: HandoffRow): Handoff {
   return {
     id: r.id, patientId: r.patient_id, kind: r.kind, status: r.status, patientMessage: r.patient_message,
@@ -38,7 +44,7 @@ function toHandoff(r: HandoffRow): Handoff {
 export async function reportMissedDose(db: Db, actor: Actor, input: { patientId: string; doseLogId: string; note?: string }) {
   return asActor(db, actor, async (tx) => {
     const message = input.note?.trim() || "I missed a dose.";
-    const { kind, triage } = classifyMessage(message, { reportedMissedDose: true });
+    const { kind, triage } = classifyMessage(message, { reportedMissedDose: true, clinicTerms: await clinicTerms(tx) });
     const upd = await tx.query(`UPDATE dose_logs SET reported_missed_at = now() WHERE id = $1 AND patient_id = $2 AND taken_at IS NULL RETURNING id`, [input.doseLogId, input.patientId]);
     if (upd.rows.length === 0) throw new HandoffError("That dose can't be reported as missed.");
     const res = await tx.query<{ id: string }>(
@@ -54,7 +60,7 @@ export async function reportMissedDose(db: Db, actor: Actor, input: { patientId:
 /** Patient sends a free-text message. Urgent and crisis messages are flagged before anything else happens. */
 export async function sendPatientMessage(db: Db, actor: Actor, input: { patientId: string; text: string }) {
   return asActor(db, actor, async (tx) => {
-    const { kind, triage } = classifyMessage(input.text);
+    const { kind, triage } = classifyMessage(input.text, { clinicTerms: await clinicTerms(tx) });
     const res = await tx.query<{ id: string }>(
       `INSERT INTO handoffs (clinic_id, patient_id, kind, patient_message, triage) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
       [actor.clinicId, input.patientId, kind, input.text, JSON.stringify(triage)],
@@ -254,7 +260,8 @@ export async function patientSchedule(db: Db, actor: Actor, patientId: string, n
   return asActor(db, actor, async (tx) => {
     const d = await tx.query<{ id: string; medication: string; dose: string; scheduled_for: Date; taken_at: Date | null; reported_missed_at: Date | null }>(
       `SELECT d.id, m.medication, m.dose, d.scheduled_for, d.taken_at, d.reported_missed_at FROM dose_logs d JOIN med_orders m ON m.id = d.med_order_id
-        WHERE d.patient_id = $1 AND d.scheduled_for > $2::timestamptz - interval '3 days' ORDER BY d.scheduled_for, m.medication`, [patientId, now.toISOString()]);
+        LEFT JOIN med_guides g ON g.clinic_id = d.clinic_id AND g.medication = m.medication
+        WHERE d.patient_id = $1 AND d.scheduled_for > $2::timestamptz - interval '3 days' ORDER BY d.scheduled_for, coalesce(g.sort_order, 100), m.medication`, [patientId, now.toISOString()]);
     const rows: DoseRow[] = d.rows.map((x) => ({ id: x.id, medication: x.medication, dose: x.dose, scheduledFor: new Date(x.scheduled_for).toISOString(), takenAt: x.taken_at ? new Date(x.taken_at).toISOString() : null, reportedMissed: x.reported_missed_at !== null }));
     return {
       upcoming: rows.filter((r) => new Date(r.scheduledFor) >= now),

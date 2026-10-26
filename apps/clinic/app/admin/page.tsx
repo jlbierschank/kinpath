@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { auditLog } from "@kinpath/db";
 import { getDb } from "@/lib/db";
 import { requireSession } from "@/lib/session";
@@ -7,6 +8,7 @@ export default async function AdminHome() {
   const rows = await auditLog(await getDb(), s, 100);
   return (
     <>
+      <p style={{ display: "flex", justifyContent: "flex-end", margin: 0 }}><Link href="/settings">Clinic settings (view only) →</Link></p>
       <h1>Audit log</h1>
       <p className="muted">Every view and change at Bayside. It can be read here but never edited or deleted. Admins see this log, not clinical records.</p>
       <div className="card">

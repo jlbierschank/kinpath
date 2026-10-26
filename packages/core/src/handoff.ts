@@ -8,7 +8,7 @@
 
 import type { Lang } from "./ranges";
 import type { StaffRole } from "./permissions";
-import { triage, type TriageResult } from "./triage";
+import { triage, type ClinicTerm, type TriageResult } from "./triage";
 
 export type HandoffKind = "missed_dose" | "question" | "urgent_symptom" | "result_review" | "crisis";
 export type HandoffStatus = "open" | "drafted" | "sent" | "read" | "closed";
@@ -40,8 +40,8 @@ export class HandoffError extends Error {}
 const SENDERS: StaffRole[] = ["nurse", "physician"];
 
 /** Classify an incoming patient message. Safety comes first: urgent and crisis outrank everything. */
-export function classifyMessage(message: string, opts: { reportedMissedDose?: boolean } = {}): { kind: HandoffKind; triage: TriageResult } {
-  const t = triage(message);
+export function classifyMessage(message: string, opts: { reportedMissedDose?: boolean; clinicTerms?: ClinicTerm[] } = {}): { kind: HandoffKind; triage: TriageResult } {
+  const t = triage(message, opts.clinicTerms);
   if (t.level === "crisis") return { kind: "crisis", triage: t };
   if (t.level === "urgent") return { kind: "urgent_symptom", triage: t };
   if (opts.reportedMissedDose) return { kind: "missed_dose", triage: t };

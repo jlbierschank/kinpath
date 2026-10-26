@@ -66,9 +66,16 @@ export function normalize(text: string): string {
     .trim();
 }
 
-export function triage(message: string): TriageResult {
+/** A term a clinic adds on top of the built-in rules. Clinics can add terms but never remove built-ins. */
+export interface ClinicTerm { id?: string; term: string; level: "urgent" | "crisis" }
+
+export function triage(message: string, clinicTerms: ClinicTerm[] = []): TriageResult {
   const text = normalize(message);
-  const fired = RULES.filter((rule) => rule.allOf.every((group) => group.some((term) => text.includes(term))));
+  const fired: { id: string; level: "urgent" | "crisis" }[] = RULES.filter((rule) => rule.allOf.every((group) => group.some((term) => text.includes(term))));
+  for (const ct of clinicTerms) {
+    const term = normalize(ct.term);
+    if (term.length >= 3 && text.includes(term)) fired.push({ id: `clinic.${term.replace(/[^a-z0-9]+/g, "_")}`, level: ct.level });
+  }
   if (fired.some((r) => r.level === "crisis")) {
     return { level: "crisis", ruleIds: fired.map((r) => r.id), routeTo: "crisis_resources" };
   }
@@ -77,6 +84,9 @@ export function triage(message: string): TriageResult {
   }
   return { level: "routine", ruleIds: [], routeTo: "none" };
 }
+
+/** Built-in rules, shown read-only on the clinic's settings page. */
+export const BUILT_IN_RULES = RULES.map((r) => ({ id: r.id, level: r.level, allOf: r.allOf.map((g) => [...g]) }));
 
 /** Exposed so tests and the clinic's AI settings page can list every rule. */
 export const TRIAGE_RULE_IDS = RULES.map((r) => r.id);

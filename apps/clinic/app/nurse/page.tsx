@@ -17,6 +17,7 @@ export default async function NurseHome() {
   const queue = await nurseQueue(await getDb(), s);
   return (
     <>
+      <p style={{ display: "flex", justifyContent: "flex-end", margin: 0 }}><Link href="/settings">Clinic settings →</Link></p>
       <h1>Good morning, {s.name.split(" ")[0]}.</h1>
       <p className="muted">{queue.length === 0 ? "Nothing needs you right now." : `${queue.length} ${queue.length === 1 ? "item needs" : "items need"} you. Urgent items stay on top.`}</p>
       <div className="grid">

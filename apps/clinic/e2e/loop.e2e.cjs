@@ -4,7 +4,7 @@ const { chromium } = require('playwright');
   const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1280, height: 900 } });
   const errs = []; p.on('pageerror', e => errs.push(e.message));
   const D = require('path').join(__dirname, '..', '.data', 'e2e-shots') + '/'; require('fs').mkdirSync(D, { recursive: true });
-  const as = async (name) => { await p.goto('http://localhost:3000/'); const sw = p.locator('button:has-text("Switch person")'); if (await sw.count()) { await sw.click(); await p.waitForURL('http://localhost:3000/'); } await p.click(`button:has-text("${name}")`); await p.waitForURL(u => !u.toString().endsWith(':3000/')); await p.waitForLoadState('networkidle'); };
+  const as = async (name) => { await p.goto('http://localhost:3000/'); const sw = p.locator('button:has-text("Switch person")'); if (await sw.count()) { await sw.click(); await p.waitForURL('http://localhost:3000/'); } await p.click(`button:has-text("${name}")`); await p.waitForURL(u => !u.toString().endsWith(':3000/')); await p.locator('text=Who are you testing as?').waitFor({ state: 'detached', timeout: 10000 }); await p.waitForLoadState('networkidle'); };
   const shot = (n) => p.screenshot({ path: D + n + '.png', fullPage: true });
   const ok = (cond, msg) => { console.log((cond ? 'PASS ' : 'FAIL ') + msg); if (!cond) process.exitCode = 1; };
 
