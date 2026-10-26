@@ -92,7 +92,7 @@ export default async function NurseHome({ searchParams }: { searchParams: Promis
           </div>
           <h2>Enter a result (pilot)</h2>
           <form className="card" action={enterResult}>
-            <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>Until the records-system connection is live, staff enter results here. Kinpath labels them against Bayside&apos;s ranges; anything out of range comes back to the queue.</p>
+            <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>Until the records-system connection is live, staff enter results here. The Pumpkin labels them against Bayside&apos;s ranges; anything out of range comes back to the queue.</p>
             <input type="hidden" name="patientId" value={IDS.maya} />
             <label>Patient</label><input value="Maya Torres" disabled />
             <label htmlFor="analyte">Test</label>

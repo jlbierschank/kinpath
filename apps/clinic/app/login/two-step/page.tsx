@@ -20,7 +20,7 @@ export default async function TwoStep({ searchParams }: { searchParams: Promise<
       {sp.error && <div className="card urgent" role="alert">{sp.error}</div>}
       {twoStepOn ? (
         <form className="card" action={twoStepAction}>
-          <p className="muted" style={{ marginTop: 0 }}>Open your authenticator app and enter the 6-digit code for Kinpath.</p>
+          <p className="muted" style={{ marginTop: 0 }}>Open your authenticator app and enter the 6-digit code for The Pumpkin.</p>
           <label htmlFor="code">Code</label>
           <input id="code" name="code" inputMode="numeric" autoComplete="one-time-code" maxLength={7} required style={{ fontSize: 22, letterSpacing: 6 }} />
           <div style={{ marginTop: 14 }}><button className="btn btn-dark" type="submit" style={{ width: "100%" }}>Sign in</button></div>

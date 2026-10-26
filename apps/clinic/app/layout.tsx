@@ -9,7 +9,7 @@ import { signOutAction } from "./login/actions";
 import { AccountMenu } from "./account-menu";
 import { Suspense } from "react";
 
-export const metadata = { title: "Kinpath" };
+export const metadata = { title: "The Pumpkin" };
 export const dynamic = "force-dynamic";
 
 const initials = (n: string) => n.replace(/^Dr\.?\s+/, "").split(/[\s,]+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
@@ -24,7 +24,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       <body>
         {devLoginEnabled() && (
           <div className="devbar">
-            <strong>Kinpath dev build</strong>
+            <strong>The Pumpkin dev build</strong>
             <span>Synthetic data only. No real patient information.</span>
             {s?.demo && <form action={signOut}><button type="submit">Switch person</button></form>}
             <Link href="/dev/outbox" style={{ color: "#f6f1e8" }}>Dev outbox</Link>

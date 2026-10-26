@@ -1,6 +1,6 @@
-# Hosting Kinpath for real patients
+# Hosting The Pumpkin for real patients
 
-This is the plan for moving Kinpath from a laptop demo to HIPAA-covered hosting. The code is ready for it; the accounts, signed agreements and reviews below are not something code can do.
+This is the plan for moving The Pumpkin from a laptop demo to HIPAA-covered hosting. The code is ready for it; the accounts, signed agreements and reviews below are not something code can do.
 
 **Nothing here is legal advice.** A healthcare attorney and the clinic's privacy officer should review the vendor agreements and the HIPAA risk assessment.
 
@@ -16,11 +16,21 @@ This is the plan for moving Kinpath from a laptop demo to HIPAA-covered hosting.
 | AI drafting | Reply drafts from approved protocols | An AI API under a BAA (see `AI.md`) |
 | Push | Lock-screen alerts | Apple and Google push (via Expo), never carrying health details |
 
+## Domain: thepumpkin.ai
+
+| Address | What it's for |
+| --- | --- |
+| `thepumpkin.ai` | The company website (marketing; no patient data) |
+| `<clinic>.thepumpkin.ai` (e.g. `bayside.thepumpkin.ai`) | Each clinic's nurse workspace and the API its branded phone app calls. One server can serve every clinic; the subdomain keeps each clinic's links on-brand |
+| `no-reply@thepumpkin.ai` | Sender for sign-in codes, setup links and alerts. Set up SPF, DKIM and DMARC records with the email vendor so these don't land in spam |
+
+A clinic that wants its own address (e.g. `app.baysidefertility.com`) can point it at the same server later.
+
 ## Two ways to host it
 
 ### Option A: Aptible (simplest)
 
-Aptible is a hosting platform built for regulated health apps. Its BAA page says a signed BAA is "included with every plan," with "no separate process, no sales call," covering "your entire Aptible environment" ([Aptible](https://www.aptible.com/hipaa/baa)). It runs containers and managed databases, which is what Kinpath needs. Check current pricing on their site.
+Aptible is a hosting platform built for regulated health apps. Its BAA page says a signed BAA is "included with every plan," with "no separate process, no sales call," covering "your entire Aptible environment" ([Aptible](https://www.aptible.com/hipaa/baa)). It runs containers and managed databases, which is what The Pumpkin needs. Check current pricing on their site.
 
 ### Option B: AWS
 
@@ -43,7 +53,7 @@ Each claim below was checked on the vendor's own site. Re-check before signing; 
 | AI drafting (if on AWS) | Amazon Bedrock | Covered under the AWS BAA | [AWS services in scope](https://aws.amazon.com/compliance/services-in-scope/HIPAA_BAA/) |
 | Push | Expo / Apple / Google | **No BAA.** Expo: "Expo is not HIPAA-certified and does not sign BAAs," and push payloads must never contain PHI | [expo.dev/solutions/expo-healthcare](https://expo.dev/solutions/expo-healthcare) |
 
-Kinpath already sends no health details in push, text or email (tested in `packages/core/test/notifications.test.ts`), which is what makes the no-BAA push path workable.
+The Pumpkin already sends no health details in push, text or email (tested in `packages/core/test/notifications.test.ts`), which is what makes the no-BAA push path workable.
 
 **Not to use for health information:** Twilio SendGrid (not on Twilio's HIPAA eligible list), any analytics or error-tracking service without a BAA, and Anthropic API features its BAA excludes (for example Batch and Files).
 
@@ -59,7 +69,7 @@ Kinpath already sends no health details in push, text or email (tested in `packa
    DATABASE_URL=... node apps/clinic/scripts/bootstrap.mjs \
      --clinic-id bayside --clinic-name "Bayside Fertility" \
      --admin-name "Kara Diaz" --admin-email kara@baysidefertility.com \
-     --base-url https://app.baysidefertility.com
+     --base-url https://bayside.thepumpkin.ai
    ```
    It prints a one-time link (72 hours) for the admin to set a password and two-step sign-in. The admin then invites the rest of the team from **Team**.
 7. **Connect texting and email** so codes and alerts really send (the senders plug in where the dev outbox is today).
@@ -67,7 +77,7 @@ Kinpath already sends no health details in push, text or email (tested in `packa
 
 ## How the code maps to HIPAA's technical safeguards
 
-| Safeguard (45 CFR 164.312) | In Kinpath |
+| Safeguard (45 CFR 164.312) | In The Pumpkin |
 | --- | --- |
 | Access control: unique user IDs | Every person has their own account; no shared logins |
 | Access control: emergency access | To be written as a procedure (break-glass account held by the medical director) |

@@ -46,7 +46,7 @@ export function verifyTotp(secret: string, code: string, now = Date.now()): bool
   return [-1, 0, 1].some((w) => safeEqual(totpAt(secret, now + w * 30_000), c));
 }
 
-export const otpauthUri = (secret: string, account: string, issuer = "Kinpath") =>
+export const otpauthUri = (secret: string, account: string, issuer = "The Pumpkin") =>
   `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(account)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
 
 // ---------- passwords ----------

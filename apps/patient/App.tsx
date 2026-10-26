@@ -121,7 +121,7 @@ function SignIn({ onSignedIn, onDemo }: { onSignedIn: (u: SignedInUser) => void;
     </Frame>
   );
   return (
-    <Frame top={<View style={{ padding: 18, paddingBottom: 6 }}><Muted>Bayside Fertility · powered by Kinpath</Muted></View>}>
+    <Frame top={<View style={{ padding: 18, paddingBottom: 6 }}><Muted>Bayside Fertility · powered by The Pumpkin</Muted></View>}>
       <Today size={38}>Welcome.</Today>
       <Muted>Sign in with the mobile number or email Bayside has for you. We'll send a code. No password needed.</Muted>
       <Card style={{ gap: 10 }}>
@@ -1092,7 +1092,7 @@ function Urgent({ kind, t, back }: { kind: SendResult["kind"]; t: Tx; back: () =
         <Text testID="urgent-title" style={{ fontFamily: F.serifItalic, fontSize: 32, lineHeight: 34, color: C.red }}>{crisis ? t("You don't have to go through this alone.", "No tienes que pasar por esto sola.") : t("This needs a nurse now.", "Esto necesita a una enfermera ahora.")}</Text>
         <T style={{ fontSize: 15, lineHeight: 22 }}>{crisis
           ? t("Call or text 988 any time to reach the Suicide & Crisis Lifeline. We've also let Bayside's care team know.", "Llama o envía un mensaje al 988 en cualquier momento para hablar con la Línea de Prevención del Suicidio y Crisis. También avisamos al equipo de Bayside.")
-          : t("Kinpath didn't try to answer this. We've put it at the top of your nurse's list. Please call the nurse line now.", "Kinpath no intentó responder esto. Lo pusimos primero en la lista de tu enfermera. Por favor llama a enfermería ahora.")}</T>
+          : t("The Pumpkin didn't try to answer this. We've put it at the top of your nurse's list. Please call the nurse line now.", "The Pumpkin no intentó responder esto. Lo pusimos primero en la lista de tu enfermera. Por favor llama a enfermería ahora.")}</T>
         {crisis ? <Button kind="red" label={t("Call or text 988", "Llamar o escribir al 988")} onPress={() => Linking.openURL("tel:988")} /> : <Button kind="red" label={t("Call the nurse line now", "Llamar a enfermería ahora")} onPress={() => Linking.openURL(NURSE_LINE)} />}
         <T style={{ fontFamily: F.sans600 }}>{t("If you can't catch your breath or have chest pain, call 911.", "Si no puedes respirar bien o tienes dolor de pecho, llama al 911.")}</T>
       </View>

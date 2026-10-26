@@ -7,7 +7,7 @@
  *   DATABASE_URL=... node apps/clinic/scripts/bootstrap.mjs \
  *     --clinic-id bayside --clinic-name "Bayside Fertility" \
  *     --admin-name "Kara Diaz" --admin-email kara@baysidefertility.com \
- *     --base-url https://app.baysidefertility.com
+ *     --base-url https://bayside.thepumpkin.ai
  */
 import crypto from "node:crypto";
 import pg from "pg";

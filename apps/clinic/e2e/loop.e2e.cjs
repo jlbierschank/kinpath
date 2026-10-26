@@ -30,7 +30,7 @@ const { chromium } = require('playwright');
   await p.fill('input[name=value]', '612'); await p.click('button:has-text("Save result")'); await p.waitForURL('**/nurse');
 
   await as('Maya Torres');
-  ok(await p.locator('text=Drafted with Kinpath, reviewed by Maria Lopez, RN.').count() === 1, 'Maya sees the reply with the disclosure line');
+  ok(await p.locator('text=Drafted with The Pumpkin, reviewed by Maria Lopez, RN.').count() === 1, 'Maya sees the reply with the disclosure line');
   ok(await p.locator('text=Nurse reviewing').count() === 1 && await p.locator("text=In Bayside's range").count() === 1, 'Maya sees one in-range and one nurse-review result');
   await shot('4-maya-reply');
   await p.click('button:has-text("Got it")'); await p.locator('button:has-text("Got it")').waitFor({state:'detached',timeout:10000});
