@@ -1,0 +1,8 @@
+**/node_modules
+**/.next
+**/.data
+**/.expo
+.git
+apps/patient
+*.log
+.env*

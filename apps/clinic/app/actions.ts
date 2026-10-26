@@ -26,7 +26,7 @@ export async function signOut() {
 }
 
 export async function resetDemo() {
-  if (!devLoginEnabled()) redirect("/login");
+  if (!devLoginEnabled() || process.env.DATABASE_URL) redirect("/login");
   await resetDb();
   (await cookies()).delete(SESSION_COOKIE);
   (await cookies()).delete("kp_dev_user");

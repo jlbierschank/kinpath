@@ -13,6 +13,7 @@
     "@kinpath/core": "workspace:*",
     "@kinpath/db": "workspace:*",
     "next": "15.5.28",
+    "pg": "8.16.3",
     "qrcode": "1.5.4",
     "react": "19.1.10",
     "react-dom": "19.1.10",

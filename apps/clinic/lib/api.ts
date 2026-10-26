@@ -5,6 +5,7 @@ import type { Role } from "@kinpath/core";
 import { sessionFromToken } from "@kinpath/db";
 import { getDb } from "./db";
 import { devLoginEnabled, type Session } from "./session";
+import { logError } from "./config";
 
 /**
  * API auth for the phone app: "Authorization: Bearer <session token>" from real sign-in.
@@ -64,7 +65,7 @@ export async function handle(req: Request, roles: Role[], fn: (s: Session) => Pr
   try {
     return json(req, await fn(s));
   } catch (e) {
-    if (!isHandoffError(e)) console.error(e);
+    if (!isHandoffError(e)) logError(new URL(req.url).pathname, e);
     return json(req, { error: isHandoffError(e) ? e.message : "Something went wrong." }, isHandoffError(e) ? 400 : 500);
   }
 }
@@ -74,7 +75,7 @@ export async function open(req: Request, fn: () => Promise<unknown>) {
   try {
     return json(req, await fn());
   } catch (e) {
-    if (!isHandoffError(e)) console.error(e);
+    if (!isHandoffError(e)) logError(new URL(req.url).pathname, e);
     return json(req, { error: isHandoffError(e) ? e.message : "Something went wrong." }, isHandoffError(e) ? 400 : 500);
   }
 }

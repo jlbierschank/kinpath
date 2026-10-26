@@ -10,6 +10,7 @@
 - End-to-end browser check of the full loop
 - Patient phone app (Expo): Today, injection walkthroughs, dose logging, late or missed doses, messages, urgent safety screen, Spanish
 - Private dose reminders with quiet hours (tested rules in @kinpath/core) and a patient API the phone app calls
+- Production-ready hosting setup (see docs/HOSTING.md): runs on managed Postgres through DATABASE_URL (tested over the real Postgres protocol), a Dockerfile with a standalone server and health check, security headers (HSTS, CSP, no-referrer, no framing), error logs without health details, a startup check that refuses unsafe production settings, and a one-time script to create a clinic and its first admin.
 - Real sign-in: staff use email + password + a code from an authenticator app (required), are signed out after 30 idle minutes and after 12 hours; patients and support people use one-time codes by text or email (no password), stay signed in on their own phone, and can sign out other devices. Five wrong tries locks sign-in for 15 minutes. Support people confirm their phone or email before joining. Tokens, codes and setup links are stored only as hashes; the app role can't read credentials, sessions or the outbox. The "pick a person" demo sign-in only works in demo builds.
 - Your account (profile, signature, language; password, two-step, devices; notifications) and Team for clinic admins (invite staff by setup link, change roles, deactivate, which ends access immediately; at least one admin always remains).
 - Notifications: a bell and inbox on web and phone; each person picks which alerts and which channels (in app, push, text, email); quiet hours; a morning or evening summary for staff. Urgent safety alerts can be re-routed but never turned off, and skip quiet hours and summaries. Push, text and email never carry health details. Until texting and email services are connected, they land in the dev outbox.
@@ -36,7 +37,7 @@
 - [ ] Optional: staff single sign-on with the clinic's Microsoft or Google accounts
 - [ ] Two-step reset flow for staff who lose their phone (admin-initiated)
 - [ ] App Store and Google Play builds (EAS), with the clinic's branding
-- [ ] HIPAA-covered hosting (Aptible or AWS) and managed Postgres, with business associate agreements signed for hosting, the AI vendor, email/SMS and video
+- [ ] Choose hosting (Aptible or AWS) and sign BAAs with hosting, texting, email and the AI vendor; then follow the checklist in docs/HOSTING.md
 - [ ] Security review, penetration test, HIPAA risk assessment, policies, and a compliance platform (Vanta or Drata) started
 - [ ] Clinical review of every triage term, range and protocol text by an IVF nurse and the medical director
 - [ ] Medical translator review of all Spanish text

@@ -13,10 +13,13 @@
   },
   "dependencies": {
     "@electric-sql/pglite": "0.3.15",
-    "@kinpath/core": "workspace:*"
+    "@kinpath/core": "workspace:*",
+    "pg": "8.16.3"
   },
   "devDependencies": {
+    "@electric-sql/pglite-socket": "0.0.21",
     "@types/node": "22.18.0",
+    "@types/pg": "8.15.5",
     "typescript": "5.9.3",
     "vitest": "3.2.4"
   }

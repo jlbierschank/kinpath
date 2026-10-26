@@ -48,6 +48,10 @@ pnpm dev:patient
   EXPO_PUBLIC_API_URL=http://192.168.1.23:3000 pnpm dev:patient
   ```
 
+## Hosting
+
+See [docs/HOSTING.md](docs/HOSTING.md) for HIPAA-covered hosting: vendors with confirmed BAAs, the setup checklist, and how the code maps to HIPAA's technical safeguards.
+
 ## Layout
 
 | Folder | What it is |

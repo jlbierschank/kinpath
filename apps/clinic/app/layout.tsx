@@ -28,7 +28,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <span>Synthetic data only. No real patient information.</span>
             {s?.demo && <form action={signOut}><button type="submit">Switch person</button></form>}
             <Link href="/dev/outbox" style={{ color: "#f6f1e8" }}>Dev outbox</Link>
-            <form action={resetDemo}><button type="submit">Reset demo data</button></form>
+            {!process.env.DATABASE_URL && <form action={resetDemo}><button type="submit">Reset demo data</button></form>}
           </div>
         )}
         {s && (
