@@ -105,6 +105,9 @@ export interface HandoffDetail {
   firstName: string;
   lang: Lang;
   stimDay: number | null;
+  /** How the draft was made: protocol text, an AI draft that passed every check, or protocol text after an AI draft was held back. */
+  draftEngine: "protocol" | "ai" | "ai_held_back" | "ai_error" | null;
+  draftProblems: string[];
   doseLog: { medication: string; dose: string; scheduledFor: string; takenAt: string | null; reportedMissed: boolean }[];
 }
 
@@ -127,6 +130,8 @@ export async function handoffDetail(db: Db, actor: Actor, handoffId: string): Pr
       firstName: pt.first_name,
       lang: pt.preferred_lang,
       stimDay: c.rows[0]?.stim_day ?? null,
+      draftEngine: (row as unknown as { draft_engine: HandoffDetail["draftEngine"] }).draft_engine ?? null,
+      draftProblems: (row as unknown as { draft_problems: string[] | null }).draft_problems ?? [],
       doseLog: doses.rows.map((d) => ({
         medication: d.medication, dose: d.dose, scheduledFor: new Date(d.scheduled_for).toISOString(),
         takenAt: d.taken_at ? new Date(d.taken_at).toISOString() : null, reportedMissed: d.reported_missed_at !== null,

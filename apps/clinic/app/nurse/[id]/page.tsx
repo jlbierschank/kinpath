@@ -45,7 +45,7 @@ export default async function HandoffPage({ params }: { params: Promise<{ id: st
           {!done && !isUrgent && h.status === "open" && (
             <form className="card" action={draft}>
               <input type="hidden" name="handoffId" value={h.id} />
-              <p style={{ marginTop: 0 }}>The Pumpkin can draft a reply from Bayside&apos;s approved protocol. You review and send it.</p>
+              <p style={{ marginTop: 0 }}>The Pumpkin can draft a reply from Bayside&apos;s approved protocol. Every draft is checked against that protocol, and you review and send it.</p>
               <button className="btn btn-main" type="submit">Draft a reply</button>
             </form>
           )}
@@ -56,6 +56,8 @@ export default async function HandoffPage({ params }: { params: Promise<{ id: st
               <label htmlFor="text">Reply to {d.firstName} {d.lang === "es" && "(in Spanish)"}</label>
               <textarea id="text" name="text" rows={6} defaultValue={h.draft ?? ""} />
               <p className="muted" style={{ fontSize: 13 }}>
+                {d.draftEngine === "ai" && <><span className="pill p-lav" data-testid="draft-engine">AI draft · passed every check</span>{" "}</>}
+                {(d.draftEngine === "ai_held_back" || d.draftEngine === "ai_error") && <><span className="pill p-clay" data-testid="draft-engine">AI draft held back: {d.draftProblems.join("; ")}. Showing the approved protocol text instead.</span>{" "}</>}
                 {h.draftSource ? `Drafted from protocol: ${h.draftSource}.` : "No matching protocol section. Write your own reply."} {d.firstName} will see &ldquo;Drafted with The Pumpkin, reviewed by {s.name}.&rdquo;
               </p>
               <button className="btn btn-main" type="submit">Approve and send</button>

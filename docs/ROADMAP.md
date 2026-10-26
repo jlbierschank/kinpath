@@ -26,7 +26,7 @@
 - [ ] OB-GYN summary links: add a short code sent separately, so a forwarded link alone isn't enough
 - [ ] A real counselor directory (today "A counselor who knows this" asks the nurse to call)
 - [ ] Move internal nurse tasks (result reviews) into their own table so patients can never read them, even through the API
-- [ ] AI gateway: one HIPAA-eligible model vendor behind a Pumpkin service that only drafts from approved protocol sections, plus an evaluation test set with 100% urgent recall as a launch gate
+- [x] AI drafting service: one model vendor (Anthropic, under a BAA) behind a checked gateway that only drafts from approved protocol sections; urgent triage launch gate at 100% recall. Off until turned on (see AI.md)
 
 - [ ] Invite sign-up hardening: rate-limit code attempts, and confirm the invited person's phone or email with a one-time sign-in link
 - [ ] Support-person screens in Spanish (after the medical translator review)
