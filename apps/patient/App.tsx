@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { ActivityIndicator, Linking, Pressable, SafeAreaView, ScrollView, Share, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, ScrollView, Share, Text, TextInput, View } from "react-native";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useFonts } from "expo-font";
 import { Newsreader_400Regular_Italic, Newsreader_500Medium } from "@expo-google-fonts/newsreader";
@@ -30,6 +31,10 @@ const clock = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hou
 const dayClock = (iso: string) => new Date(iso).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" });
 
 export default function App() {
+  return <SafeAreaProvider><AppInner /></SafeAreaProvider>;
+}
+
+function AppInner() {
   const [fontsLoaded] = useFonts({ Newsreader_400Regular_Italic, Newsreader_500Medium, InstrumentSans_400Regular, InstrumentSans_500Medium, InstrumentSans_600SemiBold, InstrumentSans_700Bold });
   const [who, setWho] = useState<DevPerson | null>(null);
   // People who joined with an invite code during this session (dev only; real sign-in remembers them).
