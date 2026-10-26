@@ -1,0 +1,19 @@
+{
+  "name": "kinpath",
+  "private": true,
+  "description": "Kinpath: clinic-branded fertility care-team app (synthetic data only until HIPAA hosting and security review)",
+  "scripts": {
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "dev:clinic": "pnpm --filter @kinpath/clinic dev"
+  },
+  "packageManager": "pnpm@10.0.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}
