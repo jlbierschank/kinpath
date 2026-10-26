@@ -47,6 +47,6 @@
 ## Records-system connection (moat)
 
 1. Pilot: staff enter results (built)
-2. Standard data feeds from the clinic's records system (results, appointments, patient details)
+2. Standard data feeds from the clinic's records system: lab results and medication orders over FHIR R4 or a results CSV (built; see RECORDS.md). Still to come: appointments and patient details, an HL7 v2 lab feed, and reading from the records system's own FHIR API
 3. EMR partner programs: eIVF and Artisan first
 4. Patient-approved uploads and outside records

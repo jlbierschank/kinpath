@@ -249,32 +249,48 @@ export async function enterLabResult(db: Db, actor: Actor, input: { patientId: s
 }
 async function enterLabResultTx(db: Db, actor: Actor, input: { patientId: string; analyte: string; unit: string; value: number; stimDay: number }) {
   return asActor(db, actor, async (tx) => {
-    const ranges = await tx.query<{ analyte: string; unit: string; day_from: number; day_to: number; low: string; high: string; in_range_en: string; in_range_es: string; approved_by: string }>(`SELECT * FROM clinic_ranges`);
-    const clinicRanges: ClinicRange[] = ranges.rows.map((r) => ({
-      analyte: r.analyte, unit: r.unit, dayFrom: r.day_from, dayTo: r.day_to, low: Number(r.low), high: Number(r.high),
-      inRangeText: { en: r.in_range_en, es: r.in_range_es }, approvedBy: r.approved_by,
-    }));
-    const label = labelResult({ analyte: input.analyte, unit: input.unit, value: input.value, stimDay: input.stimDay }, clinicRanges);
-    const res = await tx.query<{ id: string }>(
-      `INSERT INTO lab_results (clinic_id, patient_id, analyte, unit, value, stim_day, collected_at, status, entered_by) VALUES ($1,$2,$3,$4,$5,$6,now(),$7,$8) RETURNING id`,
-      [actor.clinicId, input.patientId, input.analyte, input.unit, input.value, input.stimDay, label.status, actor.userId],
-    );
-    const resultId = res.rows[0]!.id;
-    if (label.routeToNurse) {
-      await tx.query(
-        `INSERT INTO handoffs (clinic_id, patient_id, kind, patient_message, triage, lab_result_id) VALUES ($1,$2,'result_review',$3,$4,$5)`,
-        [actor.clinicId, input.patientId, `${input.analyte} ${input.value} ${input.unit} (${label.status.replace("_", " ")})`, JSON.stringify({ level: "routine", ruleIds: [], routeTo: "none" }), resultId],
-      );
-    }
-    await audit(tx, actor, "staff.entered_result", input.patientId, { resultId, status: label.status });
-    return { resultId, label };
+    const r = await recordLabResult(tx, { clinicId: actor.clinicId, patientId: input.patientId, analyte: input.analyte, unit: input.unit, value: input.value, stimDay: input.stimDay, enteredBy: actor.userId, source: "staff_entry" });
+    await audit(tx, actor, "staff.entered_result", input.patientId, { resultId: r.resultId, status: r.label.status });
+    return r;
   });
+}
+
+/**
+ * Saves a lab result and labels it against the clinic's approved ranges. Anything not plainly in
+ * range goes to the nurse's queue first. Shared by typed results and the records connection.
+ */
+export async function recordLabResult(tx: Tx, input: {
+  clinicId: string; patientId: string; analyte: string; unit: string; value: number; stimDay: number;
+  collectedAt?: string; enteredBy: string | null; source: "staff_entry" | "emr_feed"; note?: string;
+}) {
+  const ranges = await tx.query<{ analyte: string; unit: string; day_from: number; day_to: number; low: string; high: string; in_range_en: string; in_range_es: string; approved_by: string }>(
+    `SELECT * FROM clinic_ranges WHERE clinic_id = $1`, [input.clinicId]);
+  const clinicRanges: ClinicRange[] = ranges.rows.map((r) => ({
+    analyte: r.analyte, unit: r.unit, dayFrom: r.day_from, dayTo: r.day_to, low: Number(r.low), high: Number(r.high),
+    inRangeText: { en: r.in_range_en, es: r.in_range_es }, approvedBy: r.approved_by,
+  }));
+  const label = labelResult({ analyte: input.analyte, unit: input.unit, value: input.value, stimDay: input.stimDay }, clinicRanges);
+  const res = await tx.query<{ id: string }>(
+    `INSERT INTO lab_results (clinic_id, patient_id, analyte, unit, value, stim_day, collected_at, status, entered_by, source) VALUES ($1,$2,$3,$4,$5,$6,coalesce($7::timestamptz, now()),$8,$9,$10) RETURNING id`,
+    [input.clinicId, input.patientId, input.analyte, input.unit, input.value, input.stimDay, input.collectedAt ?? null, label.status, input.enteredBy, input.source],
+  );
+  const resultId = res.rows[0]!.id;
+  if (label.routeToNurse) await routeResultToNurse(tx, input.clinicId, input.patientId, resultId, `${input.note ? input.note + ": " : ""}${input.analyte} ${input.value} ${input.unit} (${label.status.replace("_", " ")})`);
+  return { resultId, label };
+}
+
+export async function routeResultToNurse(tx: Tx, clinicId: string, patientId: string, resultId: string, message: string) {
+  await tx.query(
+    `INSERT INTO handoffs (clinic_id, patient_id, kind, patient_message, triage, lab_result_id) VALUES ($1,$2,'result_review',$3,$4,$5)`,
+    [clinicId, patientId, message, JSON.stringify({ level: "routine", ruleIds: [], routeTo: "none" }), resultId],
+  );
 }
 
 export async function auditLog(db: Db, actor: Actor, limit = 50) {
   return asActor(db, actor, async (tx) => {
     const r = await tx.query<{ at: Date; actor: string; action: string; detail: Record<string, unknown> }>(
-      `SELECT a.at, u.display_name AS actor, a.action, a.detail FROM audit_events a LEFT JOIN app_users u ON u.id = a.actor_user_id ORDER BY a.id DESC LIMIT $1`, [limit]);
+      `SELECT a.at, coalesce(u.display_name, k.name, 'Records system') AS actor, a.action, a.detail FROM audit_events a
+        LEFT JOIN app_users u ON u.id = a.actor_user_id LEFT JOIN integration_keys k ON k.id = a.actor_user_id ORDER BY a.id DESC LIMIT $1`, [limit]);
     return r.rows;
   });
 }

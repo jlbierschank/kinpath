@@ -14,7 +14,7 @@ export type Audience = "staff" | "patient" | "partner";
 export type NotificationKind =
   | "urgent_message" | "new_message" | "result_to_review" | "call_to_make" | "thank_you"
   | "nurse_reply" | "result_ready" | "support_note" | "support_joined" | "summary_opened"
-  | "news_shared" | "access_changed";
+  | "news_shared" | "access_changed" | "records_to_review" | "schedule_changed";
 
 export interface KindInfo {
   audience: Audience;
@@ -49,6 +49,11 @@ export const KINDS: Record<NotificationKind, KindInfo> = {
     label: { en: "Calls to make", es: "Llamadas pendientes" },
     description: { en: "Check-in calls, follow-ups and patients ready for next steps.", es: "Llamadas de seguimiento y pacientes listas para los próximos pasos." },
   },
+  records_to_review: {
+    audience: "staff", defaults: d(true, false, false, false),
+    label: { en: "Records to review", es: "Registros por revisar" },
+    description: { en: "New medication orders from the records system, and records Pumpkin couldn't match to a patient.", es: "Órdenes de medicamentos nuevas del sistema de expedientes y registros que Pumpkin no pudo asignar a una paciente." },
+  },
   thank_you: {
     audience: "staff", defaults: d(true, false, false, false),
     label: { en: "Thank-you notes", es: "Notas de agradecimiento" },
@@ -63,6 +68,11 @@ export const KINDS: Record<NotificationKind, KindInfo> = {
     audience: "patient", defaults: d(true, true, false, false),
     label: { en: "Results", es: "Resultados" },
     description: { en: "When a result is ready to see in the app.", es: "Cuando un resultado está listo en la app." },
+  },
+  schedule_changed: {
+    audience: "patient", defaults: d(true, true, false, false),
+    label: { en: "Medication schedule changes", es: "Cambios en tus medicamentos" },
+    description: { en: "When your nurse updates your medication schedule.", es: "Cuando tu enfermera actualiza tus medicamentos." },
   },
   support_note: {
     audience: "patient", defaults: d(true, true, false, false),

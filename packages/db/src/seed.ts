@@ -67,8 +67,8 @@ export async function seed(db: Db, now = new Date("2026-10-26T09:00:00-04:00")):
     }
     await tx.query(`UPDATE app_users SET title = 'IVF nurse', signature = '— Maria, Bayside nursing team' WHERE id = $1`, [i.maria]);
     await tx.query(
-      `INSERT INTO patients (id, clinic_id, user_id, first_name, last_name, preferred_lang) VALUES
-       ($1,$4,$5,'Maya','Torres','en'), ($2,$4,$6,'Priya','Shah','es'), ($3,$7,$8,'Dana','Ruiz','en')`,
+      `INSERT INTO patients (id, clinic_id, user_id, first_name, last_name, preferred_lang, mrn) VALUES
+       ($1,$4,$5,'Maya','Torres','en','BF-100231'), ($2,$4,$6,'Priya','Shah','es','BF-100245'), ($3,$7,$8,'Dana','Ruiz','en','HB-5512')`,
       [i.maya, i.priya, i.harborPatient, i.bayside, i.mayaUser, i.priyaUser, i.harbor, i.harborPatientUser],
     );
     await tx.query(`INSERT INTO partner_grants (clinic_id, patient_id, partner_user_id, sections) VALUES ($1,$2,$3,ARRAY['schedule','meds'])`, [i.bayside, i.maya, i.jordan]);

@@ -6,7 +6,8 @@ export async function middleware(req: NextRequest) {
   const passcode = process.env.KINPATH_DEMO_PASSCODE;
   if (!passcode) return NextResponse.next();
   const { pathname, search } = req.nextUrl;
-  if (pathname === "/demo-pass" || pathname === "/api/demo-pass" || pathname === "/api/health") return NextResponse.next();
+  // The records connection has its own key, so it works behind the demo passcode too.
+  if (pathname === "/demo-pass" || pathname === "/api/demo-pass" || pathname === "/api/health" || pathname.startsWith("/api/integrations/")) return NextResponse.next();
   if (req.cookies.get(DEMO_COOKIE)?.value === (await passToken(passcode))) return NextResponse.next();
   if (pathname.startsWith("/api/")) return NextResponse.json({ error: "This demo needs its passcode. Open the demo link first." }, { status: 401 });
   const url = req.nextUrl.clone();

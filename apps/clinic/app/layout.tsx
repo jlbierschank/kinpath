@@ -39,6 +39,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             {clinician && <Link href="/nurse">Queue</Link>}
             {s.role === "clinic_admin" && <Link href="/admin">Audit log</Link>}
             {s.role === "clinic_admin" && <Link href="/admin/team">Team</Link>}
+            {s.role === "clinic_admin" && <Link href="/admin/records">Records connection</Link>}
             {staff && <Link href="/settings">Clinic settings</Link>}
             <Link className="bell" href="/notifications" aria-label={`Notifications${unread ? `, ${unread} unread` : ""}`} data-testid="bell">
               <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 1112 0v5l1.5 2h-15L6 16zM10 20a2 2 0 004 0" fill="none" stroke="#2e211c" strokeWidth="1.8" strokeLinejoin="round" /></svg>
