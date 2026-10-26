@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { STAFF_SECTIONS } from "@kinpath/core";
 import {
+  getReminderPrefs, logDose, medGuide, patientSchedule, setLockScreenDetail,
   asActor, auditLog, draftReply, enterLabResult, handoffDetail, IDS, markReplyRead, migrate, nurseQueue, openDb,
   patientInbox, reportMissedDose, seed, sendPatientMessage, sendReply, type Actor, type Db,
 } from "../src";
@@ -21,7 +22,7 @@ beforeEach(async () => {
 });
 
 async function missedDoseId(): Promise<string> {
-  const r = await asActor(db, maya, (tx) => tx.query<{ id: string }>(`SELECT id FROM dose_logs WHERE taken_at IS NULL`));
+  const r = await asActor(db, maya, (tx) => tx.query<{ id: string }>(`SELECT id FROM dose_logs WHERE taken_at IS NULL AND scheduled_for < now() ORDER BY scheduled_for LIMIT 1`));
   return r.rows[0]!.id;
 }
 const count = (a: Actor, sql: string) => asActor(db, a, async (tx) => (await tx.query<{ n: number }>(`SELECT count(*)::int AS n FROM (${sql}) q`)).rows[0]!.n);
@@ -39,7 +40,7 @@ describe("authorization walls (merge gate)", () => {
   });
 
   it("a partner sees only what was shared (schedule and meds), never results or messages", async () => {
-    expect(await count(jordan, "SELECT * FROM dose_logs")).toBe(10);
+    expect(await count(jordan, "SELECT * FROM dose_logs")).toBe(13);
     expect(await count(jordan, "SELECT * FROM cycles")).toBe(1);
     await enterLabResult(db, maria, { patientId: IDS.maya, analyte: "estradiol", unit: "pg/mL", value: 612, stimDay: 6 });
     expect(await count(jordan, "SELECT * FROM lab_results")).toBe(0);
@@ -135,5 +136,32 @@ describe("the missed-dose loop, end to end", () => {
     expect((await nurseQueue(db, maria)).some((q) => q.kind === "result_review")).toBe(true);
     // The nurse's internal task never shows up in the patient's inbox.
     expect((await patientInbox(db, maya, IDS.maya)).some((m) => m.kind === "result_review")).toBe(false);
+  });
+});
+
+describe("phone app data", () => {
+  it("splits tonight's doses from the one Maya missed", async () => {
+    const s = await patientSchedule(db, maya, IDS.maya, new Date("2026-10-26T09:00:00-04:00"));
+    expect(s.missed.map((d) => d.medication)).toEqual(["Gonal-f"]);
+    expect(s.upcoming.length).toBeGreaterThanOrEqual(3);
+  });
+  it("lets Maya log her own dose once, but not Jordan", async () => {
+    const s = await patientSchedule(db, maya, IDS.maya, new Date("2026-10-26T09:00:00-04:00"));
+    const tonight = s.upcoming[0]!.id;
+    await expect(logDose(db, jordan, tonight)).rejects.toThrow();
+    expect(await logDose(db, maya, tonight)).toBe(true);
+    await expect(logDose(db, maya, tonight)).rejects.toThrow(/already logged/);
+  });
+  it("serves the nurse-approved walkthrough in both languages", async () => {
+    const g = await medGuide(db, maya, "Menopur");
+    expect(g!.approved_by).toBe("Maria Lopez, RN");
+    expect(g!.steps.length).toBe(6);
+    expect(g!.steps[0]!.es).toMatch(/Lávate/);
+  });
+  it("keeps medication names off the lock screen until Maya turns it on", async () => {
+    expect((await getReminderPrefs(db, maya, IDS.maya)).lockScreenDetail).toBe(false);
+    await setLockScreenDetail(db, maya, IDS.maya, true);
+    expect((await getReminderPrefs(db, maya, IDS.maya)).lockScreenDetail).toBe(true);
+    await expect(setLockScreenDetail(db, jordan, IDS.maya, false)).rejects.toThrow();
   });
 });

@@ -30,8 +30,11 @@ export const IDS = {
 /** Runs as the database owner, before the app ever connects. */
 export async function seed(db: Db, now = new Date("2026-10-26T09:00:00-04:00")): Promise<void> {
   const i = IDS;
+  // Anchor the story so "tonight's 8 pm injections" are always still ahead, even when seeding late in the evening.
+  const anchor = new Date(now);
+  if (anchor.getHours() >= 19) anchor.setDate(anchor.getDate() + 1);
   const day = (offsetDays: number, hhmm: string) => {
-    const d = new Date(now);
+    const d = new Date(anchor);
     d.setDate(d.getDate() + offsetDays);
     const [h, m] = hhmm.split(":").map(Number);
     d.setHours(h ?? 0, m ?? 0, 0, 0);
@@ -80,6 +83,30 @@ export async function seed(db: Db, now = new Date("2026-10-26T09:00:00-04:00")):
         );
       }
     }
+    // Tonight's injections, not yet due.
+    for (const med of [i.gonalF, i.menopur, i.cetrotide]) {
+      await tx.query(`INSERT INTO dose_logs (clinic_id, patient_id, med_order_id, scheduled_for) VALUES ($1,$2,$3,$4)`, [i.bayside, i.maya, med, day(0, "20:00")]);
+    }
+    const steps = (pairs: [string, string][]) => JSON.stringify(pairs.map(([en, es]) => ({ en, es })));
+    const common: [string, string][] = [
+      ["Wash your hands and lay everything out on a clean surface.", "Lávate las manos y coloca todo sobre una superficie limpia."],
+      ["Check the medication name and the dose your nurse set. Ask before you inject if anything looks different.", "Revisa el nombre del medicamento y la dosis que fijó tu enfermera. Pregunta antes de inyectarte si algo se ve diferente."],
+    ];
+    const finish: [string, string][] = [
+      ["Clean a spot on your belly, at least two inches from your belly button, with an alcohol swab. Let it dry.", "Limpia un área del abdomen, al menos a cinco centímetros del ombligo, con una toallita con alcohol. Deja que se seque."],
+      ["Pinch the skin, insert the needle straight in, and press the plunger slowly until it stops.", "Pellizca la piel, introduce la aguja recta y presiona el émbolo despacio hasta el final."],
+      ["Put the needle straight into your sharps container. Never recap it.", "Pon la aguja directamente en tu contenedor de objetos punzantes. Nunca le vuelvas a poner la tapa."],
+    ];
+    await tx.query(
+      `INSERT INTO med_guides (clinic_id, medication, steps, approved_by) VALUES
+       ($1,'Gonal-f',$2,'Maria Lopez, RN'), ($1,'Menopur',$3,'Maria Lopez, RN'), ($1,'Cetrotide',$4,'Maria Lopez, RN')`,
+      [i.bayside,
+       steps([...common, ["Attach a new needle to the pen and dial to your dose.", "Coloca una aguja nueva en la pluma y gira hasta tu dosis."], ...finish]),
+       steps([...common, ["Mix the powder with the liquid as your nurse showed you. Swirl gently; don't shake.", "Mezcla el polvo con el líquido como te enseñó tu enfermera. Gira suavemente; no agites."], ...finish]),
+       steps([...common, ["Mix the powder with the prefilled syringe and swap to the thin injection needle.", "Mezcla el polvo con la jeringa precargada y cambia a la aguja fina de inyección."], ...finish])],
+    );
+    await tx.query(`INSERT INTO patient_prefs (patient_id, clinic_id) VALUES ($1,$2), ($3,$2)`, [i.maya, i.bayside, i.priya]);
+
     await tx.query(`INSERT INTO dose_logs (clinic_id, patient_id, med_order_id, scheduled_for, taken_at) VALUES ($1,$2,$3,$4,$5)`, [i.harbor, i.harborPatient, i.harborMed, day(-1, "20:00"), day(-1, "20:02")]);
 
     await tx.query(

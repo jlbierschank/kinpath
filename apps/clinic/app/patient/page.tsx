@@ -13,7 +13,7 @@ export default async function PatientHome() {
   ]);
   const es = today.lang === "es";
   const t = (en: string, sp: string) => (es ? sp : en);
-  const missed = today.doses.filter((d) => !d.takenAt && !d.reportedMissed);
+  const missed = today.doses.filter((d) => !d.takenAt && !d.reportedMissed && new Date(d.scheduledFor).getTime() < Date.now());
   const replies = inbox.filter((m) => m.sentText);
   const waiting = inbox.filter((m) => !m.sentText);
 

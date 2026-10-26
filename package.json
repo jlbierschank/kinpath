@@ -5,7 +5,8 @@
   "scripts": {
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck",
-    "dev:clinic": "pnpm --filter @kinpath/clinic dev"
+    "dev:clinic": "pnpm --filter @kinpath/clinic dev",
+    "dev:patient": "pnpm --filter @kinpath/patient start"
   },
   "packageManager": "pnpm@10.0.0",
   "engines": {

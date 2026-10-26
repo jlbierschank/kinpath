@@ -8,11 +8,13 @@
 - Synthetic seed data: two fictional clinics, staff, patients and a partner
 - Web app: nurse queue, handoff detail with dose log, protocol-drafted reply, call-and-close for urgent items, pilot result entry, patient Today screen, partner view, audit log
 - End-to-end browser check of the full loop
+- Patient phone app (Expo): Today, injection walkthroughs, dose logging, late or missed doses, messages, urgent safety screen, Spanish
+- Private dose reminders with quiet hours (tested rules in @kinpath/core) and a patient API the phone app calls
 
 ## Next (stage 1, continued)
 
-- [ ] Patient mobile app (React Native with Expo) using the same packages
-- [ ] Injection walkthroughs and dose logging from the app, with reminders
+- [ ] Walkthrough order and per-medication videos set by the nurse (today it's alphabetical)
+- [ ] Partner view in the phone app, and partner notes
 - [ ] Stage-aware home screen ("Others ask this on day 6") and the two-week-wait support moments from the demo
 - [ ] Clinic settings screens: ranges, protocol sections and triage terms, each with a named approver
 - [ ] Move internal nurse tasks (result reviews) into their own table so patients can never read them, even through the API
@@ -20,7 +22,8 @@
 
 ## Before any real patient (stage 2, with a founding engineer or fractional CTO)
 
-- [ ] Real authentication: staff single sign-on with MFA; passwordless patient and partner sign-in. Replace the dev sign-in.
+- [ ] Real authentication: staff single sign-on with MFA; passwordless patient and partner sign-in. Replace the dev sign-in and the phone app's dev API header, and lock down the API's open CORS setting.
+- [ ] App Store and Google Play builds (EAS), with the clinic's branding
 - [ ] HIPAA-covered hosting (Aptible or AWS) and managed Postgres, with business associate agreements signed for hosting, the AI vendor, email/SMS and video
 - [ ] Security review, penetration test, HIPAA risk assessment, policies, and a compliance platform (Vanta or Drata) started
 - [ ] Clinical review of every triage term, range and protocol text by an IVF nurse and the medical director

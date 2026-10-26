@@ -7,6 +7,7 @@ import {
   type ClinicRange, type Handoff, type Lang, type TriageResult,
 } from "@kinpath/core";
 import { asActor, audit, type Actor, type Db } from "./client";
+import { DEFAULT_PREFS, type ReminderPrefs } from "@kinpath/core";
 
 export interface QueueItem {
   id: string;
@@ -244,5 +245,60 @@ export async function patientResults(db: Db, actor: Actor, patientId: string) {
     const cr: ClinicRange[] = ranges.rows.map((r) => ({ analyte: r.analyte, unit: r.unit, dayFrom: r.day_from, dayTo: r.day_to, low: Number(r.low), high: Number(r.high), inRangeText: { en: r.in_range_en, es: r.in_range_es }, approvedBy: r.approved_by }));
     const res = await tx.query<{ id: string; analyte: string; unit: string; value: string; stim_day: number }>(`SELECT id, analyte, unit, value, stim_day FROM lab_results WHERE patient_id = $1 ORDER BY collected_at DESC`, [patientId]);
     return res.rows.map((r) => ({ id: r.id, analyte: r.analyte, unit: r.unit, value: Number(r.value), stimDay: r.stim_day, label: labelResult({ analyte: r.analyte, unit: r.unit, value: Number(r.value), stimDay: r.stim_day }, cr, lang) }));
+  });
+}
+
+// ---------- phone app: schedule, walkthroughs, logging, reminder settings ----------
+
+export async function patientSchedule(db: Db, actor: Actor, patientId: string, now = new Date()) {
+  return asActor(db, actor, async (tx) => {
+    const d = await tx.query<{ id: string; medication: string; dose: string; scheduled_for: Date; taken_at: Date | null; reported_missed_at: Date | null }>(
+      `SELECT d.id, m.medication, m.dose, d.scheduled_for, d.taken_at, d.reported_missed_at FROM dose_logs d JOIN med_orders m ON m.id = d.med_order_id
+        WHERE d.patient_id = $1 AND d.scheduled_for > $2::timestamptz - interval '3 days' ORDER BY d.scheduled_for, m.medication`, [patientId, now.toISOString()]);
+    const rows: DoseRow[] = d.rows.map((x) => ({ id: x.id, medication: x.medication, dose: x.dose, scheduledFor: new Date(x.scheduled_for).toISOString(), takenAt: x.taken_at ? new Date(x.taken_at).toISOString() : null, reportedMissed: x.reported_missed_at !== null }));
+    return {
+      upcoming: rows.filter((r) => new Date(r.scheduledFor) >= now),
+      // Past and not logged: the patient can say "I took it" (late) or "I missed it".
+      missed: rows.filter((r) => new Date(r.scheduledFor) < now && r.takenAt === null && !r.reportedMissed),
+      recent: rows.filter((r) => new Date(r.scheduledFor) < now).reverse(),
+    };
+  });
+}
+
+export async function logDose(db: Db, actor: Actor, doseLogId: string) {
+  return asActor(db, actor, async (tx) => {
+    const r = await tx.query<{ patient_id: string }>(`UPDATE dose_logs SET taken_at = now() WHERE id = $1 AND taken_at IS NULL RETURNING patient_id`, [doseLogId]);
+    if (!r.rows[0]) throw new HandoffError("That dose is already logged or isn't yours.");
+    await audit(tx, actor, "patient.logged_dose", r.rows[0].patient_id, { doseLogId });
+    return true;
+  });
+}
+
+export async function medGuide(db: Db, actor: Actor, medication: string) {
+  return asActor(db, actor, async (tx) => {
+    const r = await tx.query<{ medication: string; steps: Record<Lang, string>[]; video_url: string | null; approved_by: string }>(
+      `SELECT medication, steps, video_url, approved_by FROM med_guides WHERE medication = $1`, [medication]);
+    return r.rows[0] ?? null;
+  });
+}
+
+export async function getReminderPrefs(db: Db, actor: Actor, patientId: string): Promise<ReminderPrefs> {
+  return asActor(db, actor, async (tx) => {
+    const p = await tx.query<{ preferred_lang: Lang }>(`SELECT preferred_lang FROM patients WHERE id = $1`, [patientId]);
+    const r = await tx.query<{ lead_minutes: number; follow_up_minutes: number; quiet_start: string; quiet_end: string; lock_screen_detail: boolean }>(
+      `SELECT lead_minutes, follow_up_minutes, quiet_start::text, quiet_end::text, lock_screen_detail FROM patient_prefs WHERE patient_id = $1`, [patientId]);
+    const row = r.rows[0];
+    const lang = p.rows[0]?.preferred_lang ?? "en";
+    if (!row) return { ...DEFAULT_PREFS, lang };
+    return { leadMinutes: row.lead_minutes, followUpMinutes: row.follow_up_minutes, quietStart: row.quiet_start.slice(0, 5), quietEnd: row.quiet_end.slice(0, 5), lockScreenDetail: row.lock_screen_detail, lang };
+  });
+}
+
+export async function setLockScreenDetail(db: Db, actor: Actor, patientId: string, on: boolean) {
+  return asActor(db, actor, async (tx) => {
+    await tx.query(
+      `INSERT INTO patient_prefs (patient_id, clinic_id, lock_screen_detail) VALUES ($1,$2,$3)
+       ON CONFLICT (patient_id) DO UPDATE SET lock_screen_detail = EXCLUDED.lock_screen_detail`, [patientId, actor.clinicId, on]);
+    await audit(tx, actor, "patient.changed_reminder_privacy", patientId, { lockScreenDetail: on });
   });
 }

@@ -12,10 +12,12 @@ A clinic-branded patient app and nurse workspace for fertility clinics ("Bayside
 - **Partner sharing:** the patient's partner sees only the sections she shares. Patient-nurse messages are never shared with the partner.
 - **Clinic walls and audit log:** clinics can't see each other's data, enforced by the database itself. Every view and change is logged, and the log can't be edited or deleted.
 - **Spanish:** drafts and the patient view follow the patient's language. The Spanish text is a placeholder until a medical translator reviews it.
+- **Patient phone app (Expo, iPhone and Android):** a Today screen; step-by-step injection walkthroughs written and approved by the clinic's nurses, with a "first one done" moment; one-tap dose logging; "took it late" or "missed it" for unlogged doses; messages to the care team; and the urgent-symptom safety screen.
+- **Private reminders:** dose reminders 15 minutes early that never get silenced, and "did you log it?" follow-ups that wait out quiet hours. The lock screen says only "You have a reminder" unless the patient chooses to show medication names.
 
 ## Run it
 
-You'll need Node 22 and pnpm.
+You'll need Node 22 or newer and pnpm.
 
 ```bash
 pnpm install
@@ -25,13 +27,29 @@ pnpm dev:clinic           # http://localhost:3000
 
 Pick a person on the home screen, for example Maya (patient) or Maria (nurse), and try the loop. "Reset demo data" starts over.
 
+### The phone app
+
+With the server running (`pnpm dev:clinic`), open a second Terminal window:
+
+```bash
+pnpm dev:patient
+```
+
+- **On your computer:** press `w` to open it in the browser. Reminders only work on a phone.
+- **On your phone:** install **Expo Go** from the App Store or Google Play and scan the QR code Terminal shows. Your phone and computer must be on the same Wi-Fi. Because the phone can't reach "localhost", start it like this instead, using your computer's local IP address (System Settings, then Wi-Fi, then Details):
+
+  ```bash
+  EXPO_PUBLIC_API_URL=http://192.168.1.23:3000 pnpm dev:patient
+  ```
+
 ## Layout
 
 | Folder | What it is |
 | --- | --- |
 | `packages/core` | Safety rules as plain, tested code: urgent triage, result labels, permissions, the reply loop |
 | `packages/db` | Postgres schema with row-level security, synthetic seed data, data operations for the loop |
-| `apps/clinic` | Next.js web app: nurse workspace plus simple patient, partner and admin screens |
+| `apps/clinic` | Next.js web app: nurse workspace, simple patient, partner and admin screens, and the API the phone app uses |
+| `apps/patient` | Expo (React Native) phone app for patients |
 | `docs` | Roadmap and safety notes |
 
 ## Ground rules

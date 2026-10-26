@@ -1,0 +1,44 @@
+/**
+ * Talks to the Kinpath server (apps/clinic). Every call is checked on the server with
+ * row-level security, so the app never sees more than the signed-in patient may.
+ *
+ * DEV ONLY: the "Dev <user id>" header picks a synthetic seed patient. Real sign-in replaces it.
+ */
+import type { Lang, PlannedReminder, ReminderPrefs } from "@kinpath/core";
+
+export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3000";
+
+export interface Dose { id: string; medication: string; dose: string; scheduledFor: string; takenAt: string | null; reportedMissed: boolean }
+export interface InboxItem { id: string; kind: string; status: string; patientMessage: string; sentText: string | null; sender: string | null }
+export interface Today {
+  clinic: { name: string; replyWindow: Record<Lang, string> };
+  firstName: string | null; lang: Lang; stage: string | null; stimDay: number | null;
+  schedule: { upcoming: Dose[]; missed: Dose[]; recent: Dose[] };
+  inbox: InboxItem[];
+  results: { id: string; analyte: string; value: number; unit: string; status: string; text: string; approvedBy: string | null }[];
+  prefs: ReminderPrefs;
+  reminders: PlannedReminder[];
+}
+export interface Guide { medication: string; steps: Record<Lang, string>[]; videoUrl: string | null; approvedBy: string }
+export interface SendResult { handoffId: string; kind: "missed_dose" | "question" | "urgent_symptom" | "crisis" | "result_review" }
+
+export class Api {
+  constructor(private userId: string) {}
+  private async call<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
+    const res = await fetch(`${API_URL}${path}`, {
+      method: init?.method ?? "GET",
+      headers: { Authorization: `Dev ${this.userId}`, "Content-Type": "application/json" },
+      body: init?.body === undefined ? undefined : JSON.stringify(init.body),
+    });
+    const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+    if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+    return data;
+  }
+  today = () => this.call<Today>("/api/patient/today");
+  guide = (medication: string) => this.call<Guide>(`/api/patient/guides/${encodeURIComponent(medication)}`);
+  logDose = (id: string) => this.call<{ ok: boolean }>(`/api/patient/doses/${id}/log`, { method: "POST", body: {} });
+  reportMissed = (id: string, note: string) => this.call<SendResult>(`/api/patient/doses/${id}/missed`, { method: "POST", body: { note } });
+  sendMessage = (text: string) => this.call<SendResult>("/api/patient/messages", { method: "POST", body: { text } });
+  markRead = (id: string) => this.call<{ ok: boolean }>(`/api/patient/messages/${id}/read`, { method: "POST", body: {} });
+  setLockScreenDetail = (on: boolean) => this.call<{ ok: boolean }>("/api/patient/prefs", { method: "POST", body: { lockScreenDetail: on } });
+}
