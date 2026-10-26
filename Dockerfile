@@ -27,5 +27,5 @@ COPY --from=build --chown=kinpath:kinpath /app/apps/clinic/public ./apps/clinic/
 RUN mkdir -p /app/apps/clinic/.data && chown kinpath:kinpath /app/apps/clinic/.data
 USER kinpath
 EXPOSE 3000
-HEALTHCHECK --interval=30s --timeout=5s CMD wget -qO- http://127.0.0.1:3000/api/health || exit 1
+HEALTHCHECK --interval=30s --timeout=5s CMD wget -qO- "http://127.0.0.1:${PORT:-3000}/api/health" || exit 1
 CMD ["node", "apps/clinic/server.js"]
