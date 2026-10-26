@@ -54,3 +54,7 @@ Press **Control-C** in each Terminal window.
 | `dev:patient` not found | Run `git pull && pnpm install` first. |
 
 Everything in this build is synthetic. Never enter real patient information.
+
+## AI reply drafting (optional)
+
+Double-click **Turn on AI drafting** and paste an Anthropic API key. Then restart with **Start Kinpath**. Details in `docs/AI.md`.

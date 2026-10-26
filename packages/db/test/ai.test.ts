@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { DraftProvider } from "@kinpath/core";
-import { asActor, draftReply, IDS, migrate, openDb, reportMissedDose, seed, sendPatientMessage, type Actor, type Db } from "../src";
+import { AIServiceError, asActor, draftReply, IDS, migrate, openDb, reportMissedDose, seed, sendPatientMessage, type Actor, type Db } from "../src";
 
 const maria: Actor = { userId: IDS.maria, clinicId: IDS.bayside, role: "nurse" };
 const maya: Actor = { userId: IDS.mayaUser, clinicId: IDS.bayside, role: "patient" };
@@ -63,6 +63,13 @@ describe("AI drafting gate", () => {
     expect(d.draft).toMatch(/^Hi Maya/);
   });
 
+  it("tells the nurse plainly when the AI key is rejected", async () => {
+    const { handoffId } = await ask("Is cramping normal?");
+    const d = await draftReply(db, maria, handoffId, { provider: mock(new AIServiceError("the AI key was rejected")).p });
+    expect(d.engine).toBe("ai_error");
+    expect(d.problems).toEqual(["the AI key was rejected"]);
+  });
+
   it("never calls the AI for an urgent message", async () => {
     const r = await reportMissedDose(db, maya, { patientId: IDS.maya, doseLogId: await missedDose(), note: "I'm short of breath" });
     const ai = mock("anything");
@@ -91,3 +98,34 @@ async function missedDose(): Promise<string> {
   const r = await asActor(db, maya, (tx) => tx.query<{ id: string }>(`SELECT id FROM dose_logs WHERE taken_at IS NULL AND scheduled_for < now() ORDER BY scheduled_for LIMIT 1`));
   return r.rows[0]!.id;
 }
+
+describe("Anthropic connection", () => {
+  it("sends the Messages API request Anthropic expects and reads the reply", async () => {
+    const { AnthropicProvider } = await import("../src");
+    const seen: { url: string; init: RequestInit }[] = [];
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (url: string, init: RequestInit) => {
+      seen.push({ url, init });
+      return new Response(JSON.stringify({ content: [{ type: "text", text: "Hello.\nSOURCES: x" }] }), { status: 200 });
+    }) as typeof fetch;
+    try {
+      const out = await new AnthropicProvider("sk-test", "claude-sonnet-5-5").complete({ system: "S", user: "U" });
+      expect(out).toBe("Hello.\nSOURCES: x");
+      expect(seen[0]!.url).toBe("https://api.anthropic.com/v1/messages");
+      const h = seen[0]!.init.headers as Record<string, string>;
+      expect(h["x-api-key"]).toBe("sk-test");
+      expect(h["anthropic-version"]).toBe("2023-06-01");
+      const body = JSON.parse(String(seen[0]!.init.body));
+      expect(body).toMatchObject({ model: "claude-sonnet-5-5", system: "S", messages: [{ role: "user", content: "U" }] });
+    } finally { globalThis.fetch = real; }
+  });
+
+  it("turns a rejected key into a plain reason", async () => {
+    const { AnthropicProvider } = await import("../src");
+    const real = globalThis.fetch;
+    globalThis.fetch = (async () => new Response(JSON.stringify({ error: { message: "invalid x-api-key" } }), { status: 401 })) as typeof fetch;
+    try {
+      await expect(new AnthropicProvider("bad", "m").complete({ system: "", user: "" })).rejects.toThrow("the AI key was rejected");
+    } finally { globalThis.fetch = real; }
+  });
+});

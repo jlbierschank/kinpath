@@ -1,7 +1,7 @@
 import "./globals.css";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { myNotifications } from "@kinpath/db";
+import { myNotifications, aiDraftingStatus } from "@kinpath/db";
 import { getDb } from "@/lib/db";
 import { devLoginEnabled, getSession } from "@/lib/session";
 import { resetDemo, signOut } from "./actions";
@@ -26,6 +26,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <div className="devbar">
             <strong>The Pumpkin dev build</strong>
             <span>Synthetic data only. No real patient information.</span>
+            <span data-testid="ai-chip">{aiDraftingStatus().on ? "AI drafting: on" : "AI drafting: off"}</span>
             {s?.demo && <form action={signOut}><button type="submit">Switch person</button></form>}
             <Link href="/dev/outbox" style={{ color: "#f6f1e8" }}>Dev outbox</Link>
             {!process.env.DATABASE_URL && <form action={resetDemo}><button type="submit">Reset demo data</button></form>}

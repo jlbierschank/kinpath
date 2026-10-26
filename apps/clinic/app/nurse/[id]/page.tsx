@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { handoffDetail } from "@kinpath/db";
+import { aiDraftingStatus, handoffDetail } from "@kinpath/db";
 import { getDb } from "@/lib/db";
 import { requireSession } from "@/lib/session";
 import { draft, markCalled, send } from "../../actions";
@@ -46,6 +46,7 @@ export default async function HandoffPage({ params }: { params: Promise<{ id: st
             <form className="card" action={draft}>
               <input type="hidden" name="handoffId" value={h.id} />
               <p style={{ marginTop: 0 }}>The Pumpkin can draft a reply from Bayside&apos;s approved protocol. Every draft is checked against that protocol, and you review and send it.</p>
+              <p className="muted" style={{ fontSize: 13 }} data-testid="ai-status">{aiDraftingStatus().on ? "AI drafting is on: the AI rewrites the matching protocol text in plain language, then it's checked." : "AI drafting is off: drafts are the protocol text itself."}</p>
               <button className="btn btn-main" type="submit">Draft a reply</button>
             </form>
           )}
@@ -57,7 +58,8 @@ export default async function HandoffPage({ params }: { params: Promise<{ id: st
               <textarea id="text" name="text" rows={6} defaultValue={h.draft ?? ""} />
               <p className="muted" style={{ fontSize: 13 }}>
                 {d.draftEngine === "ai" && <><span className="pill p-lav" data-testid="draft-engine">AI draft · passed every check</span>{" "}</>}
-                {(d.draftEngine === "ai_held_back" || d.draftEngine === "ai_error") && <><span className="pill p-clay" data-testid="draft-engine">AI draft held back: {d.draftProblems.join("; ")}. Showing the approved protocol text instead.</span>{" "}</>}
+                {d.draftEngine === "ai_held_back" && <><span className="pill p-clay" data-testid="draft-engine">AI draft held back: {d.draftProblems.join("; ")}. Showing the approved protocol text instead.</span>{" "}</>}
+                {d.draftEngine === "ai_error" && <><span className="pill p-clay" data-testid="draft-engine">AI draft unavailable: {d.draftProblems.join("; ")}. Showing the approved protocol text instead.</span>{" "}</>}
                 {h.draftSource ? `Drafted from protocol: ${h.draftSource}.` : "No matching protocol section. Write your own reply."} {d.firstName} will see &ldquo;Drafted with The Pumpkin, reviewed by {s.name}.&rdquo;
               </p>
               <button className="btn btn-main" type="submit">Approve and send</button>

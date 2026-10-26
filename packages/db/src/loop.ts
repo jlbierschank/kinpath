@@ -183,8 +183,9 @@ export async function draftReply(db: Db, actor: Actor, handoffId: string, opts: 
         result = check.ok
           ? { draft: `${greeting}\n\n${check.draft}`, source: check.sources.join(", "), engine: "ai", problems: [] }
           : { ...base, engine: "ai_held_back", problems: check.problems };
-      } catch {
-        result = { ...base, engine: "ai_error", problems: ["the AI service didn't respond"] };
+      } catch (e) {
+        const why = (e as Error)?.name === "AIServiceError" ? (e as Error).message : "the AI service didn't respond";
+        result = { ...base, engine: "ai_error", problems: [why] };
       }
     }
   }

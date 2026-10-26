@@ -8,6 +8,9 @@
  */
 import type { DraftProvider } from "@kinpath/core";
 
+/** A reason safe to show the nurse (never contains message text). */
+export class AIServiceError extends Error { name = "AIServiceError"; }
+
 export class AnthropicProvider implements DraftProvider {
   name: string;
   constructor(private apiKey: string, private model: string, private timeoutMs = 20_000) { this.name = `anthropic:${model}`; }
@@ -21,13 +24,28 @@ export class AnthropicProvider implements DraftProvider {
         headers: { "x-api-key": this.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
         body: JSON.stringify({ model: this.model, max_tokens: 600, temperature: 0.2, system: req.system, messages: [{ role: "user", content: req.user }] }),
       });
-      if (!res.ok) throw new Error(`AI service returned ${res.status}`);
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+        const msg = body?.error?.message ?? "";
+        throw new AIServiceError(
+          res.status === 401 || res.status === 403 ? "the AI key was rejected"
+          : /credit/i.test(msg) ? "the AI account is out of credits"
+          : res.status === 404 ? `the AI model "${this.model}" wasn't found`
+          : res.status === 429 || res.status === 529 ? "the AI service is busy"
+          : `the AI service returned an error (${res.status})`);
+      }
       const data = (await res.json()) as { content?: { type: string; text?: string }[] };
       return (data.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("").trim();
     } finally {
       clearTimeout(t);
     }
   }
+}
+
+/** Whether AI drafting is on, for the nurse screens. */
+export function aiDraftingStatus(): { on: boolean; model: string | null } {
+  const p = aiProviderFromEnv();
+  return { on: !!p, model: p ? p.name.replace(/^anthropic:/, "") : null };
 }
 
 /** The configured provider, or null (protocol-only drafting). */

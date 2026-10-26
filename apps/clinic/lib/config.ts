@@ -12,6 +12,7 @@ export function checkConfig() {
   else if (!/sslmode=(require|verify-full|verify-ca)/.test(process.env.DATABASE_URL) && process.env.DATABASE_SSL !== "1") problems.push("The database connection isn't encrypted. Add sslmode=require (or verify-full) to DATABASE_URL.");
   if (process.env.KINPATH_SEED_DEMO === "1") problems.push("KINPATH_SEED_DEMO must not be set in production.");
   if (process.env.KINPATH_INSECURE_COOKIES === "1") problems.push("KINPATH_INSECURE_COOKIES must not be set in production.");
+  if (process.env.KINPATH_AI_PROVIDER && process.env.KINPATH_AI_BAA_SIGNED !== "1") problems.push("AI drafting is turned on, but KINPATH_AI_BAA_SIGNED=1 isn't set. Sign the AI vendor's BAA first (see docs/AI.md), then set it.");
   if (problems.length) throw new Error(`Kinpath won't start in production:\n- ${problems.join("\n- ")}`);
 }
 

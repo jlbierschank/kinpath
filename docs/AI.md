@@ -15,14 +15,26 @@ The Pumpkin can use an AI model to turn the clinic's approved protocol text into
 4. **If a draft is held back**, the nurse sees the approved protocol text instead, with the reason shown. If the AI service is slow or down, the same thing happens.
 5. **Nothing the AI wrote goes in the audit log**, only how the draft was made and why one was held back.
 
-## Turning it on
+## Turning it on for the demo (synthetic data)
 
-Only after the Anthropic BAA is signed for the API organization (see `HOSTING.md`):
+The demo has no real patient information, so it can use a regular Anthropic API key:
+
+1. In the Claude Console (console.anthropic.com), add billing credits and create an API key.
+2. On the Mac, double-click **Turn on AI drafting** in the kinpath folder and paste the key into the private prompt. It checks the key with Anthropic and saves it only on that Mac (`apps/clinic/.env.local`, which is never uploaded to GitHub).
+3. Close the clinic Terminal window and double-click **Start Kinpath** again. The dark bar at the top of the clinic pages says **AI drafting: on**.
+4. To try it: as Maya, send "Is cramping normal?" Then as Maria, open it and choose **Draft a reply**. The draft shows **AI draft · passed every check**, or the reason it was held back.
+
+Double-click **Turn on AI drafting** again and choose **Turn off** to go back to protocol-only drafts.
+
+## Turning it on for real patients
+
+Only after the Anthropic BAA is signed for the API organization (see `HOSTING.md`), using a key from that organization:
 
 ```
 KINPATH_AI_PROVIDER=anthropic
-ANTHROPIC_API_KEY=...            # from the HIPAA-enabled organization
+ANTHROPIC_API_KEY=...                # from the HIPAA-enabled organization
 KINPATH_AI_MODEL=claude-sonnet-5-5   # optional
+KINPATH_AI_BAA_SIGNED=1              # the production server refuses to start with AI on without this
 ```
 
 Do not use API features the BAA excludes (for example Batch and Files). The Pumpkin only uses the plain Messages API.
