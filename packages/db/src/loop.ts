@@ -3,11 +3,13 @@
  * row-level security, writes an audit event, and uses @kinpath/core for every safety decision.
  */
 import {
-  approveAndSend, classifyMessage, draftFromProtocol, labelResult, HandoffError,
+  approveAndSend, buildDraftPrompt, checkAIDraft, classifyMessage, draftFromProtocol, labelResult, HandoffError, pickSections, triage,
+  type DraftProvider, type ProtocolText,
   type ClinicRange, type Handoff, type Lang, type TriageResult,
 } from "@kinpath/core";
 import { asActor, audit, type Actor, type Db, type Tx } from "./client";
 import { alertPatient, alertStaffOfMessage, notify } from "./notify";
+import { aiProviderFromEnv } from "./ai";
 import type { ClinicTerm } from "@kinpath/core";
 import { DEFAULT_PREFS, type ReminderPrefs } from "@kinpath/core";
 
@@ -133,12 +135,21 @@ export async function handoffDetail(db: Db, actor: Actor, handoffId: string): Pr
   });
 }
 
-/** Draft a reply from the clinic's own protocol. Refuses urgent and crisis items. */
-export async function draftReply(db: Db, actor: Actor, handoffId: string) {
-  return asActor(db, actor, async (tx) => {
+/**
+ * Draft a reply. Refuses urgent and crisis items. With an AI provider configured, the AI rephrases
+ * only the matching approved protocol sections and every draft is checked before the nurse sees it;
+ * a draft that fails a check is held back and the protocol text is shown instead, with the reason.
+ */
+export async function draftReply(db: Db, actor: Actor, handoffId: string, opts: { provider?: DraftProvider | null } = {}) {
+  const provider = opts.provider === undefined ? aiProviderFromEnv() : opts.provider;
+  const ctx = await asActor(db, actor, async (tx) => {
     const h = await tx.query<HandoffRow>(`SELECT * FROM handoffs WHERE id = $1`, [handoffId]);
     const row = h.rows[0];
     if (!row) throw new HandoffError("Not found.");
+    // Never draft for urgent or crisis items, and re-check the words in case they were missed.
+    if (row.kind === "urgent_symptom" || row.kind === "crisis" || triage(row.patient_message, await clinicTerms(tx)).level !== "routine") {
+      throw new HandoffError("Urgent and crisis messages are never drafted. A person calls the patient.");
+    }
     const p = await tx.query<{ first_name: string; preferred_lang: Lang }>(`SELECT first_name, preferred_lang FROM patients WHERE id = $1`, [row.patient_id]);
     let protocolId: string | null = null;
     if (row.kind === "missed_dose" && row.dose_log_id) {
@@ -146,14 +157,39 @@ export async function draftReply(db: Db, actor: Actor, handoffId: string) {
       const med = m.rows[0]?.medication.toLowerCase().replace(/[^a-z0-9]+/g, "_");
       if (med) protocolId = `meds.missed_dose.${med}`;
     }
-    const proto = protocolId
-      ? (await tx.query<{ id: string; title: string; body_en: string; body_es: string }>(`SELECT id, title, body_en, body_es FROM protocol_sections WHERE id = $1`, [protocolId])).rows[0]
-      : undefined;
-    const lang = p.rows[0]!.preferred_lang;
-    const d = draftFromProtocol(toHandoff(row), proto ? { id: proto.id, title: proto.title, body: { en: proto.body_en, es: proto.body_es } } : undefined, lang, p.rows[0]!.first_name);
-    await tx.query(`UPDATE handoffs SET draft = $2, draft_source = $3, status = 'drafted' WHERE id = $1`, [handoffId, d.draft, d.source]);
-    await audit(tx, actor, "staff.drafted_reply", row.patient_id, { handoffId, source: d.source });
-    return d;
+    const sections = (await tx.query<{ id: string; title: string; body_en: string; body_es: string }>(`SELECT id, title, body_en, body_es FROM protocol_sections`)).rows;
+    const meds = (await tx.query<{ medication: string }>(`SELECT medication FROM med_guides`)).rows.map((r) => r.medication);
+    return { row, first: p.rows[0]!.first_name, lang: p.rows[0]!.preferred_lang, protocolId, sections, meds };
+  });
+  const { row, first, lang, protocolId, sections, meds } = ctx;
+  const proto = protocolId ? sections.find((s) => s.id === protocolId) : undefined;
+  const base = draftFromProtocol(toHandoff(row), proto ? { id: proto.id, title: proto.title, body: { en: proto.body_en, es: proto.body_es } } : undefined, lang, first);
+  let result: { draft: string; source: string | null; engine: "protocol" | "ai" | "ai_held_back" | "ai_error"; problems: string[] } = { ...base, engine: "protocol", problems: [] };
+
+  if (provider) {
+    const texts: ProtocolText[] = sections.map((s) => ({ id: s.id, title: s.title, body: lang === "es" ? s.body_es : s.body_en }));
+    const picked = proto ? [texts.find((t) => t.id === proto.id)!, ...pickSections(row.patient_message, texts.filter((t) => t.id !== proto.id), 2)] : pickSections(row.patient_message, texts, 3);
+    if (picked.length > 0) {
+      try {
+        // The AI never sees the patient's name or record: only her words and the protocol text.
+        const out = await provider.complete(buildDraftPrompt({ message: row.patient_message, sections: picked, lang }));
+        const check = checkAIDraft(out, picked, meds);
+        const greeting = lang === "es" ? `Hola ${first},` : `Hi ${first},`;
+        result = check.ok
+          ? { draft: `${greeting}\n\n${check.draft}`, source: check.sources.join(", "), engine: "ai", problems: [] }
+          : { ...base, engine: "ai_held_back", problems: check.problems };
+      } catch {
+        result = { ...base, engine: "ai_error", problems: ["the AI service didn't respond"] };
+      }
+    }
+  }
+
+  return asActor(db, actor, async (tx) => {
+    await tx.query(`UPDATE handoffs SET draft = $2, draft_source = $3, status = 'drafted', draft_engine = $4, draft_problems = $5 WHERE id = $1`,
+      [handoffId, result.draft, result.source, result.engine, result.problems.length ? JSON.stringify(result.problems) : null]);
+    // Logged: how it was made and why it was held back. Never the text.
+    await audit(tx, actor, "staff.drafted_reply", row.patient_id, { handoffId, source: result.source, engine: result.engine, heldBack: result.problems });
+    return result;
   });
 }
 

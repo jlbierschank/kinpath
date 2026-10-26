@@ -8,3 +8,4 @@ export * from "./graduation";
 export * from "./notify";
 export * from "./auth";
 export * from "./account";
+export * from "./ai";
