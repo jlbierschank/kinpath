@@ -14,7 +14,7 @@ export type Audience = "staff" | "patient" | "partner";
 export type NotificationKind =
   | "urgent_message" | "new_message" | "result_to_review" | "call_to_make" | "thank_you"
   | "nurse_reply" | "result_ready" | "support_note" | "support_joined" | "summary_opened"
-  | "news_shared" | "access_changed" | "records_to_review" | "schedule_changed";
+  | "news_shared" | "access_changed" | "records_to_review" | "schedule_changed" | "billing_question" | "billing_update";
 
 export interface KindInfo {
   audience: Audience;
@@ -54,6 +54,11 @@ export const KINDS: Record<NotificationKind, KindInfo> = {
     label: { en: "Records to review", es: "Registros por revisar" },
     description: { en: "New medication orders from the records system, and records Pumpkin couldn't match to a patient.", es: "Órdenes de medicamentos nuevas del sistema de expedientes y registros que Pumpkin no pudo asignar a una paciente." },
   },
+  billing_question: {
+    audience: "staff", defaults: d(true, true, false, false),
+    label: { en: "Questions about costs", es: "Preguntas sobre costos" },
+    description: { en: "A patient asks about an estimate, coverage or a bill. For financial counselors.", es: "Una paciente pregunta sobre un presupuesto, cobertura o una cuenta. Para consejeras financieras." },
+  },
   thank_you: {
     audience: "staff", defaults: d(true, false, false, false),
     label: { en: "Thank-you notes", es: "Notas de agradecimiento" },
@@ -73,6 +78,11 @@ export const KINDS: Record<NotificationKind, KindInfo> = {
     audience: "patient", defaults: d(true, true, false, false),
     label: { en: "Medication schedule changes", es: "Cambios en tus medicamentos" },
     description: { en: "When your nurse updates your medication schedule.", es: "Cuando tu enfermera actualiza tus medicamentos." },
+  },
+  billing_update: {
+    audience: "patient", defaults: d(true, true, false, false),
+    label: { en: "Costs and payments", es: "Costos y pagos" },
+    description: { en: "A new estimate, a statement, a recorded payment, or an answer to your question about costs.", es: "Un presupuesto nuevo, un estado de cuenta, un pago registrado o una respuesta a tu pregunta sobre costos." },
   },
   support_note: {
     audience: "patient", defaults: d(true, true, false, false),

@@ -117,6 +117,41 @@ export async function seed(db: Db, now = new Date("2026-10-26T09:00:00-04:00")):
     );
     await tx.query(`INSERT INTO patient_prefs (patient_id, clinic_id) VALUES ($1,$2), ($3,$2)`, [i.maya, i.bayside, i.priya]);
 
+    // ---------- money (made-up numbers, for the demo) ----------
+    const ymd = (offsetDays: number) => day(offsetDays, "12:00").slice(0, 10);
+    await tx.query(
+      `INSERT INTO finance_coverage (clinic_id, patient_id, kind, payer_name, plan_name, member_last4, fertility_benefit, lifetime_max_cents, lifetime_used_cents,
+         cycles_max, cycles_used, deductible_cents, deductible_met_cents, oop_max_cents, oop_met_cents, prior_auth, updated_by_name)
+       VALUES ($1,$2,'insurance','Example Health Plan','Gold PPO through her employer','4417',
+         'Covers IVF: monitoring, retrieval, lab and transfer. Medications covered through the specialty pharmacy. Lifetime maximum of $25,000 or 2 egg retrievals, whichever comes first.',
+         2500000, 840000, 2, 0, 150000, 150000, 400000, 212000, 'approved', 'Sam Kim')`, [i.bayside, i.maya]);
+    const est = await tx.query<{ id: string }>(
+      `INSERT INTO finance_estimates (clinic_id, patient_id, title, note, status, valid_until, created_by_name, shared_at)
+       VALUES ($1,$2,'IVF cycle with ICSI','This is our best estimate for this cycle. Your insurance amounts are expected, not guaranteed. Medications are billed by the pharmacy.','shared',$3,'Sam Kim', now() - interval '20 days') RETURNING id`,
+      [i.bayside, i.maya, ymd(60)]);
+    const lines: [string, string, number, number][] = [
+      ["Monitoring visits and ultrasounds", "clinic", 320000, 256000], ["Egg retrieval", "clinic", 450000, 360000],
+      ["Anesthesia for retrieval", "anesthesia", 90000, 72000], ["Embryology lab and ICSI", "lab", 380000, 304000],
+      ["Embryo transfer", "clinic", 250000, 200000], ["Stimulation medications (estimated)", "medications", 520000, 416000],
+      ["Embryo storage, first year", "storage", 60000, 0],
+    ];
+    for (const [n, [label, cat, amt, ins]] of lines.entries()) {
+      await tx.query(`INSERT INTO finance_estimate_items (clinic_id, estimate_id, label, category, amount_cents, insurance_cents, sort_order) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [i.bayside, est.rows[0]!.id, label, cat, amt, ins, n]);
+    }
+    await tx.query(
+      `INSERT INTO finance_ledger (clinic_id, patient_id, kind, description, amount_cents, occurred_on, due_on, method, receipt_number, created_by_name) VALUES
+       ($1,$2,'charge','Cycle deposit (your share, first half)',179000,$3,$4,NULL,NULL,'Sam Kim'),
+       ($1,$2,'payment','Deposit payment',179000,$5,NULL,'card','R-DEMO-001','Sam Kim'),
+       ($1,$2,'charge','Cycle balance (your share, second half)',179000,$3,$6,NULL,NULL,'Sam Kim')`,
+      [i.bayside, i.maya, ymd(-20), ymd(-10), ymd(-12), ymd(10)]);
+    await tx.query(
+      `INSERT INTO finance_partners (clinic_id, kind, name, description, url, sort_order, updated_by_name) VALUES
+       ($1,'discount','Bayside multi-cycle program (demo)','Prepay for up to three cycles at a lower total. Ask Sam whether it fits your plan.',NULL,1,'Sam Kim'),
+       ($1,'loan','Example Fertility Lending (demo)','Monthly payment plans for treatment. Made-up partner for this demo.','https://example.com/financing',2,'Sam Kim'),
+       ($1,'grant','Example Family Grant (demo)','Grants toward IVF for families who qualify. Made-up partner for this demo.','https://example.com/grant',3,'Sam Kim')`,
+      [i.bayside]);
+
     await tx.query(`INSERT INTO dose_logs (clinic_id, patient_id, med_order_id, scheduled_for, taken_at) VALUES ($1,$2,$3,$4,$5)`, [i.harbor, i.harborPatient, i.harborMed, day(-1, "20:00"), day(-1, "20:02")]);
 
     await tx.query(

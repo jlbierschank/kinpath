@@ -10,7 +10,7 @@ import { alertPatient, notify, patientInfo } from "./notify";
 import { patientResults, patientSchedule } from "./loop";
 
 /** What a patient can choose to share with a partner from the phone app. */
-export const SHAREABLE = ["schedule", "meds", "results"] as const;
+export const SHAREABLE = ["schedule", "meds", "results", "money"] as const;
 export type Shareable = (typeof SHAREABLE)[number];
 
 export interface PartnerNote { id: string; fromName: string; body: string; level: "routine" | "urgent" | "crisis"; createdAt: string; seenAt: string | null }

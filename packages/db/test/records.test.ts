@@ -56,7 +56,9 @@ describe("importing results", () => {
     expect(r).toMatchObject({ resultsAdded: 2, resultsToNurse: 1, toReview: 0 });
     const mine = await patientResults(db, maya, IDS.maya);
     const e2 = mine.find((x) => x.analyte === "estradiol" && x.value === 412)!;
-    expect(e2.stimDay).toBe(6);
+    // The seed's dates move a day ahead in the evening, so compare with Maya's actual cycle start.
+    const started = (await db.query<{ d: number }>(`SELECT ((now() AT TIME ZONE 'America/New_York')::date - started_on) + 1 AS d FROM cycles WHERE patient_id = $1`, [IDS.maya])).rows[0]!.d;
+    expect(e2.stimDay).toBe(Number(started));
     expect(e2.label.status).toBe("in_range");
     const q = await nurseQueue(db, maria);
     expect(q.some((h) => h.kind === "result_review" && /progesterone 1.9/.test(h.patientMessage))).toBe(true);
