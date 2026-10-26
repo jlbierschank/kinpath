@@ -22,7 +22,8 @@ export class AnthropicProvider implements DraftProvider {
         method: "POST",
         signal: ctrl.signal,
         headers: { "x-api-key": this.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-        body: JSON.stringify({ model: this.model, max_tokens: 600, temperature: 0.2, system: req.system, messages: [{ role: "user", content: req.user }] }),
+        // No temperature/top_p/top_k: newer Claude models reject any non-default value with a 400.
+        body: JSON.stringify({ model: this.model, max_tokens: 600, system: req.system, messages: [{ role: "user", content: req.user }] }),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
@@ -32,7 +33,7 @@ export class AnthropicProvider implements DraftProvider {
           : /credit/i.test(msg) ? "the AI account is out of credits"
           : res.status === 404 ? `the AI model "${this.model}" wasn't found`
           : res.status === 429 || res.status === 529 ? "the AI service is busy"
-          : `the AI service returned an error (${res.status})`);
+          : `the AI service returned an error (${res.status}${msg ? `: ${msg.slice(0, 120)}` : ""})`);
       }
       const data = (await res.json()) as { content?: { type: string; text?: string }[] };
       return (data.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("").trim();

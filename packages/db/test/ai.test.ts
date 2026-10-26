@@ -60,7 +60,8 @@ describe("AI drafting gate", () => {
     const b = await ask("Is cramping normal?");
     const d = await draftReply(db, maria, b.handoffId, { provider: mock(new Error("timeout")).p });
     expect(d.engine).toBe("ai_error");
-    expect(d.draft).toMatch(/^Hi Maya/);
+    expect(d.draft).toMatch(/^Hi Maya,\n\nMild cramping can be normal/); // the closest approved section
+    expect(d.source).toBe("wait.cramping");
   });
 
   it("tells the nurse plainly when the AI key is rejected", async () => {
@@ -117,6 +118,7 @@ describe("Anthropic connection", () => {
       expect(h["anthropic-version"]).toBe("2023-06-01");
       const body = JSON.parse(String(seen[0]!.init.body));
       expect(body).toMatchObject({ model: "claude-sonnet-5-5", system: "S", messages: [{ role: "user", content: "U" }] });
+      expect(body).not.toHaveProperty("temperature"); // newer models reject it
     } finally { globalThis.fetch = real; }
   });
 

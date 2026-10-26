@@ -175,6 +175,8 @@ export async function draftReply(db: Db, actor: Actor, handoffId: string, opts: 
     const texts: ProtocolText[] = sections.map((s) => ({ id: s.id, title: s.title, body: lang === "es" ? s.body_es : s.body_en }));
     const picked = proto ? [texts.find((t) => t.id === proto.id)!, ...pickSections(row.patient_message, texts.filter((t) => t.id !== proto.id), 2)] : pickSections(row.patient_message, texts, 3);
     if (picked.length > 0) {
+      // If the AI can't help, the nurse still gets the closest approved section to start from.
+      const fallback = base.source ? base : draftFromProtocol(toHandoff(row), { id: picked[0]!.id, title: picked[0]!.title, body: { en: picked[0]!.body, es: picked[0]!.body } }, lang, first);
       try {
         // The AI never sees the patient's name or record: only her words and the protocol text.
         const out = await provider.complete(buildDraftPrompt({ message: row.patient_message, sections: picked, lang }));
@@ -182,10 +184,10 @@ export async function draftReply(db: Db, actor: Actor, handoffId: string, opts: 
         const greeting = lang === "es" ? `Hola ${first},` : `Hi ${first},`;
         result = check.ok
           ? { draft: `${greeting}\n\n${check.draft}`, source: check.sources.join(", "), engine: "ai", problems: [] }
-          : { ...base, engine: "ai_held_back", problems: check.problems };
+          : { ...fallback, engine: "ai_held_back", problems: check.problems };
       } catch (e) {
         const why = (e as Error)?.name === "AIServiceError" ? (e as Error).message : "the AI service didn't respond";
-        result = { ...base, engine: "ai_error", problems: [why] };
+        result = { ...fallback, engine: "ai_error", problems: [why] };
       }
     }
   }
