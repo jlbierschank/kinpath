@@ -10,14 +10,16 @@
 - End-to-end browser check of the full loop
 - Patient phone app (Expo): Today, injection walkthroughs, dose logging, late or missed doses, messages, urgent safety screen, Spanish
 - Private dose reminders with quiet hours (tested rules in @kinpath/core) and a patient API the phone app calls
+- Partner side of the phone app: the partner sees only what the patient shares (cycle, injections, results), can open the injection walkthroughs to help without logging doses, and can send her private notes. Notes are triaged: an urgent symptom tells the partner to call and shows the patient a call-the-nurse card. Clinic staff never see notes. The patient switches each section on or off in Settings; care-team messages can never be shared.
 - Clinic settings: result ranges, protocol answers, injection walkthroughs (order, steps, video link) and clinic urgent words, each signed by the nurse or physician who approved it, with an append-only change history. Clinic admins can view but not edit. Clinic urgent words add to the built-in list and can never remove from it.
 
 ## Next (stage 1, continued)
 
-- [ ] Partner view in the phone app, and partner notes
 - [ ] Stage-aware home screen ("Others ask this on day 6") and the two-week-wait support moments from the demo
 - [ ] Move internal nurse tasks (result reviews) into their own table so patients can never read them, even through the API
 - [ ] AI gateway: one HIPAA-eligible model vendor behind a Kinpath service that only drafts from approved protocol sections, plus an evaluation test set with 100% urgent recall as a launch gate
+
+- [ ] Partner screens in Spanish (after the medical translator review)
 
 ## Before any real patient (stage 2, with a founding engineer or fractional CTO)
 

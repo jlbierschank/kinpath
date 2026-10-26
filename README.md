@@ -9,7 +9,7 @@ A clinic-branded patient app and nurse workspace for fertility clinics ("Bayside
 - **The missed-dose loop:** the patient reports a missed dose. It lands in the nurse's queue with her dose log attached. The nurse gets a reply drafted from the clinic's approved protocol, edits it if needed, and sends it. The patient sees "Drafted with Kinpath, reviewed by Maria."
 - **Urgent symptoms skip the AI:** messages that mention things like breathing trouble or heavy bleeding (English or Spanish) jump to the top of the queue, and the app never drafts a reply to them. A nurse calls the patient instead.
 - **Results against the clinic's own ranges:** in-range results show the clinic's nurse-approved explanation. Anything else shows "your nurse will review this with you" and opens a nurse task.
-- **Partner sharing:** the patient's partner sees only the sections she shares. Patient-nurse messages are never shared with the partner.
+- **Partner sharing:** the patient's partner signs in to the same phone app and sees only the sections she shares: her cycle, tonight's injections (with the walkthroughs, so he can help), and results if she turns them on. He can send her private notes the clinic never sees; a note that mentions an urgent symptom tells him to call the nurse line and shows her a call-the-nurse card. Patient-nurse messages are never shared.
 - **Clinic walls and audit log:** clinics can't see each other's data, enforced by the database itself. Every view and change is logged, and the log can't be edited or deleted.
 - **Spanish:** drafts and the patient view follow the patient's language. The Spanish text is a placeholder until a medical translator reviews it.
 - **Patient phone app (Expo, iPhone and Android):** a Today screen; step-by-step injection walkthroughs written and approved by the clinic's nurses, with a "first one done" moment; one-tap dose logging; "took it late" or "missed it" for unlogged doses; messages to the care team; and the urgent-symptom safety screen.
@@ -22,7 +22,7 @@ You'll need Node 22 or newer and pnpm.
 
 ```bash
 pnpm install
-pnpm test                 # 70 safety, settings and access tests
+pnpm test                 # 80 safety, settings, partner and access tests
 pnpm dev:clinic           # http://localhost:3000
 ```
 

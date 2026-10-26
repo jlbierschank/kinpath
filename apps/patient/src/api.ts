@@ -2,7 +2,7 @@
  * Talks to the Kinpath server (apps/clinic). Every call is checked on the server with
  * row-level security, so the app never sees more than the signed-in patient may.
  *
- * DEV ONLY: the "Dev <user id>" header picks a synthetic seed patient. Real sign-in replaces it.
+ * DEV ONLY: the "Dev <user id>" header picks a synthetic seed patient or partner. Real sign-in replaces it.
  */
 import type { Lang, PlannedReminder, ReminderPrefs } from "@kinpath/core";
 
@@ -18,7 +18,19 @@ export interface Today {
   results: { id: string; analyte: string; value: number; unit: string; status: string; text: string; approvedBy: string | null }[];
   prefs: ReminderPrefs;
   reminders: PlannedReminder[];
+  sharing: { partners: { userId: string; name: string; sections: Shareable[] }[]; notes: Note[] };
 }
+export type Shareable = "schedule" | "meds" | "results";
+export interface Note { id: string; fromName: string; body: string; level: "routine" | "urgent" | "crisis"; createdAt: string; seenAt: string | null }
+export type PartnerHome =
+  | { clinic: { name: string }; shared: false; name: string }
+  | {
+      clinic: { name: string }; shared: true; name: string; firstName: string | null; sections: Shareable[];
+      stage: string | null; stimDay: number | null;
+      schedule: { upcoming: Dose[]; missed: Dose[]; recent: Dose[] } | null;
+      results: { id: string; analyte: string; value: number; unit: string; status: string; text: string }[] | null;
+      notes: Note[];
+    };
 export interface Guide { medication: string; steps: Record<Lang, string>[]; videoUrl: string | null; approvedBy: string }
 export interface SendResult { handoffId: string; kind: "missed_dose" | "question" | "urgent_symptom" | "crisis" | "result_review" }
 
@@ -41,4 +53,9 @@ export class Api {
   sendMessage = (text: string) => this.call<SendResult>("/api/patient/messages", { method: "POST", body: { text } });
   markRead = (id: string) => this.call<{ ok: boolean }>(`/api/patient/messages/${id}/read`, { method: "POST", body: {} });
   setLockScreenDetail = (on: boolean) => this.call<{ ok: boolean }>("/api/patient/prefs", { method: "POST", body: { lockScreenDetail: on } });
+  setSharing = (partnerUserId: string, sections: Shareable[]) => this.call<{ sections: Shareable[] }>("/api/patient/sharing", { method: "POST", body: { partnerUserId, sections } });
+  noteSeen = (id: string) => this.call<{ ok: boolean }>(`/api/patient/notes/${id}/seen`, { method: "POST", body: {} });
+  // Partner side
+  partnerHome = () => this.call<PartnerHome>("/api/partner/home");
+  sendNote = (text: string) => this.call<{ id: string; level: "routine" | "urgent" | "crisis" }>("/api/partner/notes", { method: "POST", body: { text } });
 }

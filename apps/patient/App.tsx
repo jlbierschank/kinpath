@@ -5,14 +5,15 @@ import { useFonts } from "expo-font";
 import { Newsreader_400Regular_Italic, Newsreader_500Medium } from "@expo-google-fonts/newsreader";
 import { InstrumentSans_400Regular, InstrumentSans_500Medium, InstrumentSans_600SemiBold, InstrumentSans_700Bold } from "@expo-google-fonts/instrument-sans";
 import Svg, { Path } from "react-native-svg";
-import { Api, type Dose, type Guide, type SendResult, type Today as TodayData } from "./src/api";
+import { Api, type Dose, type Guide, type PartnerHome, type SendResult, type Shareable, type Today as TodayData } from "./src/api";
 import { askPermission, remindersSupported, syncReminders } from "./src/reminders";
 import { AskBox, Avatar, Button, C, Cap, Card, Chip, Chips, F, H1, JourneyPath, Moment, Muted, Pill, Row, st, T, TimelineItem, Today } from "./src/ui";
 
-// DEV ONLY: synthetic seed patients. Real passwordless sign-in replaces this screen.
-const DEV_PATIENTS = [
-  { id: "00000000-0000-4000-8000-000000000010", name: "Maya Torres", initials: "MT", note: "Stimulation day 6 · English" },
-  { id: "00000000-0000-4000-8000-000000000012", name: "Priya Shah", initials: "PS", note: "Prefers Spanish" },
+// DEV ONLY: synthetic seed people. Real passwordless sign-in replaces this screen.
+const DEV_PEOPLE = [
+  { id: "00000000-0000-4000-8000-000000000010", name: "Maya Torres", initials: "MT", note: "Patient · stimulation day 6", partner: false },
+  { id: "00000000-0000-4000-8000-000000000012", name: "Priya Shah", initials: "PS", note: "Patient · prefers Spanish", partner: false },
+  { id: "00000000-0000-4000-8000-000000000011", name: "Jordan Torres", initials: "JT", note: "Maya's partner · sees what she shares", partner: true },
 ];
 const NURSE_LINE = "tel:+18135550100"; // placeholder
 
@@ -31,7 +32,8 @@ export default function App() {
   const [userId, setUserId] = useState<string | null>(null);
   if (!fontsLoaded) return <View style={{ flex: 1, backgroundColor: C.oat, alignItems: "center", justifyContent: "center" }}><ActivityIndicator color={C.espresso} /></View>;
   if (!userId) return <DevSignIn onPick={setUserId} />;
-  const who = DEV_PATIENTS.find((p) => p.id === userId)!;
+  const who = DEV_PEOPLE.find((p) => p.id === userId)!;
+  if (who.partner) return <PartnerApp api={new Api(userId)} initials={who.initials} onSignOut={() => setUserId(null)} />;
   return <Signed api={new Api(userId)} initials={who.initials} onSignOut={() => setUserId(null)} />;
 }
 
@@ -53,7 +55,7 @@ function DevSignIn({ onPick }: { onPick: (id: string) => void }) {
     <Frame top={<View style={{ padding: 18, paddingBottom: 6 }}><Muted>Kinpath dev build · synthetic data only</Muted></View>}>
       <Today size={34}>Who are you testing as?</Today>
       <Card pad={false}>
-        {DEV_PATIENTS.map((p, i) => (
+        {DEV_PEOPLE.map((p, i) => (
           <Pressable key={p.id} testID={`pick-${p.name}`} onPress={() => onPick(p.id)} style={[st.row, i === 0 && { borderTopWidth: 0 }]}>
             <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}><Avatar text={p.initials} /><View><T style={{ fontFamily: F.sans600, fontSize: 15 }}>{p.name}</T><Muted>{p.note}</Muted></View></View>
           </Pressable>
@@ -121,7 +123,7 @@ function Signed({ api, initials, onSignOut }: { api: Api; initials: string; onSi
 
   return (
     <Frame top={top} tabs={tabs}>
-      {screen.name === "home" && <Home data={data} api={api} t={t} go={go} afterSend={afterSend} />}
+      {screen.name === "home" && <Home data={data} api={api} t={t} go={go} afterSend={afterSend} reload={load} />}
       {screen.name === "walk" && <Walk doses={screen.doses} focus={screen.focus} api={api} lang={data.lang} t={t} done={home} somethingWrong={() => go({ name: "team" })} />}
       {screen.name === "missed" && <Missed dose={screen.dose} api={api} t={t} reload={load} afterSend={afterSend} done={home} />}
       {screen.name === "team" && <CareTeam data={data} api={api} t={t} reload={load} afterSend={afterSend} />}
@@ -134,7 +136,7 @@ function Signed({ api, initials, onSignOut }: { api: Api; initials: string; onSi
 }
 
 // ---------- Home (matches the demo's "Today") ----------
-function Home({ data, api, t, go, afterSend }: { data: TodayData; api: Api; t: Tx; go: (s: Screen) => void; afterSend: (r: SendResult) => void }) {
+function Home({ data, api, t, go, afterSend, reload }: { data: TodayData; api: Api; t: Tx; go: (s: Screen) => void; afterSend: (r: SendResult) => void; reload: () => Promise<void> }) {
   const [ask, setAsk] = useState("");
   const [sending, setSending] = useState(false);
   const pending = useMemo(() => data.schedule.upcoming.filter((d) => !d.takenAt), [data]);
@@ -145,6 +147,7 @@ function Home({ data, api, t, go, afterSend }: { data: TodayData; api: Api; t: T
   const replies = data.inbox.filter((m) => m.status === "sent");
   const reviewing = data.results.filter((r) => r.status !== "in_range");
   const day = data.stimDay;
+  const notes = data.sharing.notes.filter((n) => !n.seenAt);
   const send = async (text: string) => { if (!text.trim() || sending) return; setSending(true); const r = await api.sendMessage(text); setAsk(""); setSending(false); afterSend(r); };
 
   return (
@@ -154,6 +157,27 @@ function Home({ data, api, t, go, afterSend }: { data: TodayData; api: Api; t: T
         <Muted>{day ? t(`Stimulation, day ${day} · We're here for anything.`, `Estimulación, día ${day} · Estamos aquí para lo que necesites.`) : t("We're here for anything.", "Estamos aquí para lo que necesites.")}</Muted>
         <Muted style={{ fontSize: 12 }}>{data.clinic.replyWindow[data.lang]} {t("Urgent? Call the nurse line anytime.", "¿Urgente? Llama a enfermería a cualquier hora.")}</Muted>
       </View>
+
+      {notes.map((n) => n.level !== "routine" ? (
+        <View key={n.id} testID="partner-note-worried" style={[st.card, { padding: 16, gap: 8, borderColor: C.red, borderWidth: 1.5, borderBottomColor: C.red }]}>
+          <Cap>{t(`From ${n.fromName}`, `De ${n.fromName}`)}</Cap>
+          <Text style={{ fontFamily: F.serifItalic, fontSize: 24, lineHeight: 28, color: C.red }}>{t(`${n.fromName} sounds worried about you.`, `${n.fromName} está preocupado por ti.`)}</Text>
+          <T style={{ fontSize: 15, lineHeight: 22 }}>“{n.body}”</T>
+          <T style={{ fontSize: 14 }}>{n.level === "crisis"
+            ? t("If you're thinking about hurting yourself, call or text 988 now. You don't have to go through this alone.", "Si estás pensando en hacerte daño, llama o escribe al 988 ahora. No tienes que pasar por esto sola.")
+            : t("If you have chest pain, trouble breathing, heavy bleeding or you fainted, call the nurse line now. Call 911 in an emergency.", "Si tienes dolor de pecho, dificultad para respirar, sangrado abundante o te desmayaste, llama a enfermería ahora. En una emergencia llama al 911.")}</T>
+          {n.level === "crisis"
+            ? <Button kind="red" label={t("Call or text 988", "Llamar o escribir al 988")} onPress={() => Linking.openURL("tel:988")} />
+            : <Button kind="red" label={t("Call the nurse line", "Llamar a enfermería")} onPress={() => Linking.openURL(NURSE_LINE)} />}
+          <Button testID="note-ok" kind="line" label={t("I'm okay", "Estoy bien")} onPress={async () => { await api.noteSeen(n.id); await reload(); }} />
+        </View>
+      ) : (
+        <View key={n.id} testID="partner-note" style={{ backgroundColor: C.softLav, borderRadius: 18, padding: 16, gap: 8 }}>
+          <Cap>{t(`From ${n.fromName}`, `De ${n.fromName}`)}</Cap>
+          <Text style={{ fontFamily: F.serifItalic, fontSize: 21, lineHeight: 26, color: C.lavDeep }}>{n.body}</Text>
+          <Button testID="note-thanks" kind="line" label={t("Thanks ♥", "Gracias ♥")} onPress={async () => { await api.noteSeen(n.id); await reload(); }} />
+        </View>
+      ))}
 
       <JourneyPath current={stageIndex(data.stage)} labels={data.lang === "es" ? STAGES_ES : STAGES} />
 
@@ -217,7 +241,7 @@ function Home({ data, api, t, go, afterSend }: { data: TodayData; api: Api; t: T
 }
 
 // ---------- Injection walkthrough (demo layout: one medication per screen) ----------
-function Walk({ doses, focus, api, lang, t, done, somethingWrong }: { doses: Dose[]; focus?: string; api: Api; lang: "en" | "es"; t: Tx; done: () => void; somethingWrong: () => void }) {
+function Walk({ doses, focus, api, lang, t, done, somethingWrong, helper }: { doses: Dose[]; focus?: string; api: Api; lang: "en" | "es"; t: Tx; done: () => void; somethingWrong: () => void; helper?: string }) {
   const start = Math.max(0, doses.findIndex((d) => d.medication === focus));
   const [i, setI] = useState(start);
   const [logged, setLogged] = useState(0);
@@ -226,6 +250,15 @@ function Walk({ doses, focus, api, lang, t, done, somethingWrong }: { doses: Dos
   const dose = doses[i];
   useEffect(() => { if (dose) { setGuide(null); api.guide(dose.medication).then(setGuide).catch(() => setGuide({ medication: dose.medication, steps: [], videoUrl: null, approvedBy: "" })); } }, [dose, api]);
 
+  if (helper && !dose) {
+    return (
+      <>
+        <H1 testID="walk-done">{`That's all ${doses.length}.`}</H1>
+        <Card style={{ gap: 6 }}><T style={{ fontSize: 15 }}>{`${helper} logs each one on her phone, so Bayside sees them. Thanks for being there.`}</T></Card>
+        <Button kind="esp" label="Back" onPress={done} />
+      </>
+    );
+  }
   if (!dose || logged === doses.length) {
     return (
       <>
@@ -241,6 +274,7 @@ function Walk({ doses, focus, api, lang, t, done, somethingWrong }: { doses: Dos
   const next = () => { const n = doses.findIndex((d, k) => k > i); setI(n === -1 ? doses.length : n); };
   return (
     <>
+      {helper && <Moment tone="lav">{`Helping ${helper}. She logs each dose on her phone.`}</Moment>}
       {logged === 1 && <Moment>{t("First one done. The hardest part is behind you.", "La primera, lista. Lo más difícil ya pasó.")}</Moment>}
       <View style={{ flexDirection: "row", gap: 6 }}>
         {doses.map((d, k) => <View key={d.id} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: k <= i ? C.lavInk : "#B9ACDF" }} />)}
@@ -263,8 +297,10 @@ function Walk({ doses, focus, api, lang, t, done, somethingWrong }: { doses: Dos
           <Muted style={{ fontSize: 12 }}>{t("Written by your care team · approved by", "Escrito por tu equipo · aprobado por")} {guide.approvedBy}</Muted>
         </View>
       )}
-      <Button testID="log-dose" label={t("Done, log it", "Listo, registrar")} disabled={busy || !guide} onPress={async () => { setBusy(true); await api.logDose(dose.id); setLogged(logged + 1); setBusy(false); next(); }} />
-      <Button kind="line" label={t("Something went wrong", "Algo salió mal")} onPress={somethingWrong} />
+      {helper
+        ? <Button testID="helper-next" label={i < doses.length - 1 ? "Next injection" : "Finish"} disabled={!guide} onPress={next} />
+        : <Button testID="log-dose" label={t("Done, log it", "Listo, registrar")} disabled={busy || !guide} onPress={async () => { setBusy(true); await api.logDose(dose.id); setLogged(logged + 1); setBusy(false); next(); }} />}
+      <Button kind="line" label={helper ? "Something went wrong? Call the nurse line" : t("Something went wrong", "Algo salió mal")} onPress={somethingWrong} />
     </>
   );
 }
@@ -369,15 +405,46 @@ function Settings({ data, api, t, reload, scheduled, onSignOut }: { data: TodayD
       <Card pad={false}>
         <View style={[st.row, { borderTopWidth: 0 }]}>
           <View style={{ flex: 1 }}><T style={{ fontFamily: F.sans600, fontSize: 15 }}>{t("Show medication names on the lock screen", "Mostrar medicamentos en la pantalla de bloqueo")}</T><Muted>{t("Off keeps it private: \"You have a reminder.\"", "Desactivado es privado: \"Tienes un recordatorio.\"")}</Muted></View>
-          <Switch testID="lock-detail" value={data.prefs.lockScreenDetail} trackColor={{ true: C.espresso, false: C.line }} onValueChange={async (v) => { await api.setLockScreenDetail(v); await reload(); }} />
+          <Switch testID="lock-detail" value={data.prefs.lockScreenDetail} thumbColor={C.paper} trackColor={{ true: C.espresso, false: C.line }} onValueChange={async (v) => { await api.setLockScreenDetail(v); await reload(); }} />
         </View>
       </Card>
+      {data.sharing.partners.map((p) => <SharingCard key={p.userId} partner={p} api={api} t={t} reload={reload} />)}
       <Cap>{t("Planned reminders", "Recordatorios programados")}</Cap>
       <Card pad={false}>
         {data.reminders.length === 0 && <Row title={t("None right now", "Ninguno por ahora")} />}
         {data.reminders.map((r) => <Row key={r.key} title={dayClock(r.at)} sub={r.body} />)}
       </Card>
       <Button kind="plain" label={t("Switch test patient", "Cambiar paciente de prueba")} onPress={onSignOut} />
+    </>
+  );
+}
+
+const SHARE_OPTIONS: [Shareable, string, string, string, string][] = [
+  ["schedule", "Where you are in your cycle", "Stage and day", "Dónde estás en tu ciclo", "Etapa y día"],
+  ["meds", "Injections and walkthroughs", "So they can help with tonight's doses", "Inyecciones y guías", "Para que te ayude con las dosis"],
+  ["results", "Your results", "With your nurse's labels", "Tus resultados", "Con las indicaciones de tu enfermera"],
+];
+function SharingCard({ partner, api, t, reload }: { partner: TodayData["sharing"]["partners"][number]; api: Api; t: Tx; reload: () => Promise<void> }) {
+  const first = partner.name.split(" ")[0]!;
+  const [busy, setBusy] = useState(false);
+  const toggle = async (k: Shareable, on: boolean) => {
+    if (busy) return;
+    setBusy(true);
+    const next = on ? [...partner.sections, k] : partner.sections.filter((s) => s !== k);
+    try { await api.setSharing(partner.userId, next); await reload(); } finally { setBusy(false); }
+  };
+  return (
+    <>
+      <Cap>{t(`Sharing with ${first}`, `Compartir con ${first}`)}</Cap>
+      <Card pad={false}>
+        {SHARE_OPTIONS.map(([k, en, enSub, es, esSub], i) => (
+          <View key={k} style={[st.row, i === 0 && { borderTopWidth: 0 }]}>
+            <View style={{ flex: 1 }}><T style={{ fontFamily: F.sans600, fontSize: 15 }}>{t(en, es)}</T><Muted>{t(enSub, esSub)}</Muted></View>
+            <Switch testID={`share-${k}`} value={partner.sections.includes(k)} disabled={busy} thumbColor={C.paper} trackColor={{ true: C.espresso, false: C.line }} onValueChange={(v) => toggle(k, v)} />
+          </View>
+        ))}
+        <View style={st.row}><Muted style={{ flex: 1 }}>{t("Your messages with your care team are always private. Change this anytime.", "Tus mensajes con tu equipo siempre son privados. Puedes cambiar esto cuando quieras.")}</Muted></View>
+      </Card>
     </>
   );
 }
@@ -397,6 +464,168 @@ function Urgent({ kind, t, back }: { kind: SendResult["kind"]; t: Tx; back: () =
         <T style={{ fontFamily: F.sans600 }}>{t("If you can't catch your breath or have chest pain, call 911.", "Si no puedes respirar bien o tienes dolor de pecho, llama al 911.")}</T>
       </View>
       <Button kind="line" label={t("Back to today", "Volver a hoy")} onPress={back} />
+    </>
+  );
+}
+
+// ---------- Partner side ----------
+// English only for now; partner Spanish follows once the medical translator has reviewed the patient text.
+type PScreen = { name: "home" } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; level: "urgent" | "crisis" };
+const QUICK_NOTES = ["So proud of you", "I'll set up tonight's meds", "Want me to do the injection?", "Dinner's on me tonight"];
+const label = (s: string) => `${s[0]!.toUpperCase()}${s.slice(1)}`;
+
+function PartnerApp({ api, initials, onSignOut }: { api: Api; initials: string; onSignOut: () => void }) {
+  const [data, setData] = useState<PartnerHome | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [screen, setScreen] = useState<PScreen>({ name: "home" });
+  const load = useCallback(async () => {
+    try { setData(await api.partnerHome()); setError(null); } catch (e) { setError((e as Error).message); }
+  }, [api]);
+  useEffect(() => { void load(); }, [load]);
+
+  if (error) return <Frame><Today size={34}>Can't reach Bayside</Today><Muted>{error}</Muted><Button label="Try again" onPress={load} /></Frame>;
+  if (!data) return <Frame><Muted>Loading…</Muted></Frame>;
+  const home = () => { void load(); setScreen({ name: "home" }); };
+  const top = screen.name === "home"
+    ? <TopBar clinic={data.clinic.name} initials={initials} onAvatar={() => setScreen({ name: "settings" })} />
+    : <BackBar label="Home" onBack={home} />;
+  const her = data.shared ? data.firstName ?? "your partner" : "your partner";
+  const t: Tx = (en) => en;
+
+  return (
+    <Frame top={top}>
+      {screen.name === "home" && (data.shared
+        ? <PartnerHomeScreen data={data} api={api} go={setScreen} reload={load} />
+        : (
+          <>
+            <Today size={34}>Nothing shared right now</Today>
+            <Muted>When your partner shares parts of her treatment with you in her Bayside app, they'll show up here.</Muted>
+            <Button kind="plain" label="Switch test person" onPress={onSignOut} />
+          </>
+        ))}
+      {screen.name === "walk" && <Walk doses={screen.doses} focus={screen.focus} api={api} lang="en" t={t} done={home} helper={her} somethingWrong={() => Linking.openURL(NURSE_LINE)} />}
+      {screen.name === "urgent" && <PartnerUrgent level={screen.level} her={her} back={home} />}
+      {screen.name === "settings" && (
+        <>
+          <H1>Your access</H1>
+          <Card style={{ gap: 8 }}>
+            <T style={{ fontSize: 15, lineHeight: 22 }}>{data.shared ? `You see what ${her} chooses to share: ${data.sections.map((s) => ({ schedule: "her cycle", meds: "injections", results: "results" })[s]).join(", ")}.` : "Nothing is shared with you right now."}</T>
+            <Muted>{`${her === "your partner" ? "Her" : `${her}'s`} messages with the care team are always private. She can change what you see at any time, and Bayside keeps a record each time you look.`}</Muted>
+          </Card>
+          <Button kind="plain" label="Switch test person" onPress={onSignOut} />
+        </>
+      )}
+    </Frame>
+  );
+}
+
+function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHome, { shared: true }>; api: Api; go: (s: PScreen) => void; reload: () => Promise<void> }) {
+  const her = data.firstName ?? "your partner";
+  const [note, setNote] = useState("");
+  const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const pending = data.schedule?.upcoming.filter((d) => !d.takenAt) ?? [];
+  const nextAt = pending[0]?.scheduledFor;
+  const tonight = pending.filter((d) => d.scheduledFor === nextAt);
+  const loggedToday = data.schedule ? [...data.schedule.upcoming, ...data.schedule.recent].filter((d) => d.takenAt && Math.abs(Date.now() - new Date(d.scheduledFor).getTime()) < 24 * 3600_000) : [];
+  const send = async (text: string) => {
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    try {
+      const r = await api.sendNote(text);
+      setNote("");
+      if (r.level !== "routine") { go({ name: "urgent", level: r.level }); return; }
+      setSent(true);
+      await reload();
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <>
+      <View style={{ gap: 4 }}>
+        <Cap>{`Supporting ${her}`}</Cap>
+        <Today>{`Hi ${data.name.split(" ")[0]}.`}</Today>
+        <Muted>{data.stimDay ? `${her} is on stimulation, day ${data.stimDay}. Small things help a lot right now.` : "Small things help a lot right now."}</Muted>
+      </View>
+
+      {data.sections.includes("schedule") && <JourneyPath current={stageIndex(data.stage)} labels={STAGES} />}
+
+      {data.sections.includes("meds") && (
+        <View style={{ gap: 8 }}>
+          <Cap>Tonight</Cap>
+          {tonight.length > 0 ? (
+            <View style={st.dark}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" }}>
+                <Text style={{ fontFamily: F.serif, fontSize: 26, letterSpacing: -0.5, color: C.paper }}>{clock(nextAt!)}</Text>
+                <T style={{ fontSize: 13, color: C.tan }}>{`${tonight.length} injection${tonight.length > 1 ? "s" : ""}`}</T>
+              </View>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                {tonight.map((d) => (
+                  <Pressable key={d.id} onPress={() => go({ name: "walk", doses: tonight, focus: d.medication })} style={st.medchip}>
+                    <T style={{ fontSize: 13.5, color: C.paper }}>{d.medication}</T>
+                  </Pressable>
+                ))}
+              </View>
+              <Button testID="help-tonight" label="How to help with tonight's injections" onPress={() => go({ name: "walk", doses: tonight })} />
+            </View>
+          ) : (
+            <View style={st.dark}>
+              <Text style={{ fontFamily: F.serif, fontSize: 24, color: C.paper }}>All set for tonight</Text>
+              <T style={{ fontSize: 14.5, color: "#E9DED3" }}>{`${her} logged ${loggedToday.length}. Bayside can see them.`}</T>
+            </View>
+          )}
+        </View>
+      )}
+
+      <View style={{ gap: 8 }}>
+        <Cap>{`Send ${her} a note`}</Cap>
+        {sent && <Moment>{`Sent. ${her} will see it on her home screen.`}</Moment>}
+        <Chips>{QUICK_NOTES.map((q) => <Chip key={q} label={q} onPress={() => { setSent(false); setNote(q); }} />)}</Chips>
+        <AskBox testID="note" value={note} onChange={(v) => { setSent(false); setNote(v); }} onSubmit={() => send(note)} placeholder={`Write something for ${her}`} />
+        <Muted style={{ fontSize: 12 }}>{`Notes go to ${her}, not to the clinic. If something's wrong medically, call the nurse line.`}</Muted>
+        {data.notes.length > 0 && (
+          <Card pad={false}>
+            {data.notes.map((n, i) => <Row key={n.id} title={n.body} sub={dayClock(n.createdAt)} right={<Pill tone={n.seenAt ? "sage" : "stone"} label={n.seenAt ? "Seen" : "Sent"} />} />)}
+          </Card>
+        )}
+      </View>
+
+      {data.results && (
+        <View style={{ gap: 8 }}>
+          <Cap>Results</Cap>
+          <Card pad={false}>
+            {data.results.length === 0 && <Row title="No results yet" />}
+            {data.results.map((r) => (
+              <Row key={r.id} title={`${label(r.analyte)} ${r.value} ${r.unit}`} sub={r.status === "in_range" ? r.text : `${her}'s nurse will go over this with her.`}
+                right={<Pill tone={r.status === "in_range" ? "sage" : "clay"} label={r.status === "in_range" ? "In Bayside's range" : "Nurse reviewing"} />} />
+            ))}
+          </Card>
+        </View>
+      )}
+
+      <View style={{ backgroundColor: C.lav, borderRadius: 18, padding: 16, gap: 6 }}>
+        <T style={{ fontFamily: F.sans700, fontSize: 15, color: C.lavDeep }}>{`What ${her} shares with you`}</T>
+        <T testID="shared-list" style={{ color: C.lavDeep }}>{data.sections.map((s) => ({ schedule: "Her cycle", meds: "Injections", results: "Results" })[s]).join(" · ")}</T>
+        <T style={{ color: C.lavDeep, fontSize: 13 }}>Her messages with the care team are always private. She can change this anytime.</T>
+      </View>
+    </>
+  );
+}
+
+function PartnerUrgent({ level, her, back }: { level: "urgent" | "crisis"; her: string; back: () => void }) {
+  const crisis = level === "crisis";
+  return (
+    <>
+      <View style={[st.card, { padding: 16, gap: 10, borderColor: C.red, borderWidth: 1.5, borderBottomColor: C.red }]}>
+        <Pill tone="red" label="Safety check · not an AI answer" />
+        <Text testID="urgent-title" style={{ fontFamily: F.serifItalic, fontSize: 32, lineHeight: 34, color: C.red }}>{crisis ? "Please reach out now." : "This needs a nurse now."}</Text>
+        <T style={{ fontSize: 15, lineHeight: 22 }}>{crisis
+          ? `If ${her} may be thinking about hurting herself, call or text 988 now and stay with her. Your note went to ${her}, but Bayside doesn't see notes.`
+          : `Your note went to ${her}, but Bayside doesn't see notes. Please call Bayside's nurse line now, or help ${her} call.`}</T>
+        {crisis ? <Button kind="red" label="Call or text 988" onPress={() => Linking.openURL("tel:988")} /> : <Button kind="red" label="Call the nurse line now" onPress={() => Linking.openURL(NURSE_LINE)} />}
+        <T style={{ fontFamily: F.sans600 }}>{`If ${her} can't catch her breath, has chest pain, or passes out, call 911.`}</T>
+      </View>
+      <Button kind="line" label="Back" onPress={back} />
     </>
   );
 }
