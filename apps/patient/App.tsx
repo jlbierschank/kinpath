@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { ActivityIndicator, Linking, Pressable, ScrollView, Share, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, Share, Text, TextInput, View } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useFonts } from "expo-font";
@@ -524,21 +525,45 @@ function InviteScreen({ api, t, reload, done }: { api: Api; t: Tx; reload: () =>
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [made, setMade] = useState<{ code: string; expiresAt: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [sendNote, setSendNote] = useState<string | null>(null);
   const first = name.trim().split(" ")[0] || t("them", "esa persona");
 
   if (made) {
     const message = t(
       `I'd like you to follow along with my care at Bayside Fertility. Download the Bayside Fertility app, tap "I have an invite code" and enter ${made.code}. The code works once and expires in 7 days.`,
       `Me gustaría que me acompañes en mi tratamiento en Bayside Fertility. Descarga la app de Bayside Fertility, toca "Tengo un código de invitación" e ingresa ${made.code}. El código funciona una vez y vence en 7 días.`);
+    // Send straight to the number or email Maya entered, with the message filled in.
+    const isEmail = contact.includes("@");
+    const to = isEmail ? contact.trim() : contact.replace(/[^0-9+]/g, "");
+    const url = isEmail
+      ? `mailto:${to}?subject=${encodeURIComponent(t("Follow along with me at Bayside Fertility", "Acompáñame en Bayside Fertility"))}&body=${encodeURIComponent(message)}`
+      : `sms:${to}${Platform.OS === "ios" ? "&" : "?"}body=${encodeURIComponent(message)}`;
+    const send = async () => {
+      setSendNote(null);
+      try { await Linking.openURL(url); }
+      catch { setSendNote(t(`Couldn't open ${isEmail ? "Mail" : "Messages"} here. Copy the code and send it yourself.`, `No se pudo abrir ${isEmail ? "el correo" : "Mensajes"}. Copia el código y envíalo tú.`)); }
+    };
+    const copy = async () => { await Clipboard.setStringAsync(made.code); setCopied(true); };
     return (
       <>
         <H1>{t(`Send ${first} the invite`, `Envía la invitación a ${first}`)}</H1>
         <View style={st.dark}>
           <T style={{ fontSize: 13, color: C.tan }}>{t("Invite code", "Código de invitación")}</T>
-          <Text testID="invite-made-code" selectable style={{ fontFamily: F.serif, fontSize: 36, letterSpacing: 3, color: C.paper }}>{made.code}</Text>
-          <T style={{ fontSize: 13.5, color: "#E9DED3" }}>{t("Works once. Expires in 7 days.", "Funciona una vez. Vence en 7 días.")}</T>
-          <Button testID="share-invite" label={t("Send by text or email", "Enviar por mensaje o correo")} onPress={() => { void Share.share({ message }); }} />
+          <Text testID="invite-made-code" selectable numberOfLines={1} style={{ fontFamily: F.serif, fontSize: 36, letterSpacing: 3, color: C.paper }}>{made.code}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <T style={{ fontSize: 13.5, color: "#E9DED3" }}>{t("Works once. Expires in 7 days.", "Funciona una vez. Vence en 7 días.")}</T>
+            <Pressable testID="copy-code" accessibilityLabel={t("Copy code", "Copiar código")} onPress={copy} style={{ borderRadius: 999, borderWidth: 1, borderColor: C.tan, paddingHorizontal: 14, paddingVertical: 8 }}>
+              <T style={{ fontFamily: F.sans600, color: C.paper }}>{copied ? t("Copied ✓", "Copiado ✓") : t("Copy code", "Copiar código")}</T>
+            </Pressable>
+          </View>
         </View>
+        <Button testID="send-invite" label={isEmail ? t(`Email ${first}`, `Enviar correo a ${first}`) : t(`Text ${first}`, `Enviar mensaje a ${first}`)} onPress={send} />
+        <Muted>{isEmail
+          ? t(`Opens your email with ${to} and the invite already filled in. You just tap send.`, `Abre tu correo con ${to} y la invitación ya escrita. Solo tienes que enviarla.`)
+          : t(`Opens Messages with ${to} and the invite already filled in. You just tap send.`, `Abre Mensajes con ${to} y la invitación ya escrita. Solo tienes que enviarla.`)}</Muted>
+        {sendNote && <T style={{ color: C.clayInk }}>{sendNote}</T>}
+        <Button testID="share-invite" kind="line" label={t("Other ways to send (WhatsApp and more)", "Otras formas de enviar (WhatsApp y más)")} onPress={() => { void Share.share({ message }).catch(() => setSendNote(t("Sharing isn't available here. Copy the code instead.", "No se puede compartir aquí. Copia el código."))); }} />
         <Muted>{t(`${first} will see only what you picked. You can change it or remove ${first} anytime in Settings.`, `${first} verá solo lo que elegiste. Puedes cambiarlo o quitar a ${first} cuando quieras en Ajustes.`)}</Muted>
         <Button kind="line" label={t("Done", "Listo")} onPress={done} />
       </>
