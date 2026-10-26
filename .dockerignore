@@ -3,6 +3,9 @@
 **/.data
 **/.expo
 .git
-apps/patient
 *.log
 .env*
+# The phone app's source isn't needed in the server image (its web build is in apps/clinic/public/phone),
+# but its package.json is, so pnpm's lockfile still matches the workspace.
+apps/patient/*
+!apps/patient/package.json
