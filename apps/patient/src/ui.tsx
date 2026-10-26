@@ -4,7 +4,7 @@
  * paper cards with a solid 3px bottom edge (no blur), one marigold action per screen.
  */
 import type { ReactNode } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View, type TextStyle, type ViewStyle } from "react-native";
+import { Pressable, StyleSheet, Switch, Text, TextInput, View, type SwitchProps, type TextStyle, type ViewStyle } from "react-native";
 import Svg, { Circle, Path, Text as SvgText } from "react-native-svg";
 
 export const C = {
@@ -163,3 +163,9 @@ export const st = StyleSheet.create({
   medchip: { flexDirection: "row", alignItems: "center", borderRadius: 10, paddingVertical: 7, paddingHorizontal: 10, backgroundColor: C.well },
   input: { borderWidth: 1.5, borderColor: C.line, borderRadius: 14, padding: 12, backgroundColor: "#fff", fontFamily: F.sans, fontSize: 15, minHeight: 80, textAlignVertical: "top", color: C.ink },
 });
+
+/** On/off switch in the app's colors. activeThumbColor is the web equivalent of thumbColor when on. */
+export function Toggle({ value, onChange, disabled, testID }: { value: boolean; onChange: (v: boolean) => void; disabled?: boolean; testID?: string }) {
+  const web = { activeThumbColor: C.paper, activeTrackColor: C.espresso } as unknown as SwitchProps;
+  return <Switch testID={testID} value={value} disabled={disabled} onValueChange={onChange} thumbColor={C.paper} trackColor={{ true: C.espresso, false: C.line }} ios_backgroundColor={C.line} {...web} />;
+}

@@ -35,7 +35,11 @@ export interface Handoff {
   sentBy: string | null;
 }
 
-export class HandoffError extends Error {}
+export class HandoffError extends Error {
+  constructor(message: string) { super(message); this.name = "HandoffError"; }
+}
+/** True for a plain-language error meant for the person (works across app bundles). */
+export const isHandoffError = (e: unknown): e is HandoffError => e instanceof Error && e.name === "HandoffError";
 
 const SENDERS: StaffRole[] = ["nurse", "physician"];
 

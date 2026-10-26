@@ -1,6 +1,6 @@
 import "server-only";
 import { NextResponse } from "next/server";
-import { HandoffError } from "@kinpath/core";
+import { isHandoffError } from "@kinpath/core";
 import type { Role } from "@kinpath/core";
 import { getDb } from "./db";
 import type { Session } from "./session";
@@ -9,7 +9,7 @@ import type { Session } from "./session";
  * DEV-ONLY API AUTH: the phone app sends "Authorization: Dev <user id>" for a synthetic seed user.
  * Replace with real tokens (passwordless sign-in, short-lived JWTs) before any real patient.
  */
-const CORS = {
+export const CORS = {
   "Access-Control-Allow-Origin": process.env.KINPATH_DEV_CORS_ORIGIN ?? "*",
   "Access-Control-Allow-Headers": "Authorization, Content-Type",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -37,8 +37,8 @@ export async function handle(req: Request, roles: Role[], fn: (s: Session) => Pr
   try {
     return NextResponse.json(await fn(s), { headers: CORS });
   } catch (e) {
-    const msg = e instanceof HandoffError ? e.message : "Something went wrong.";
-    if (!(e instanceof HandoffError)) console.error(e);
-    return NextResponse.json({ error: msg }, { status: e instanceof HandoffError ? 400 : 500, headers: CORS });
+    const msg = isHandoffError(e) ? e.message : "Something went wrong.";
+    if (!isHandoffError(e)) console.error(e);
+    return NextResponse.json({ error: msg }, { status: isHandoffError(e) ? 400 : 500, headers: CORS });
   }
 }

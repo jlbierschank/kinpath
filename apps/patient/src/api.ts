@@ -18,9 +18,12 @@ export interface Today {
   results: { id: string; analyte: string; value: number; unit: string; status: string; text: string; approvedBy: string | null }[];
   prefs: ReminderPrefs;
   reminders: PlannedReminder[];
-  sharing: { partners: { userId: string; name: string; sections: Shareable[] }[]; notes: Note[] };
+  sharing: { partners: SupportPerson[]; notes: Note[]; invites: Invite[] };
 }
 export type Shareable = "schedule" | "meds" | "results";
+export type Relationship = "partner" | "family" | "friend" | "other";
+export interface SupportPerson { userId: string; name: string; relationship: Relationship; sections: Shareable[] }
+export interface Invite { id: string; name: string; relationship: Relationship; contact: string; sections: Shareable[]; expiresAt: string }
 export interface Note { id: string; fromName: string; body: string; level: "routine" | "urgent" | "crisis"; createdAt: string; seenAt: string | null }
 export type PartnerHome =
   | { clinic: { name: string }; shared: false; name: string }
@@ -54,8 +57,20 @@ export class Api {
   markRead = (id: string) => this.call<{ ok: boolean }>(`/api/patient/messages/${id}/read`, { method: "POST", body: {} });
   setLockScreenDetail = (on: boolean) => this.call<{ ok: boolean }>("/api/patient/prefs", { method: "POST", body: { lockScreenDetail: on } });
   setSharing = (partnerUserId: string, sections: Shareable[]) => this.call<{ sections: Shareable[] }>("/api/patient/sharing", { method: "POST", body: { partnerUserId, sections } });
+  createInvite = (input: { name: string; relationship: Relationship; contact: string; sections: Shareable[] }) =>
+    this.call<{ id: string; code: string; expiresAt: string }>("/api/patient/invites", { method: "POST", body: input });
+  cancelInvite = (id: string) => this.call<{ ok: boolean }>(`/api/patient/invites/${id}/cancel`, { method: "POST", body: {} });
+  removePerson = (partnerUserId: string) => this.call<{ ok: boolean }>("/api/patient/sharing/remove", { method: "POST", body: { partnerUserId } });
   noteSeen = (id: string) => this.call<{ ok: boolean }>(`/api/patient/notes/${id}/seen`, { method: "POST", body: {} });
   // Partner side
   partnerHome = () => this.call<PartnerHome>("/api/partner/home");
   sendNote = (text: string) => this.call<{ id: string; level: "routine" | "urgent" | "crisis" }>("/api/partner/notes", { method: "POST", body: { text } });
+}
+
+/** The invited person enters their code. No account exists yet, so no Authorization header. */
+export async function acceptInvite(code: string, name: string): Promise<{ userId: string; name: string; patientFirstName: string }> {
+  const res = await fetch(`${API_URL}/api/invites/accept`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, name }) });
+  const data = (await res.json().catch(() => ({}))) as { error?: string; userId: string; name: string; patientFirstName: string };
+  if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+  return data;
 }

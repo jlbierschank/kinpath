@@ -58,7 +58,7 @@ describe("partner notes", () => {
   it("delivers a note to Maya, who marks it seen", async () => {
     await sendPartnerNote(db, jordan, "So proud of you. I'll set up the meds tonight.");
     const s = await patientSharing(db, maya, IDS.maya);
-    expect(s.partners).toEqual([{ userId: IDS.jordan, name: "Jordan Torres", sections: ["schedule", "meds"] }]);
+    expect(s.partners).toEqual([{ userId: IDS.jordan, name: "Jordan Torres", relationship: "partner", sections: ["schedule", "meds"] }]);
     expect(s.notes[0]).toMatchObject({ fromName: "Jordan", body: "So proud of you. I'll set up the meds tonight.", seenAt: null });
     await markNoteSeen(db, maya, s.notes[0]!.id);
     expect((await patientSharing(db, maya, IDS.maya)).notes[0]!.seenAt).not.toBeNull();

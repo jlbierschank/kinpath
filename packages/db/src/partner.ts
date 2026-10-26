@@ -3,6 +3,7 @@
  * clinic's injection walkthroughs to help, and can send the patient short private notes.
  * The patient controls sharing. Messages with the care team are never shared.
  */
+import { createHash, randomInt } from "node:crypto";
 import { HandoffError, triage, type ClinicTerm, type TriageResult } from "@kinpath/core";
 import { asActor, audit, type Actor, type Db } from "./client";
 import { patientResults, patientSchedule } from "./loop";
@@ -23,7 +24,7 @@ export async function partnerHome(db: Db, actor: Actor, now = new Date()) {
   if (actor.role !== "partner") throw new HandoffError("This screen is for partners.");
   const base = await asActor(db, actor, async (tx) => {
     const g = await tx.query<{ patient_id: string; sections: string[] }>(
-      `SELECT patient_id, sections FROM partner_grants WHERE partner_user_id = $1 AND revoked_at IS NULL AND cardinality(sections) > 0 ORDER BY created_at LIMIT 1`, [actor.userId]);
+      `SELECT patient_id, sections FROM partner_grants WHERE partner_user_id = $1 AND revoked_at IS NULL AND removed_at IS NULL AND cardinality(sections) > 0 ORDER BY created_at LIMIT 1`, [actor.userId]);
     const grant = g.rows[0];
     if (!grant) return null;
     const p = await tx.query<{ first_name: string }>(`SELECT first_name FROM patients WHERE id = $1`, [grant.patient_id]);
@@ -59,7 +60,7 @@ export async function sendPartnerNote(db: Db, actor: Actor & { name: string }, t
   if (body.length > 500) throw new HandoffError("Keep notes under 500 characters.");
   return asActor(db, actor, async (tx) => {
     const g = await tx.query<{ patient_id: string }>(
-      `SELECT patient_id FROM partner_grants WHERE partner_user_id = $1 AND revoked_at IS NULL AND cardinality(sections) > 0 ORDER BY created_at LIMIT 1`, [actor.userId]);
+      `SELECT patient_id FROM partner_grants WHERE partner_user_id = $1 AND revoked_at IS NULL AND removed_at IS NULL AND cardinality(sections) > 0 ORDER BY created_at LIMIT 1`, [actor.userId]);
     const patientId = g.rows[0]?.patient_id;
     if (!patientId) throw new HandoffError("Nothing is shared with you right now.");
     const terms = await tx.query<ClinicTerm>(`SELECT term, level FROM clinic_triage_terms`);
@@ -76,15 +77,19 @@ export async function sendPartnerNote(db: Db, actor: Actor & { name: string }, t
 /** The patient's view: who she shares with, what, and notes from them. */
 export async function patientSharing(db: Db, actor: Actor, patientId: string) {
   return asActor(db, actor, async (tx) => {
-    const p = await tx.query<{ partner_user_id: string; partner_name: string; sections: string[]; revoked: boolean }>(`SELECT * FROM kp_partner_names($1)`, [patientId]);
+    const p = await tx.query<{ partner_user_id: string; partner_name: string; relationship: Relationship; sections: string[]; revoked: boolean }>(`SELECT * FROM kp_partner_names($1)`, [patientId]);
+    const inv = await tx.query<{ id: string; name: string; relationship: Relationship; contact: string; sections: string[]; expires_at: Date }>(
+      `SELECT id, name, relationship, contact, sections, expires_at FROM support_invites
+        WHERE patient_id = $1 AND accepted_at IS NULL AND canceled_at IS NULL AND expires_at > now() ORDER BY created_at`, [patientId]);
     const n = await tx.query<NoteRow>(
       `SELECT id, from_name, body, level, created_at, seen_at FROM partner_notes WHERE patient_id = $1 ORDER BY created_at DESC LIMIT 10`, [patientId]);
     return {
       partners: p.rows.map((r) => ({
-        userId: r.partner_user_id, name: r.partner_name,
+        userId: r.partner_user_id, name: r.partner_name, relationship: r.relationship,
         sections: r.revoked ? [] : r.sections.filter((s): s is Shareable => (SHAREABLE as readonly string[]).includes(s)),
       })),
       notes: n.rows.map(toNote),
+      invites: inv.rows.map((r) => ({ id: r.id, name: r.name, relationship: r.relationship, contact: r.contact, sections: r.sections as Shareable[], expiresAt: new Date(r.expires_at).toISOString() })),
     };
   });
 }
@@ -97,8 +102,8 @@ export async function setPartnerSharing(db: Db, actor: Actor, patientId: string,
   return asActor(db, actor, async (tx) => {
     const r = await tx.query<{ id: string }>(
       clean.length === 0
-        ? `UPDATE partner_grants SET revoked_at = now() WHERE patient_id = $1 AND partner_user_id = $2 RETURNING id`
-        : `UPDATE partner_grants SET sections = $3::text[], revoked_at = NULL WHERE patient_id = $1 AND partner_user_id = $2 RETURNING id`,
+        ? `UPDATE partner_grants SET revoked_at = now() WHERE patient_id = $1 AND partner_user_id = $2 AND removed_at IS NULL RETURNING id`
+        : `UPDATE partner_grants SET sections = $3::text[], revoked_at = NULL WHERE patient_id = $1 AND partner_user_id = $2 AND removed_at IS NULL RETURNING id`,
       clean.length === 0 ? [patientId, partnerUserId] : [patientId, partnerUserId, clean]);
     if (!r.rows[0]) throw new HandoffError("That person isn't connected to you.");
     await audit(tx, actor, "patient.changed_partner_sharing", patientId, { partnerUserId, sections: clean });
@@ -112,4 +117,97 @@ export async function markNoteSeen(db: Db, actor: Actor, noteId: string) {
     if (r.rows[0]) await audit(tx, actor, "patient.saw_partner_note", r.rows[0].patient_id, { noteId });
     return true;
   });
+}
+
+// ---------- inviting support people ----------
+
+export const RELATIONSHIPS = ["partner", "family", "friend", "other"] as const;
+export type Relationship = (typeof RELATIONSHIPS)[number];
+const MAX_PEOPLE = 5;
+// No 0/O, 1/I/L: easy to read aloud and type.
+const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+export const normalizeCode = (code: string) => code.toUpperCase().replace(/[^A-Z0-9]/g, "");
+const hashCode = (code: string) => createHash("sha256").update(normalizeCode(code)).digest("hex");
+
+function cleanContact(raw: string): string {
+  const c = raw.trim();
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c)) return c.toLowerCase();
+  const digits = c.replace(/[^0-9+]/g, "");
+  if (/^\+?[0-9]{10,15}$/.test(digits)) return digits;
+  throw new HandoffError("Enter a mobile number or an email address.");
+}
+
+/**
+ * The patient invites someone and picks what they'll see. Returns the one-time code, which is
+ * shown once and never stored (only its hash is). The patient sends it with her phone's share sheet.
+ */
+export async function createInvite(db: Db, actor: Actor, patientId: string, input: { name: string; relationship: string; contact: string; sections: string[] }) {
+  if (actor.role !== "patient") throw new HandoffError("Only the patient can invite someone.");
+  const name = input.name.trim();
+  if (!name || name.length > 80) throw new HandoffError("Add their name.");
+  if (!(RELATIONSHIPS as readonly string[]).includes(input.relationship)) throw new HandoffError("Choose how you know them.");
+  const contact = cleanContact(input.contact);
+  const sections = [...new Set(input.sections)];
+  if (sections.length === 0) throw new HandoffError("Choose at least one thing to share.");
+  if (sections.some((x) => !(SHAREABLE as readonly string[]).includes(x))) throw new HandoffError("Messages with your care team are always private.");
+  const code = Array.from({ length: 8 }, () => ALPHABET[randomInt(ALPHABET.length)]).join("");
+  return asActor(db, actor, async (tx) => {
+    const n = await tx.query<{ n: number }>(
+      `SELECT (SELECT count(*) FROM partner_grants WHERE patient_id = $1 AND removed_at IS NULL)
+            + (SELECT count(*) FROM support_invites WHERE patient_id = $1 AND accepted_at IS NULL AND canceled_at IS NULL AND expires_at > now()) AS n`, [patientId]);
+    if (Number(n.rows[0]!.n) >= MAX_PEOPLE) throw new HandoffError(`You can have up to ${MAX_PEOPLE} support people. Remove someone first.`);
+    const r = await tx.query<{ id: string; expires_at: Date }>(
+      `INSERT INTO support_invites (clinic_id, patient_id, invited_by, name, relationship, contact, sections, code_hash)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::text[],$8) RETURNING id, expires_at`,
+      [actor.clinicId, patientId, actor.userId, name, input.relationship, contact, sections, hashCode(code)]);
+    await audit(tx, actor, "patient.invited_support_person", patientId, { inviteId: r.rows[0]!.id, relationship: input.relationship, sections });
+    return { id: r.rows[0]!.id, code: `${code.slice(0, 4)}-${code.slice(4)}`, expiresAt: new Date(r.rows[0]!.expires_at).toISOString() };
+  });
+}
+
+export async function cancelInvite(db: Db, actor: Actor, inviteId: string) {
+  return asActor(db, actor, async (tx) => {
+    const r = await tx.query<{ patient_id: string }>(
+      `UPDATE support_invites SET canceled_at = now() WHERE id = $1 AND accepted_at IS NULL AND canceled_at IS NULL RETURNING patient_id`, [inviteId]);
+    if (!r.rows[0]) throw new HandoffError("That invite was already used or canceled.");
+    await audit(tx, actor, "patient.canceled_invite", r.rows[0].patient_id, { inviteId });
+    return true;
+  });
+}
+
+/** Ends someone's access and takes them off the patient's list. */
+export async function removeSupportPerson(db: Db, actor: Actor, patientId: string, partnerUserId: string) {
+  if (actor.role !== "patient") throw new HandoffError("Only the patient can remove someone.");
+  return asActor(db, actor, async (tx) => {
+    const r = await tx.query(
+      `UPDATE partner_grants SET revoked_at = coalesce(revoked_at, now()), removed_at = now() WHERE patient_id = $1 AND partner_user_id = $2 AND removed_at IS NULL RETURNING id`,
+      [patientId, partnerUserId]);
+    if (!r.rows[0]) throw new HandoffError("That person isn't connected to you.");
+    await audit(tx, actor, "patient.removed_support_person", patientId, { partnerUserId });
+    return true;
+  });
+}
+
+const ACCEPT_ERRORS: Record<string, string> = {
+  invite_invalid: "That code didn't work. It may have expired or already been used. Ask for a new one.",
+  name_invalid: "Add your name.",
+  already_connected: "This phone number or email is already connected. Sign in instead.",
+};
+
+/**
+ * The invited person enters the code. This runs before they have an account, through one
+ * narrow database function, the way a sign-up service would.
+ */
+export async function acceptInvite(db: Db, code: string, name: string) {
+  if (normalizeCode(code).length !== 8) throw new HandoffError(ACCEPT_ERRORS.invite_invalid!);
+  try {
+    const r = await db.query<{ user_id: string; clinic_id: string; patient_first_name: string }>(`SELECT * FROM kp_accept_invite($1, $2)`, [hashCode(code), name]);
+    const row = r.rows[0]!;
+    return { userId: row.user_id, clinicId: row.clinic_id, patientFirstName: row.patient_first_name, name: name.trim() };
+  } catch (e) {
+    const key = Object.keys(ACCEPT_ERRORS).find((k) => (e as Error).message.includes(k));
+    if (key) throw new HandoffError(ACCEPT_ERRORS[key]!);
+    throw e;
+  }
 }

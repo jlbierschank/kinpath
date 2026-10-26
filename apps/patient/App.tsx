@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { ActivityIndicator, Linking, Pressable, SafeAreaView, ScrollView, Switch, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, SafeAreaView, ScrollView, Share, Text, TextInput, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useFonts } from "expo-font";
 import { Newsreader_400Regular_Italic, Newsreader_500Medium } from "@expo-google-fonts/newsreader";
 import { InstrumentSans_400Regular, InstrumentSans_500Medium, InstrumentSans_600SemiBold, InstrumentSans_700Bold } from "@expo-google-fonts/instrument-sans";
 import Svg, { Path } from "react-native-svg";
-import { Api, type Dose, type Guide, type PartnerHome, type SendResult, type Shareable, type Today as TodayData } from "./src/api";
+import { acceptInvite, Api, type Dose, type Guide, type Invite, type PartnerHome, type Relationship, type SendResult, type Shareable, type SupportPerson, type Today as TodayData } from "./src/api";
 import { askPermission, remindersSupported, syncReminders } from "./src/reminders";
-import { AskBox, Avatar, Button, C, Cap, Card, Chip, Chips, F, H1, JourneyPath, Moment, Muted, Pill, Row, st, T, TimelineItem, Today } from "./src/ui";
+import { AskBox, Avatar, Button, C, Cap, Card, Chip, Chips, F, H1, JourneyPath, Moment, Muted, Pill, Row, st, T, TimelineItem, Today, Toggle } from "./src/ui";
 
 // DEV ONLY: synthetic seed people. Real passwordless sign-in replaces this screen.
 const DEV_PEOPLE = [
@@ -15,10 +15,12 @@ const DEV_PEOPLE = [
   { id: "00000000-0000-4000-8000-000000000012", name: "Priya Shah", initials: "PS", note: "Patient · prefers Spanish", partner: false },
   { id: "00000000-0000-4000-8000-000000000011", name: "Jordan Torres", initials: "JT", note: "Maya's partner · sees what she shares", partner: true },
 ];
+type DevPerson = (typeof DEV_PEOPLE)[number];
+const initialsOf = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?";
 const NURSE_LINE = "tel:+18135550100"; // placeholder
 
 type Tab = "home" | "community" | "record" | "team";
-type Screen = { name: Tab } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; kind: SendResult["kind"] } | { name: "missed"; dose: Dose };
+type Screen = { name: Tab } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; kind: SendResult["kind"] } | { name: "missed"; dose: Dose } | { name: "invite" };
 type Tx = (en: string, es: string) => string;
 
 const STAGES = ["Consult", "Testing", "Stims", "Retrieval", "Transfer", "Wait", "Result", "OB-GYN"];
@@ -29,12 +31,15 @@ const dayClock = (iso: string) => new Date(iso).toLocaleString(undefined, { week
 
 export default function App() {
   const [fontsLoaded] = useFonts({ Newsreader_400Regular_Italic, Newsreader_500Medium, InstrumentSans_400Regular, InstrumentSans_500Medium, InstrumentSans_600SemiBold, InstrumentSans_700Bold });
-  const [userId, setUserId] = useState<string | null>(null);
+  const [who, setWho] = useState<DevPerson | null>(null);
+  // People who joined with an invite code during this session (dev only; real sign-in remembers them).
+  const [joined, setJoined] = useState<DevPerson[]>([]);
+  const [joining, setJoining] = useState(false);
   if (!fontsLoaded) return <View style={{ flex: 1, backgroundColor: C.oat, alignItems: "center", justifyContent: "center" }}><ActivityIndicator color={C.espresso} /></View>;
-  if (!userId) return <DevSignIn onPick={setUserId} />;
-  const who = DEV_PEOPLE.find((p) => p.id === userId)!;
-  if (who.partner) return <PartnerApp api={new Api(userId)} initials={who.initials} onSignOut={() => setUserId(null)} />;
-  return <Signed api={new Api(userId)} initials={who.initials} onSignOut={() => setUserId(null)} />;
+  if (joining) return <AcceptInvite onBack={() => setJoining(false)} onJoined={(p) => { setJoined([...joined, p]); setJoining(false); setWho(p); }} />;
+  if (!who) return <DevSignIn people={[...DEV_PEOPLE, ...joined]} onPick={setWho} onInvite={() => setJoining(true)} />;
+  if (who.partner) return <PartnerApp api={new Api(who.id)} initials={who.initials} onSignOut={() => setWho(null)} />;
+  return <Signed api={new Api(who.id)} initials={who.initials} onSignOut={() => setWho(null)} />;
 }
 
 function Frame({ children, tabs, top }: { children: ReactNode; tabs?: ReactNode; top?: ReactNode }) {
@@ -50,17 +55,47 @@ function Frame({ children, tabs, top }: { children: ReactNode; tabs?: ReactNode;
   );
 }
 
-function DevSignIn({ onPick }: { onPick: (id: string) => void }) {
+function DevSignIn({ people, onPick, onInvite }: { people: DevPerson[]; onPick: (p: DevPerson) => void; onInvite: () => void }) {
   return (
     <Frame top={<View style={{ padding: 18, paddingBottom: 6 }}><Muted>Kinpath dev build · synthetic data only</Muted></View>}>
       <Today size={34}>Who are you testing as?</Today>
       <Card pad={false}>
-        {DEV_PEOPLE.map((p, i) => (
-          <Pressable key={p.id} testID={`pick-${p.name}`} onPress={() => onPick(p.id)} style={[st.row, i === 0 && { borderTopWidth: 0 }]}>
+        {people.map((p, i) => (
+          <Pressable key={p.id} testID={`pick-${p.name}`} onPress={() => onPick(p)} style={[st.row, i === 0 && { borderTopWidth: 0 }]}>
             <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}><Avatar text={p.initials} /><View><T style={{ fontFamily: F.sans600, fontSize: 15 }}>{p.name}</T><Muted>{p.note}</Muted></View></View>
           </Pressable>
         ))}
       </Card>
+      <Button testID="have-code" kind="line" label="I have an invite code" onPress={onInvite} />
+    </Frame>
+  );
+}
+
+function AcceptInvite({ onBack, onJoined }: { onBack: () => void; onJoined: (p: DevPerson) => void }) {
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const join = async () => {
+    setBusy(true); setError(null);
+    try {
+      const r = await acceptInvite(code, name);
+      onJoined({ id: r.userId, name: r.name, initials: initialsOf(r.name), note: `Supporting ${r.patientFirstName}`, partner: true });
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  };
+  return (
+    <Frame top={<BackBar label="Back" onBack={onBack} />}>
+      <Today size={34}>Join with an invite</Today>
+      <Muted>Someone going through treatment at Bayside invited you to follow along. You'll see only what they choose to share.</Muted>
+      <Card style={{ gap: 10 }}>
+        <Cap>Invite code</Cap>
+        <TextInput testID="invite-code" style={[st.input, { fontFamily: F.sans600, fontSize: 20, letterSpacing: 2 }]} value={code} onChangeText={setCode} autoCapitalize="characters" autoCorrect={false} placeholder="ABCD-EFGH" placeholderTextColor={C.stone} />
+        <Cap>Your name</Cap>
+        <TextInput testID="invite-name" style={st.input} value={name} onChangeText={setName} placeholder="First and last name" placeholderTextColor={C.stone} />
+        {error && <T testID="invite-error" style={{ color: C.red }}>{error}</T>}
+        <Button testID="join" label={busy ? "Joining…" : "Join"} disabled={busy || !code.trim() || !name.trim()} onPress={join} />
+      </Card>
+      <Muted style={{ fontSize: 12 }}>In the released app, you'll also confirm your phone number or email with a one-time sign-in link.</Muted>
     </Frame>
   );
 }
@@ -129,7 +164,8 @@ function Signed({ api, initials, onSignOut }: { api: Api; initials: string; onSi
       {screen.name === "team" && <CareTeam data={data} api={api} t={t} reload={load} afterSend={afterSend} />}
       {screen.name === "record" && <Record data={data} t={t} />}
       {screen.name === "community" && <Community t={t} />}
-      {screen.name === "settings" && <Settings data={data} api={api} t={t} reload={load} scheduled={scheduled} onSignOut={onSignOut} />}
+      {screen.name === "settings" && <Settings data={data} api={api} t={t} reload={load} scheduled={scheduled} onSignOut={onSignOut} go={go} />}
+      {screen.name === "invite" && <InviteScreen api={api} t={t} reload={load} done={() => { void load(); go({ name: "settings" }); }} />}
       {screen.name === "urgent" && <Urgent kind={screen.kind} t={t} back={home} />}
     </Frame>
   );
@@ -389,7 +425,7 @@ function Community({ t }: { t: Tx }) {
 }
 
 // ---------- Settings ----------
-function Settings({ data, api, t, reload, scheduled, onSignOut }: { data: TodayData; api: Api; t: Tx; reload: () => Promise<void>; scheduled: number; onSignOut: () => void }) {
+function Settings({ data, api, t, reload, scheduled, onSignOut, go }: { data: TodayData; api: Api; t: Tx; reload: () => Promise<void>; scheduled: number; onSignOut: () => void; go: (s: Screen) => void }) {
   const [perm, setPerm] = useState<string | null>(null);
   return (
     <>
@@ -405,10 +441,14 @@ function Settings({ data, api, t, reload, scheduled, onSignOut }: { data: TodayD
       <Card pad={false}>
         <View style={[st.row, { borderTopWidth: 0 }]}>
           <View style={{ flex: 1 }}><T style={{ fontFamily: F.sans600, fontSize: 15 }}>{t("Show medication names on the lock screen", "Mostrar medicamentos en la pantalla de bloqueo")}</T><Muted>{t("Off keeps it private: \"You have a reminder.\"", "Desactivado es privado: \"Tienes un recordatorio.\"")}</Muted></View>
-          <Switch testID="lock-detail" value={data.prefs.lockScreenDetail} thumbColor={C.paper} trackColor={{ true: C.espresso, false: C.line }} onValueChange={async (v) => { await api.setLockScreenDetail(v); await reload(); }} />
+          <Toggle testID={"lock-detail"} value={data.prefs.lockScreenDetail} onChange={async (v) => { await api.setLockScreenDetail(v); await reload(); }} />
         </View>
       </Card>
+      <Cap>{t("Your support people", "Tus personas de apoyo")}</Cap>
+      <Muted>{t("People you invite see only what you choose. Your messages with your care team are always private.", "Las personas que invites solo ven lo que elijas. Tus mensajes con tu equipo siempre son privados.")}</Muted>
       {data.sharing.partners.map((p) => <SharingCard key={p.userId} partner={p} api={api} t={t} reload={reload} />)}
+      {data.sharing.invites.map((inv) => <PendingInvite key={inv.id} invite={inv} api={api} t={t} reload={reload} />)}
+      <Button testID="invite-someone" kind="esp" label={t("Invite someone", "Invitar a alguien")} onPress={() => go({ name: "invite" })} />
       <Cap>{t("Planned reminders", "Recordatorios programados")}</Cap>
       <Card pad={false}>
         {data.reminders.length === 0 && <Row title={t("None right now", "Ninguno por ahora")} />}
@@ -424,9 +464,20 @@ const SHARE_OPTIONS: [Shareable, string, string, string, string][] = [
   ["meds", "Injections and walkthroughs", "So they can help with tonight's doses", "Inyecciones y guías", "Para que te ayude con las dosis"],
   ["results", "Your results", "With your nurse's labels", "Tus resultados", "Con las indicaciones de tu enfermera"],
 ];
-function SharingCard({ partner, api, t, reload }: { partner: TodayData["sharing"]["partners"][number]; api: Api; t: Tx; reload: () => Promise<void> }) {
+const REL: Record<Relationship, [string, string]> = { partner: ["Partner", "Pareja"], family: ["Family", "Familia"], friend: ["Friend", "Amistad"], other: ["Support person", "Apoyo"] };
+function PendingInvite({ invite, api, t, reload }: { invite: Invite; api: Api; t: Tx; reload: () => Promise<void> }) {
+  const days = Math.max(1, Math.ceil((new Date(invite.expiresAt).getTime() - Date.now()) / 86_400_000));
+  return (
+    <Card pad={false}>
+      <Row title={`${invite.name} · ${t(...REL[invite.relationship])}`} sub={t(`Invited · waiting for them to join · code expires in ${days} day${days > 1 ? "s" : ""}`, `Invitada · esperando · el código vence en ${days} día${days > 1 ? "s" : ""}`)}
+        right={<Pressable testID={`cancel-invite-${invite.name}`} onPress={async () => { await api.cancelInvite(invite.id); await reload(); }}><T style={{ fontFamily: F.sans600, color: C.clayInk }}>{t("Cancel", "Cancelar")}</T></Pressable>} />
+    </Card>
+  );
+}
+function SharingCard({ partner, api, t, reload }: { partner: SupportPerson; api: Api; t: Tx; reload: () => Promise<void> }) {
   const first = partner.name.split(" ")[0]!;
   const [busy, setBusy] = useState(false);
+  const [confirm, setConfirm] = useState(false);
   const toggle = async (k: Shareable, on: boolean) => {
     if (busy) return;
     setBusy(true);
@@ -435,16 +486,88 @@ function SharingCard({ partner, api, t, reload }: { partner: TodayData["sharing"
   };
   return (
     <>
-      <Cap>{t(`Sharing with ${first}`, `Compartir con ${first}`)}</Cap>
+      <Card pad={false}>
+        <View style={[st.row, { borderTopWidth: 0 }]}>
+          <View style={{ flexDirection: "row", gap: 10, alignItems: "center", flex: 1 }}>
+            <Avatar text={initialsOf(partner.name)} size={34} />
+            <View style={{ flex: 1 }}><T style={{ fontFamily: F.sans700, fontSize: 15.5 }}>{t(`Sharing with ${first}`, `Compartir con ${first}`)}</T><Muted>{t(...REL[partner.relationship])}{partner.sections.length === 0 ? t(" · sees nothing right now", " · no ve nada por ahora") : ""}</Muted></View>
+          </View>
+        </View>
+        {SHARE_OPTIONS.map(([k, en, enSub, es, esSub]) => (
+          <View key={k} style={st.row}>
+            <View style={{ flex: 1 }}><T style={{ fontFamily: F.sans600, fontSize: 15 }}>{t(en, es)}</T><Muted>{t(enSub, esSub)}</Muted></View>
+            <Toggle testID={`share-${first}-${k}`} value={partner.sections.includes(k)} disabled={busy} onChange={(v) => toggle(k, v)} />
+          </View>
+        ))}
+        <View style={st.row}>
+          <Pressable testID={`remove-${first}`} onPress={async () => { if (!confirm) { setConfirm(true); return; } setBusy(true); try { await api.removePerson(partner.userId); await reload(); } finally { setBusy(false); } }}>
+            <T style={{ fontFamily: F.sans600, color: C.clayInk }}>{confirm ? t(`Tap again to remove ${first}`, `Toca de nuevo para quitar a ${first}`) : t(`Remove ${first}`, `Quitar a ${first}`)}</T>
+          </Pressable>
+        </View>
+      </Card>
+    </>
+  );
+}
+
+// ---------- Invite a support person ----------
+const RELATIONSHIPS: Relationship[] = ["partner", "family", "friend", "other"];
+function InviteScreen({ api, t, reload, done }: { api: Api; t: Tx; reload: () => Promise<void>; done: () => void }) {
+  const [name, setName] = useState("");
+  const [rel, setRel] = useState<Relationship>("partner");
+  const [contact, setContact] = useState("");
+  const [sections, setSections] = useState<Shareable[]>(["schedule", "meds"]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [made, setMade] = useState<{ code: string; expiresAt: string } | null>(null);
+  const first = name.trim().split(" ")[0] || t("them", "esa persona");
+
+  if (made) {
+    const message = t(
+      `I'd like you to follow along with my care at Bayside Fertility. Download the Bayside Fertility app, tap "I have an invite code" and enter ${made.code}. The code works once and expires in 7 days.`,
+      `Me gustaría que me acompañes en mi tratamiento en Bayside Fertility. Descarga la app de Bayside Fertility, toca "Tengo un código de invitación" e ingresa ${made.code}. El código funciona una vez y vence en 7 días.`);
+    return (
+      <>
+        <H1>{t(`Send ${first} the invite`, `Envía la invitación a ${first}`)}</H1>
+        <View style={st.dark}>
+          <T style={{ fontSize: 13, color: C.tan }}>{t("Invite code", "Código de invitación")}</T>
+          <Text testID="invite-made-code" selectable style={{ fontFamily: F.serif, fontSize: 36, letterSpacing: 3, color: C.paper }}>{made.code}</Text>
+          <T style={{ fontSize: 13.5, color: "#E9DED3" }}>{t("Works once. Expires in 7 days.", "Funciona una vez. Vence en 7 días.")}</T>
+          <Button testID="share-invite" label={t("Send by text or email", "Enviar por mensaje o correo")} onPress={() => { void Share.share({ message }); }} />
+        </View>
+        <Muted>{t(`${first} will see only what you picked. You can change it or remove ${first} anytime in Settings.`, `${first} verá solo lo que elegiste. Puedes cambiarlo o quitar a ${first} cuando quieras en Ajustes.`)}</Muted>
+        <Button kind="line" label={t("Done", "Listo")} onPress={done} />
+      </>
+    );
+  }
+  const create = async () => {
+    setBusy(true); setError(null);
+    try { setMade(await api.createInvite({ name, relationship: rel, contact, sections })); await reload(); }
+    catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  };
+  return (
+    <>
+      <H1>{t("Invite a support person", "Invita a una persona de apoyo")}</H1>
+      <Muted>{t("A partner, family member or friend. They'll see only what you choose.", "Tu pareja, un familiar o una amistad. Solo verá lo que elijas.")}</Muted>
+      <Card style={{ gap: 10 }}>
+        <Cap>{t("Their name", "Su nombre")}</Cap>
+        <TextInput testID="invite-person-name" style={st.input} value={name} onChangeText={setName} placeholder={t("First and last name", "Nombre y apellido")} placeholderTextColor={C.stone} />
+        <Cap>{t("Who are they to you?", "¿Quién es para ti?")}</Cap>
+        <Chips>{RELATIONSHIPS.map((r) => <Chip key={r} testID={`rel-${r}`} label={t(...REL[r])} selected={rel === r} onPress={() => setRel(r)} />)}</Chips>
+        <Cap>{t("Their mobile number or email", "Su celular o correo")}</Cap>
+        <TextInput testID="invite-contact" style={st.input} value={contact} onChangeText={setContact} autoCapitalize="none" keyboardType="email-address" placeholder={t("(813) 555-0142 or name@email.com", "(813) 555-0142 o nombre@correo.com")} placeholderTextColor={C.stone} />
+      </Card>
+      <Cap>{t(`What ${first} can see`, `Qué puede ver ${first}`)}</Cap>
       <Card pad={false}>
         {SHARE_OPTIONS.map(([k, en, enSub, es, esSub], i) => (
           <View key={k} style={[st.row, i === 0 && { borderTopWidth: 0 }]}>
             <View style={{ flex: 1 }}><T style={{ fontFamily: F.sans600, fontSize: 15 }}>{t(en, es)}</T><Muted>{t(enSub, esSub)}</Muted></View>
-            <Switch testID={`share-${k}`} value={partner.sections.includes(k)} disabled={busy} thumbColor={C.paper} trackColor={{ true: C.espresso, false: C.line }} onValueChange={(v) => toggle(k, v)} />
+            <Toggle testID={`invite-share-${k}`} value={sections.includes(k)} onChange={(v) => setSections(v ? [...sections, k] : sections.filter((x) => x !== k))} />
           </View>
         ))}
-        <View style={st.row}><Muted style={{ flex: 1 }}>{t("Your messages with your care team are always private. Change this anytime.", "Tus mensajes con tu equipo siempre son privados. Puedes cambiar esto cuando quieras.")}</Muted></View>
+        <View style={st.row}><Muted style={{ flex: 1 }}>{t("Messages with your care team are never shared.", "Los mensajes con tu equipo nunca se comparten.")}</Muted></View>
       </Card>
+      {error && <T testID="invite-form-error" style={{ color: C.red }}>{error}</T>}
+      <Button testID="create-invite" label={busy ? t("Creating…", "Creando…") : t("Create invite", "Crear invitación")} disabled={busy || !name.trim() || !contact.trim() || sections.length === 0} onPress={create} />
     </>
   );
 }
@@ -471,7 +594,10 @@ function Urgent({ kind, t, back }: { kind: SendResult["kind"]; t: Tx; back: () =
 // ---------- Partner side ----------
 // English only for now; partner Spanish follows once the medical translator has reviewed the patient text.
 type PScreen = { name: "home" } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; level: "urgent" | "crisis" };
-const QUICK_NOTES = ["So proud of you", "I'll set up tonight's meds", "Want me to do the injection?", "Dinner's on me tonight"];
+// Injection offers only appear when injections are shared with this person.
+const quickNotes = (meds: boolean) => meds
+  ? ["So proud of you", "I'll set up tonight's meds", "Want me to do the injection?", "Dinner's on me tonight"]
+  : ["Thinking of you today", "So proud of you", "Whatever you need, I'm here", "Dinner's on me tonight"];
 const label = (s: string) => `${s[0]!.toUpperCase()}${s.slice(1)}`;
 
 function PartnerApp({ api, initials, onSignOut }: { api: Api; initials: string; onSignOut: () => void }) {
@@ -580,7 +706,7 @@ function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHom
       <View style={{ gap: 8 }}>
         <Cap>{`Send ${her} a note`}</Cap>
         {sent && <Moment>{`Sent. ${her} will see it on her home screen.`}</Moment>}
-        <Chips>{QUICK_NOTES.map((q) => <Chip key={q} label={q} onPress={() => { setSent(false); setNote(q); }} />)}</Chips>
+        <Chips>{quickNotes(data.sections.includes("meds")).map((q) => <Chip key={q} label={q} onPress={() => { setSent(false); setNote(q); }} />)}</Chips>
         <AskBox testID="note" value={note} onChange={(v) => { setSent(false); setNote(v); }} onSubmit={() => send(note)} placeholder={`Write something for ${her}`} />
         <Muted style={{ fontSize: 12 }}>{`Notes go to ${her}, not to the clinic. If something's wrong medically, call the nurse line.`}</Muted>
         {data.notes.length > 0 && (
