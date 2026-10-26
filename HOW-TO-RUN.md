@@ -58,3 +58,7 @@ Everything in this build is synthetic. Never enter real patient information.
 ## AI reply drafting (optional)
 
 Double-click **Turn on AI drafting** and paste an Anthropic API key. Then restart with **Start Kinpath**. Details in `docs/AI.md`.
+
+## Sharing a live demo link
+
+To give someone (like Tiffany) a link that works without your laptop, see `docs/DEMO.md`.
