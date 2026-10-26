@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, Share, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Animated, Easing, Linking, Platform, Pressable, ScrollView, Share, Text, TextInput, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -7,7 +7,7 @@ import { useFonts } from "expo-font";
 import { Newsreader_400Regular_Italic, Newsreader_500Medium } from "@expo-google-fonts/newsreader";
 import { InstrumentSans_400Regular, InstrumentSans_500Medium, InstrumentSans_600SemiBold, InstrumentSans_700Bold } from "@expo-google-fonts/instrument-sans";
 import Svg, { Path } from "react-native-svg";
-import { acceptInvite, Api, type Dose, type Guide, type Invite, type PartnerHome, type Relationship, type SendResult, type Shareable, type SupportPerson, type Today as TodayData } from "./src/api";
+import { acceptInvite, Api, type Dose, type Feeling, type ResultHow, type Guide, type Invite, type PartnerHome, type Relationship, type SendResult, type Shareable, type SupportPerson, type Today as TodayData } from "./src/api";
 import { askPermission, remindersSupported, syncReminders } from "./src/reminders";
 import { AskBox, Avatar, Button, C, Cap, Card, Chip, Chips, F, H1, JourneyPath, Moment, Muted, Pill, Row, st, T, TimelineItem, Today, Toggle } from "./src/ui";
 
@@ -22,7 +22,7 @@ const initialsOf = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 
 const NURSE_LINE = "tel:+18135550100"; // placeholder
 
 type Tab = "home" | "community" | "record" | "team";
-type Screen = { name: Tab } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; kind: SendResult["kind"] } | { name: "missed"; dose: Dose } | { name: "invite" };
+type Screen = { name: Tab } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; kind: SendResult["kind"] } | { name: "missed"; dose: Dose } | { name: "invite" } | { name: "rough" } | { name: "breathe" };
 type Tx = (en: string, es: string) => string;
 
 const STAGES = ["Consult", "Testing", "Stims", "Retrieval", "Transfer", "Wait", "Result", "OB-GYN"];
@@ -145,6 +145,8 @@ function Signed({ api, initials, onSignOut }: { api: Api; initials: string; onSi
   const [error, setError] = useState<string | null>(null);
   const [screen, setScreen] = useState<Screen>({ name: "home" });
   const [scheduled, setScheduled] = useState(0);
+  // A short line shown at the top of home after a support action ("Your nurse will call you today").
+  const [notice, setNotice] = useState<string | null>(null);
   const load = useCallback(async () => {
     try { const d = await api.today(); setData(d); setError(null); setScheduled(await syncReminders(d.reminders)); }
     catch (e) { setError((e as Error).message); }
@@ -164,8 +166,14 @@ function Signed({ api, initials, onSignOut }: { api: Api; initials: string; onSi
 
   return (
     <Frame top={top} tabs={tabs}>
-      {screen.name === "home" && <Home data={data} api={api} t={t} go={go} afterSend={afterSend} reload={load} />}
-      {screen.name === "walk" && <Walk doses={screen.doses} focus={screen.focus} api={api} lang={data.lang} t={t} done={home} somethingWrong={() => go({ name: "team" })} />}
+      {screen.name === "home" && (data.wait.result
+        ? <ResultHome data={data} api={api} t={t} go={go} reload={load} notice={notice} setNotice={setNotice} />
+        : data.wait.stage === "wait"
+          ? <WaitHome data={data} api={api} t={t} go={go} reload={load} notice={notice} />
+          : <Home data={data} api={api} t={t} go={go} afterSend={afterSend} reload={load} />)}
+      {screen.name === "rough" && <RoughDay api={api} t={t} go={go} done={(msg) => { setNotice(msg); home(); }} />}
+      {screen.name === "breathe" && <Breathe t={t} done={() => { setNotice(t("That was a few minutes just for you.", "Fueron unos minutos solo para ti.")); home(); }} />}
+      {screen.name === "walk" && <Walk doses={screen.doses} focus={screen.focus} api={api} lang={data.lang} t={t} done={home} quiet={data.wait.quietUntil !== null} somethingWrong={() => go({ name: "team" })} />}
       {screen.name === "missed" && <Missed dose={screen.dose} api={api} t={t} reload={load} afterSend={afterSend} done={home} />}
       {screen.name === "team" && <CareTeam data={data} api={api} t={t} reload={load} afterSend={afterSend} />}
       {screen.name === "record" && <Record data={data} t={t} />}
@@ -177,29 +185,11 @@ function Signed({ api, initials, onSignOut }: { api: Api; initials: string; onSi
   );
 }
 
-// ---------- Home (matches the demo's "Today") ----------
-function Home({ data, api, t, go, afterSend, reload }: { data: TodayData; api: Api; t: Tx; go: (s: Screen) => void; afterSend: (r: SendResult) => void; reload: () => Promise<void> }) {
-  const [ask, setAsk] = useState("");
-  const [sending, setSending] = useState(false);
-  const pending = useMemo(() => data.schedule.upcoming.filter((d) => !d.takenAt), [data]);
-  const nextAt = pending[0]?.scheduledFor;
-  const tonight = useMemo(() => pending.filter((d) => d.scheduledFor === nextAt), [pending, nextAt]);
-  const loggedTonight = [...data.schedule.upcoming, ...data.schedule.recent].filter((d) => d.takenAt && Math.abs(Date.now() - new Date(d.scheduledFor).getTime()) < 24 * 3600_000);
-  const missed = data.schedule.missed;
-  const replies = data.inbox.filter((m) => m.status === "sent");
-  const reviewing = data.results.filter((r) => r.status !== "in_range");
-  const day = data.stimDay;
+// Notes from support people, shown at the top of every home view.
+function NoteCards({ data, api, t, reload }: { data: TodayData; api: Api; t: Tx; reload: () => Promise<void> }) {
   const notes = data.sharing.notes.filter((n) => !n.seenAt);
-  const send = async (text: string) => { if (!text.trim() || sending) return; setSending(true); const r = await api.sendMessage(text); setAsk(""); setSending(false); afterSend(r); };
-
   return (
     <>
-      <View style={{ gap: 4 }}>
-        <Today>{t("Today", "Hoy")}</Today>
-        <Muted>{day ? t(`Stimulation, day ${day} · We're here for anything.`, `Estimulación, día ${day} · Estamos aquí para lo que necesites.`) : t("We're here for anything.", "Estamos aquí para lo que necesites.")}</Muted>
-        <Muted style={{ fontSize: 12 }}>{data.clinic.replyWindow[data.lang]} {t("Urgent? Call the nurse line anytime.", "¿Urgente? Llama a enfermería a cualquier hora.")}</Muted>
-      </View>
-
       {notes.map((n) => n.level !== "routine" ? (
         <View key={n.id} testID="partner-note-worried" style={[st.card, { padding: 16, gap: 8, borderColor: C.red, borderWidth: 1.5, borderBottomColor: C.red }]}>
           <Cap>{t(`From ${n.fromName}`, `De ${n.fromName}`)}</Cap>
@@ -220,6 +210,33 @@ function Home({ data, api, t, go, afterSend, reload }: { data: TodayData; api: A
           <Button testID="note-thanks" kind="line" label={t("Thanks ♥", "Gracias ♥")} onPress={async () => { await api.noteSeen(n.id); await reload(); }} />
         </View>
       ))}
+    </>
+  );
+}
+
+// ---------- Home (matches the demo's "Today") ----------
+function Home({ data, api, t, go, afterSend, reload }: { data: TodayData; api: Api; t: Tx; go: (s: Screen) => void; afterSend: (r: SendResult) => void; reload: () => Promise<void> }) {
+  const [ask, setAsk] = useState("");
+  const [sending, setSending] = useState(false);
+  const pending = useMemo(() => data.schedule.upcoming.filter((d) => !d.takenAt), [data]);
+  const nextAt = pending[0]?.scheduledFor;
+  const tonight = useMemo(() => pending.filter((d) => d.scheduledFor === nextAt), [pending, nextAt]);
+  const loggedTonight = [...data.schedule.upcoming, ...data.schedule.recent].filter((d) => d.takenAt && Math.abs(Date.now() - new Date(d.scheduledFor).getTime()) < 24 * 3600_000);
+  const missed = data.schedule.missed;
+  const replies = data.inbox.filter((m) => m.status === "sent");
+  const reviewing = data.results.filter((r) => r.status !== "in_range");
+  const day = data.stimDay;
+  const send = async (text: string) => { if (!text.trim() || sending) return; setSending(true); const r = await api.sendMessage(text); setAsk(""); setSending(false); afterSend(r); };
+
+  return (
+    <>
+      <View style={{ gap: 4 }}>
+        <Today>{t("Today", "Hoy")}</Today>
+        <Muted>{day ? t(`Stimulation, day ${day} · We're here for anything.`, `Estimulación, día ${day} · Estamos aquí para lo que necesites.`) : t("We're here for anything.", "Estamos aquí para lo que necesites.")}</Muted>
+        <Muted style={{ fontSize: 12 }}>{data.clinic.replyWindow[data.lang]} {t("Urgent? Call the nurse line anytime.", "¿Urgente? Llama a enfermería a cualquier hora.")}</Muted>
+      </View>
+
+      <NoteCards data={data} api={api} t={t} reload={reload} />
 
       <JourneyPath current={stageIndex(data.stage)} labels={data.lang === "es" ? STAGES_ES : STAGES} />
 
@@ -282,8 +299,191 @@ function Home({ data, api, t, go, afterSend, reload }: { data: TodayData; api: A
   );
 }
 
+// ---------- The two-week wait (matches the demo's wait home) ----------
+const longDate = (iso: string, lang: "en" | "es") => new Date(iso).toLocaleDateString(lang === "es" ? "es-US" : "en-US", { weekday: "long", month: "short", day: "numeric" });
+function WaitHome({ data, api, t, go, reload, notice }: { data: TodayData; api: Api; t: Tx; go: (s: Screen) => void; reload: () => Promise<void>; notice: string | null }) {
+  const w = data.wait;
+  const [answer, setAnswer] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const partner = data.sharing.partners.find((p) => p.relationship === "partner");
+  const hows: [ResultHow, string][] = [
+    ["call", t("My nurse calls me", "Que mi enfermera me llame")],
+    ["app", t("In the app", "En la app")],
+    ...(partner ? [["together", t(`Call me and ${partner.name.split(" ")[0]} together`, `Que nos llamen a ${partner.name.split(" ")[0]} y a mí`)] as [ResultHow, string]] : []),
+  ];
+  const feelings: [Feeling, string][] = [["okay", t("Okay", "Bien")], ["anxious", t("Anxious", "Ansiosa")], ["struggling", t("Struggling", "Me está costando")]];
+  const reply: Record<Feeling, string> = {
+    okay: t("Glad to hear it. We'll ask again tomorrow.", "Qué bueno. Te preguntaremos de nuevo mañana."),
+    anxious: t("That's very common in the wait. \"Rough day?\" below has a short breathing exercise, and you can always message your team.", "Es muy común durante la espera. En \"¿Un día difícil?\" hay un ejercicio corto de respiración, y siempre puedes escribirle a tu equipo."),
+    struggling: t("Thank you for telling us. Your nurse will call you today. If it can't wait, call the nurse line.", "Gracias por decírnoslo. Tu enfermera te llamará hoy. Si no puede esperar, llama a enfermería."),
+  };
+  const pending = data.schedule.upcoming.filter((d) => !d.takenAt);
+  const shown = w.answers.find((a) => a.id === answer);
+  const save = async (fn: () => Promise<unknown>) => { if (busy) return; setBusy(true); try { await fn(); await reload(); } finally { setBusy(false); } };
+
+  return (
+    <>
+      <View style={{ gap: 4 }}>
+        <Today>{w.prefs.hideDayCount || !w.dayOfWait ? t("The wait", "La espera") : t(`Day ${w.dayOfWait} of the wait`, `Día ${w.dayOfWait} de la espera`)}</Today>
+        <Muted>{t("Waiting is hard. We're with you.", "Esperar es difícil. Estamos contigo.")}</Muted>
+      </View>
+      <JourneyPath current={5} labels={data.lang === "es" ? STAGES_ES : STAGES} />
+      {notice && <Moment>{notice}</Moment>}
+      <NoteCards data={data} api={api} t={t} reload={reload} />
+
+      {w.testAt && (
+        <View style={st.dark}>
+          <T style={{ fontSize: 13, color: C.tan }}>{t("Your pregnancy blood test", "Tu prueba de embarazo en sangre")}</T>
+          <Text testID="test-date" style={{ fontFamily: F.serif, fontSize: 27, lineHeight: 31, color: C.paper }}>{longDate(w.testAt, data.lang)} · {clock(w.testAt)}</Text>
+          <T style={{ fontSize: 13.5, color: "#E9DED3" }}>{t("Your nurse shares the result the way you choose below.", "Tu enfermera te dará el resultado como elijas abajo.")}</T>
+        </View>
+      )}
+
+      <Card style={{ gap: 10 }}>
+        <T style={{ fontFamily: F.sans700, fontSize: 15 }}>{t("How do you want to hear your result?", "¿Cómo quieres recibir tu resultado?")}</T>
+        <Chips>{hows.map(([k, l]) => <Chip key={k} testID={`how-${k}`} label={l} selected={w.prefs.resultHow === k} onPress={() => save(() => api.setWaitPrefs({ resultHow: k }))} />)}</Chips>
+        {w.prefs.resultHow && <T style={{ fontSize: 13, color: C.sageInk }}>{t("Saved. Your care team will follow this.", "Guardado. Tu equipo lo tendrá en cuenta.")}</T>}
+      </Card>
+
+      <View style={{ backgroundColor: C.softLav, borderRadius: 18, padding: 16, gap: 10 }}>
+        <T style={{ fontFamily: F.sans700, fontSize: 15, color: C.lavDeep }}>{t("How are you today?", "¿Cómo estás hoy?")}</T>
+        <Chips>{feelings.map(([k, l]) => <Chip key={k} testID={`feel-${k}`} label={l} selected={w.checkedInToday === k} onPress={() => save(() => api.checkIn(k))} />)}</Chips>
+        {w.checkedInToday && <T testID="feel-reply" style={{ fontSize: 13.5, color: C.lavDeep }}>{reply[w.checkedInToday]}</T>}
+      </View>
+
+      {w.answers.length > 0 && (
+        <View style={{ gap: 8 }}>
+          <Cap>{t("Others ask during the wait", "Otras personas preguntan durante la espera")}</Cap>
+          <Chips>{w.answers.map((a) => <Chip key={a.id} label={a.title} selected={answer === a.id} onPress={() => setAnswer(answer === a.id ? null : a.id)} />)}</Chips>
+          {shown && <Card style={{ gap: 6 }}><Cap>{t("From Bayside's care team", "Del equipo de Bayside")}</Cap><T testID="wait-answer" style={{ fontSize: 15, lineHeight: 22 }}>{shown.text}</T></Card>}
+        </View>
+      )}
+
+      {pending.length > 0 && (
+        <Card pad={false} style={{ paddingHorizontal: 16, paddingVertical: 4 }}>
+          {pending.slice(0, 3).map((d, i) => <TimelineItem key={d.id} first={i === 0} icon="drop" tone="lav" when={dayClock(d.scheduledFor)} what={`${d.medication} · ${d.dose}`} action={t("Walk me through it", "Guíame")} onAction={() => go({ name: "walk", doses: [d] })} />)}
+        </Card>
+      )}
+
+      <Button testID="rough-day" kind="line" label={t("Rough day?", "¿Un día difícil?")} onPress={() => go({ name: "rough" })} />
+      <Pressable testID="toggle-count" onPress={() => save(() => api.setWaitPrefs({ hideDayCount: !w.prefs.hideDayCount }))} style={{ alignSelf: "center", padding: 6 }}>
+        <T style={{ color: C.stone, textDecorationLine: "underline" }}>{w.prefs.hideDayCount ? t("Show the day count again", "Mostrar de nuevo el conteo de días") : t("Hide the day count", "Ocultar el conteo de días")}</T>
+      </Pressable>
+    </>
+  );
+}
+
+function RoughDay({ api, t, go, done }: { api: Api; t: Tx; go: (s: Screen) => void; done: (msg: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <>
+      <H1>{t("That's okay. What would help right now?", "Está bien. ¿Qué te ayudaría ahora?")}</H1>
+      <Button testID="rough-talk" kind="line" label={t("Talk to someone", "Hablar con alguien")} disabled={busy} onPress={async () => { setBusy(true); await api.askForCall("rough_day"); done(t("Your nurse will call you today. If it can't wait, call the nurse line.", "Tu enfermera te llamará hoy. Si no puede esperar, llama a enfermería.")); }} />
+      <Button testID="rough-calm" kind="line" label={t("Something calming", "Algo para calmarme")} onPress={() => go({ name: "breathe" })} />
+      <Button testID="rough-log" kind="line" label={t("Just get through today", "Solo pasar el día")} onPress={() => done(t("That's enough for today. Be gentle with yourself.", "Es suficiente por hoy. Sé amable contigo.")) } />
+      <Muted>{t("Your nurse only hears about this if you choose \"Talk to someone.\"", "Tu enfermera solo se entera si eliges \"Hablar con alguien.\"")}</Muted>
+      <Muted style={{ fontSize: 12.5 }}>{t("If you're thinking about hurting yourself, call or text 988 any time.", "Si estás pensando en hacerte daño, llama o escribe al 988 en cualquier momento.")}</Muted>
+    </>
+  );
+}
+
+function Breathe({ t, done }: { t: Tx; done: () => void }) {
+  const scale = useMemo(() => new Animated.Value(0.6), []);
+  useEffect(() => {
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(scale, { toValue: 1, duration: 4000, easing: Easing.inOut(Easing.ease), useNativeDriver: Platform.OS !== "web" }),
+      Animated.timing(scale, { toValue: 0.6, duration: 6000, easing: Easing.inOut(Easing.ease), useNativeDriver: Platform.OS !== "web" }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [scale]);
+  return (
+    <View style={{ alignItems: "center", gap: 18, paddingTop: 10 }}>
+      <H1>{t("Breathe with the circle", "Respira con el círculo")}</H1>
+      <View style={{ width: 240, height: 240, alignItems: "center", justifyContent: "center" }}>
+        <Animated.View testID="breath-circle" style={{ width: 220, height: 220, borderRadius: 110, backgroundColor: C.lav, transform: [{ scale }], alignItems: "center", justifyContent: "center" }}>
+          <T style={{ color: C.lavDeep, fontFamily: F.sans600 }}>{t("breathe", "respira")}</T>
+        </Animated.View>
+      </View>
+      <Muted style={{ textAlign: "center" }}>{t("In as it grows, out as it shrinks. Stay as long as you like.", "Inhala cuando crece, exhala cuando se encoge. Quédate el tiempo que quieras.")}</Muted>
+      <View style={{ alignSelf: "stretch" }}><Button testID="breathe-done" kind="esp" label={t("I'm done", "Listo")} onPress={done} /></View>
+    </View>
+  );
+}
+
+// ---------- Result day ----------
+function ResultHome({ data, api, t, go, reload, notice, setNotice }: { data: TodayData; api: Api; t: Tx; go: (s: Screen) => void; reload: () => Promise<void>; notice: string | null; setNotice: (s: string | null) => void }) {
+  const r = data.wait.result!;
+  const first = data.firstName ?? "";
+  const partner = data.sharing.partners.find((p) => p.relationship === "partner");
+  const by = r.by.split(/[ ,]/)[0]!;
+  const nurseNote = (
+    <Card style={{ gap: 8 }}>
+      <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Avatar text={initialsOf(r.by)} bg={C.sage} fg={C.sageInk} size={30} /><T style={{ fontFamily: F.sans600 }}>{r.by}</T></View>
+      <T testID="result-note" style={{ fontSize: 15.5, lineHeight: 23 }}>{r.note}</T>
+    </Card>
+  );
+
+  if (r.outcome === "negative") {
+    const quiet = data.wait.quietUntil;
+    return (
+      <>
+        <Today size={36}>{t(`We're so sorry, ${first}.`, `Lo sentimos mucho, ${first}.`)}</Today>
+        <Card style={{ gap: 6 }}>
+          <T style={{ fontSize: 15.5 }}>{t("This test was negative. Whatever you're feeling right now is okay.", "Esta prueba salió negativa. Lo que sientas ahora está bien.")}</T>
+          <Muted>{t("You don't have to decide anything today.", "No tienes que decidir nada hoy.")}</Muted>
+        </Card>
+        {nurseNote}
+        {notice && <Moment>{notice}</Moment>}
+        <Card pad={false}>
+          <Row title={t(`Talk with ${by}`, `Hablar con ${by}`)} sub={t("A call, whenever you're ready", "Una llamada, cuando estés lista")} onPress={() => Linking.openURL(NURSE_LINE)} />
+          <Row testID="ask-counselor" title={t("A counselor who knows this", "Una consejera que entiende esto")} sub={t(partner ? `For you, and for you and ${partner.name.split(" ")[0]}` : "Someone who works with fertility and loss", partner ? `Para ti, y para ti y ${partner.name.split(" ")[0]}` : "Alguien que trabaja con fertilidad y pérdida")}
+            onPress={async () => { await api.askForCall("counselor"); setNotice(t(`${by} will help you find a counselor.`, `${by} te ayudará a encontrar una consejera.`)); await reload(); }} />
+          <Row title={t("People who've been here too", "Personas que han pasado por esto")} sub={t("A quiet group, when you're ready", "Un grupo tranquilo, cuando estés lista")} onPress={() => go({ name: "community" })} />
+        </Card>
+        <NoteCards data={data} api={api} t={t} reload={reload} />
+        {quiet ? (
+          <View testID="quiet-banner" style={{ backgroundColor: C.lav, borderRadius: 16, padding: 14, gap: 8 }}>
+            <T style={{ color: C.lavDeep, fontSize: 13.5, lineHeight: 20 }}>{t(
+              `We've quieted the app until ${new Date(quiet).toLocaleDateString("en-US", { month: "long", day: "numeric" })}: no cheerful messages and no "did you log it?" nudges. If your nurse still has you on medication, those reminders still come.`,
+              `Silenciamos la app hasta el ${new Date(quiet).toLocaleDateString("es-US", { month: "long", day: "numeric" })}: sin mensajes alegres ni recordatorios de "¿lo registraste?". Si tu enfermera aún te tiene con medicamentos, esos recordatorios siguen llegando.`)}</T>
+            <Pressable testID="quiet-off" onPress={async () => { await api.setWaitPrefs({ quietOff: true }); await reload(); }}><T style={{ color: C.lavDeep, fontFamily: F.sans600, textDecorationLine: "underline" }}>{t("Turn this off", "Desactivar")}</T></Pressable>
+          </View>
+        ) : null}
+        <Muted style={{ fontSize: 12.5 }}>{t("When you're ready, your team will talk through what comes next. If you're in crisis, call or text 988 any time.", "Cuando estés lista, tu equipo hablará contigo sobre los próximos pasos. Si estás en crisis, llama o escribe al 988 en cualquier momento.")}</Muted>
+      </>
+    );
+  }
+  if (r.outcome === "repeat") {
+    return (
+      <>
+        <Today size={34}>{t("Your result needs a second test.", "Tu resultado necesita una segunda prueba.")}</Today>
+        <Muted>{t("This happens, and it doesn't tell you the answer yet. Your nurse explains below.", "Esto pasa, y todavía no da la respuesta. Tu enfermera lo explica abajo.")}</Muted>
+        {nurseNote}
+        <NoteCards data={data} api={api} t={t} reload={reload} />
+        <Button kind="line" label={t("Message my team", "Escribir a mi equipo")} onPress={() => go({ name: "team" })} />
+      </>
+    );
+  }
+  return (
+    <>
+      <Today size={36}>{t("Your test is positive.", "Tu prueba es positiva.")}</Today>
+      <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+        <Pill tone="sage" label={t("First test · positive", "Primera prueba · positiva")} />
+        {r.hcg !== null && <Pill tone="lav" label={`hCG ${r.hcg}`} />}
+      </View>
+      {nurseNote}
+      <Muted>{data.wait.prefs.resultHow === "together" && partner
+        ? t(`${partner.name.split(" ")[0]} heard the news with you.`, `${partner.name.split(" ")[0]} recibió la noticia contigo.`)
+        : t("You decide when to tell anyone, including the people you've invited. They can't see your result.", "Tú decides cuándo contárselo a alguien, incluidas las personas que invitaste. Ellas no pueden ver tu resultado.")}</Muted>
+      <NoteCards data={data} api={api} t={t} reload={reload} />
+      <Button kind="line" label={t("Message my team", "Escribir a mi equipo")} onPress={() => go({ name: "team" })} />
+    </>
+  );
+}
+
 // ---------- Injection walkthrough (demo layout: one medication per screen) ----------
-function Walk({ doses, focus, api, lang, t, done, somethingWrong, helper }: { doses: Dose[]; focus?: string; api: Api; lang: "en" | "es"; t: Tx; done: () => void; somethingWrong: () => void; helper?: string }) {
+function Walk({ doses, focus, api, lang, t, done, somethingWrong, helper, quiet }: { doses: Dose[]; focus?: string; api: Api; lang: "en" | "es"; t: Tx; done: () => void; somethingWrong: () => void; helper?: string; quiet?: boolean }) {
   const start = Math.max(0, doses.findIndex((d) => d.medication === focus));
   const [i, setI] = useState(start);
   const [logged, setLogged] = useState(0);
@@ -317,7 +517,7 @@ function Walk({ doses, focus, api, lang, t, done, somethingWrong, helper }: { do
   return (
     <>
       {helper && <Moment tone="lav">{`Helping ${helper}. She logs each dose on her phone.`}</Moment>}
-      {logged === 1 && <Moment>{t("First one done. The hardest part is behind you.", "La primera, lista. Lo más difícil ya pasó.")}</Moment>}
+      {logged === 1 && !quiet && <Moment>{t("First one done. The hardest part is behind you.", "La primera, lista. Lo más difícil ya pasó.")}</Moment>}
       <View style={{ flexDirection: "row", gap: 6 }}>
         {doses.map((d, k) => <View key={d.id} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: k <= i ? C.lavInk : "#B9ACDF" }} />)}
       </View>
@@ -625,7 +825,9 @@ function Urgent({ kind, t, back }: { kind: SendResult["kind"]; t: Tx; back: () =
 // English only for now; partner Spanish follows once the medical translator has reviewed the patient text.
 type PScreen = { name: "home" } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; level: "urgent" | "crisis" };
 // Injection offers only appear when injections are shared with this person.
-const quickNotes = (meds: boolean) => meds
+const quickNotes = (meds: boolean, waiting: boolean) => waiting
+  ? ["Thinking of you today", "Dinner's on me tonight", "Whatever happens, we're in this together", "So proud of you"]
+  : meds
   ? ["So proud of you", "I'll set up tonight's meds", "Want me to do the injection?", "Dinner's on me tonight"]
   : ["Thinking of you today", "So proud of you", "Whatever you need, I'm here", "Dinner's on me tonight"];
 const label = (s: string) => `${s[0]!.toUpperCase()}${s.slice(1)}`;
@@ -677,6 +879,8 @@ function PartnerApp({ api, initials, onSignOut }: { api: Api; initials: string; 
 
 function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHome, { shared: true }>; api: Api; go: (s: PScreen) => void; reload: () => Promise<void> }) {
   const her = data.firstName ?? "your partner";
+  const waiting = data.stage === "wait" || data.stage === "result";
+  const w = data.wait;
   const [note, setNote] = useState("");
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -701,12 +905,23 @@ function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHom
       <View style={{ gap: 4 }}>
         <Cap>{`Supporting ${her}`}</Cap>
         <Today>{`Hi ${data.name.split(" ")[0]}.`}</Today>
-        <Muted>{data.stimDay ? `${her} is on stimulation, day ${data.stimDay}. Small things help a lot right now.` : "Small things help a lot right now."}</Muted>
+        <T testID="partner-status" style={{ color: C.stone, fontSize: 13.5 }}>{w?.resultIsIn
+          ? `${her}'s result is in. She'll share it with you when she's ready.`
+          : waiting
+            ? (w?.dayOfWait ? `${her} is on day ${w.dayOfWait} of the two-week wait.` : `${her} is in the two-week wait.`) + " The waiting is hard. Small, steady things help."
+            : data.stimDay ? `${her} is on stimulation, day ${data.stimDay}. Small things help a lot right now.` : "Small things help a lot right now."}</T>
       </View>
+      {waiting && !w?.resultIsIn && w?.testAt && (
+        <Card style={{ gap: 4 }}>
+          <Cap>Her blood test</Cap>
+          <T style={{ fontFamily: F.sans600, fontSize: 16 }}>{longDate(w.testAt, "en")} · {clock(w.testAt)}</T>
+          <Muted>Let her decide when to talk about testing. Her nurse shares the result with her first.</Muted>
+        </Card>
+      )}
 
       {data.sections.includes("schedule") && <JourneyPath current={stageIndex(data.stage)} labels={STAGES} />}
 
-      {data.sections.includes("meds") && (
+      {data.sections.includes("meds") && (!waiting || tonight.length > 0) && (
         <View style={{ gap: 8 }}>
           <Cap>Tonight</Cap>
           {tonight.length > 0 ? (
@@ -736,7 +951,7 @@ function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHom
       <View style={{ gap: 8 }}>
         <Cap>{`Send ${her} a note`}</Cap>
         {sent && <Moment>{`Sent. ${her} will see it on her home screen.`}</Moment>}
-        <Chips>{quickNotes(data.sections.includes("meds")).map((q) => <Chip key={q} label={q} onPress={() => { setSent(false); setNote(q); }} />)}</Chips>
+        <Chips>{quickNotes(data.sections.includes("meds"), waiting).map((q) => <Chip key={q} label={q} onPress={() => { setSent(false); setNote(q); }} />)}</Chips>
         <AskBox testID="note" value={note} onChange={(v) => { setSent(false); setNote(v); }} onSubmit={() => send(note)} placeholder={`Write something for ${her}`} />
         <Muted style={{ fontSize: 12 }}>{`Notes go to ${her}, not to the clinic. If something's wrong medically, call the nurse line.`}</Muted>
         {data.notes.length > 0 && (

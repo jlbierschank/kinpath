@@ -105,7 +105,7 @@ export async function handoffDetail(db: Db, actor: Actor, handoffId: string): Pr
     const doses = await tx.query<{ medication: string; dose: string; scheduled_for: Date; taken_at: Date | null; reported_missed_at: Date | null }>(
       `SELECT m.medication, m.dose, d.scheduled_for, d.taken_at, d.reported_missed_at
          FROM dose_logs d JOIN med_orders m ON m.id = d.med_order_id
-        WHERE d.patient_id = $1 ORDER BY d.scheduled_for DESC LIMIT 6`, [row.patient_id]);
+        WHERE d.patient_id = $1 AND d.canceled_at IS NULL ORDER BY d.scheduled_for DESC LIMIT 6`, [row.patient_id]);
     await audit(tx, actor, "staff.viewed_handoff", row.patient_id, { handoffId });
     const pt = p.rows[0]!;
     return {
@@ -230,7 +230,7 @@ export async function patientToday(db: Db, actor: Actor, patientId: string) {
     const c = await tx.query<{ stage: string; stim_day: number | null }>(`SELECT stage, stim_day FROM cycles WHERE patient_id = $1 ORDER BY started_on DESC LIMIT 1`, [patientId]);
     const d = await tx.query<{ id: string; medication: string; dose: string; scheduled_for: Date; taken_at: Date | null; reported_missed_at: Date | null }>(
       `SELECT d.id, m.medication, m.dose, d.scheduled_for, d.taken_at, d.reported_missed_at FROM dose_logs d JOIN med_orders m ON m.id = d.med_order_id
-        WHERE d.patient_id = $1 ORDER BY d.scheduled_for DESC LIMIT 6`, [patientId]);
+        WHERE d.patient_id = $1 AND d.canceled_at IS NULL ORDER BY d.scheduled_for DESC LIMIT 6`, [patientId]);
     const r = await tx.query<{ id: string }>(`SELECT id FROM lab_results WHERE patient_id = $1`, [patientId]);
     return {
       firstName: p.rows[0]?.first_name ?? null,
@@ -261,7 +261,7 @@ export async function patientSchedule(db: Db, actor: Actor, patientId: string, n
     const d = await tx.query<{ id: string; medication: string; dose: string; scheduled_for: Date; taken_at: Date | null; reported_missed_at: Date | null }>(
       `SELECT d.id, m.medication, m.dose, d.scheduled_for, d.taken_at, d.reported_missed_at FROM dose_logs d JOIN med_orders m ON m.id = d.med_order_id
         LEFT JOIN med_guides g ON g.clinic_id = d.clinic_id AND g.medication = m.medication
-        WHERE d.patient_id = $1 AND d.scheduled_for > $2::timestamptz - interval '3 days' ORDER BY d.scheduled_for, coalesce(g.sort_order, 100), m.medication`, [patientId, now.toISOString()]);
+        WHERE d.patient_id = $1 AND d.canceled_at IS NULL AND d.scheduled_for > $2::timestamptz - interval '3 days' ORDER BY d.scheduled_for, coalesce(g.sort_order, 100), m.medication`, [patientId, now.toISOString()]);
     const rows: DoseRow[] = d.rows.map((x) => ({ id: x.id, medication: x.medication, dose: x.dose, scheduledFor: new Date(x.scheduled_for).toISOString(), takenAt: x.taken_at ? new Date(x.taken_at).toISOString() : null, reportedMissed: x.reported_missed_at !== null }));
     return {
       upcoming: rows.filter((r) => new Date(r.scheduledFor) >= now),

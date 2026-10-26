@@ -19,8 +19,19 @@ export interface Today {
   prefs: ReminderPrefs;
   reminders: PlannedReminder[];
   sharing: { partners: SupportPerson[]; notes: Note[]; invites: Invite[] };
+  wait: Wait;
 }
 export type Shareable = "schedule" | "meds" | "results";
+export type ResultHow = "call" | "app" | "together";
+export type Feeling = "okay" | "anxious" | "struggling";
+export interface Wait {
+  stage: string | null; dayOfWait: number | null; testAt: string | null;
+  prefs: { resultHow: ResultHow | null; hideDayCount: boolean; quietOff: boolean };
+  checkedInToday: Feeling | null;
+  result: null | { outcome: "positive" | "negative" | "repeat"; hcg: number | null; note: string; by: string; releasedAt: string };
+  quietUntil: string | null;
+  answers: { id: string; title: string; text: string }[];
+}
 export type Relationship = "partner" | "family" | "friend" | "other";
 export interface SupportPerson { userId: string; name: string; relationship: Relationship; sections: Shareable[] }
 export interface Invite { id: string; name: string; relationship: Relationship; contact: string; sections: Shareable[]; expiresAt: string }
@@ -33,6 +44,7 @@ export type PartnerHome =
       schedule: { upcoming: Dose[]; missed: Dose[]; recent: Dose[] } | null;
       results: { id: string; analyte: string; value: number; unit: string; status: string; text: string }[] | null;
       notes: Note[];
+      wait: { dayOfWait: number | null; testAt: string | null; resultIsIn: boolean } | null;
     };
 export interface Guide { medication: string; steps: Record<Lang, string>[]; videoUrl: string | null; approvedBy: string }
 export interface SendResult { handoffId: string; kind: "missed_dose" | "question" | "urgent_symptom" | "crisis" | "result_review" }
@@ -61,6 +73,9 @@ export class Api {
     this.call<{ id: string; code: string; expiresAt: string }>("/api/patient/invites", { method: "POST", body: input });
   cancelInvite = (id: string) => this.call<{ ok: boolean }>(`/api/patient/invites/${id}/cancel`, { method: "POST", body: {} });
   removePerson = (partnerUserId: string) => this.call<{ ok: boolean }>("/api/patient/sharing/remove", { method: "POST", body: { partnerUserId } });
+  setWaitPrefs = (change: { resultHow?: ResultHow; hideDayCount?: boolean; quietOff?: boolean }) => this.call<{ ok: boolean }>("/api/patient/wait/prefs", { method: "POST", body: change });
+  checkIn = (feeling: Feeling) => this.call<{ nurseWillCall: boolean }>("/api/patient/wait/checkin", { method: "POST", body: { feeling } });
+  askForCall = (why: "rough_day" | "counselor") => this.call<{ ok: boolean }>("/api/patient/wait/call", { method: "POST", body: { why } });
   noteSeen = (id: string) => this.call<{ ok: boolean }>(`/api/patient/notes/${id}/seen`, { method: "POST", body: {} });
   // Partner side
   partnerHome = () => this.call<PartnerHome>("/api/partner/home");

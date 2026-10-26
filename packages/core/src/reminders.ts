@@ -68,7 +68,11 @@ function text(kind: PlannedReminder["kind"], meds: string[], clinic: string, pre
 }
 
 /** Plan reminders for doses that haven't been taken yet. Doses at the same time share one reminder. */
-export function planReminders(doses: ScheduledDose[], prefs: ReminderPrefs, now: Date, clinicName: string): PlannedReminder[] {
+/**
+ * opts.quiet: after a negative result the app goes quiet. Dose reminders still ring (a missed
+ * medication is a safety issue), but the "did you log it?" follow-up nudges stop.
+ */
+export function planReminders(doses: ScheduledDose[], prefs: ReminderPrefs, now: Date, clinicName: string, opts: { quiet?: boolean } = {}): PlannedReminder[] {
   const pending = doses.filter((d) => d.takenAt === null && new Date(d.scheduledFor) > new Date(now.getTime() - prefs.followUpMinutes * 60_000));
   const groups = new Map<string, ScheduledDose[]>();
   for (const d of pending) {
@@ -84,7 +88,7 @@ export function planReminders(doses: ScheduledDose[], prefs: ReminderPrefs, now:
     if (doseAt > now) out.push({ key: `dose:${when}`, doseIds: ids, at: doseAt.toISOString(), kind: "dose", ...text("dose", meds, clinicName, prefs) });
     let follow = new Date(due.getTime() + prefs.followUpMinutes * 60_000);
     if (inQuietHours(follow, prefs)) follow = endOfQuiet(follow, prefs);
-    if (follow > now) out.push({ key: `follow:${when}`, doseIds: ids, at: follow.toISOString(), kind: "follow_up", ...text("follow_up", meds, clinicName, prefs) });
+    if (follow > now && !opts.quiet) out.push({ key: `follow:${when}`, doseIds: ids, at: follow.toISOString(), kind: "follow_up", ...text("follow_up", meds, clinicName, prefs) });
   }
   return out;
 }

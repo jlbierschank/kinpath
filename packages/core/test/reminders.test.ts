@@ -24,6 +24,13 @@ describe("dose reminders", () => {
     }
   });
 
+  it("in quiet mode keeps dose reminders but drops the follow-up nudges", () => {
+    const normal = planReminders(tonight, DEFAULT_PREFS, at(9), "Bayside Fertility");
+    const quiet = planReminders(tonight, DEFAULT_PREFS, at(9), "Bayside Fertility", { quiet: true });
+    expect(normal.some((x) => x.kind === "follow_up")).toBe(true);
+    expect(quiet.map((x) => x.kind)).toEqual(["dose"]);
+  });
+
   it("shows names only when the patient turns that on, in her language", () => {
     const r = planReminders(tonight, { ...DEFAULT_PREFS, lockScreenDetail: true, lang: "es" }, at(9), "Bayside");
     expect(r[0]!.body).toBe("Pronto: Gonal-f, Menopur, Cetrotide");

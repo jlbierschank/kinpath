@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { nurseQueue, IDS } from "@kinpath/db";
+import { clinicPatients, nurseQueue, nurseTasks, IDS } from "@kinpath/db";
 import { getDb } from "@/lib/db";
 import { requireSession } from "@/lib/session";
 import { enterResult } from "../actions";
+import { completeTaskAction } from "./patients/actions";
 
 const KIND: Record<string, [string, string]> = {
   crisis: ["Crisis: call now", "p-red"],
@@ -12,16 +13,47 @@ const KIND: Record<string, [string, string]> = {
   question: ["Question", "p-lav"],
 };
 
-export default async function NurseHome() {
+const TASK: Record<string, [string, string]> = {
+  wellbeing_call: ["Check-in call", "p-clay"],
+  negative_followup: ["Follow-up after negative", "p-clay"],
+  result_call: ["Result call", "p-lav"],
+};
+const STAGE: Record<string, string> = { stimulation: "Stimulation", wait: "Two-week wait", result: "Result released" };
+
+export default async function NurseHome({ searchParams }: { searchParams: Promise<{ error?: string; saved?: string }> }) {
+  const sp = await searchParams;
   const s = await requireSession(["nurse", "physician"]);
-  const queue = await nurseQueue(await getDb(), s);
+  const db = await getDb();
+  const [queue, tasks, patients] = await Promise.all([nurseQueue(db, s), nurseTasks(db, s), clinicPatients(db, s)]);
   return (
     <>
       <p style={{ display: "flex", justifyContent: "flex-end", margin: 0 }}><Link href="/settings">Clinic settings →</Link></p>
       <h1>Good morning, {s.name.split(" ")[0]}.</h1>
       <p className="muted">{queue.length === 0 ? "Nothing needs you right now." : `${queue.length} ${queue.length === 1 ? "item needs" : "items need"} you. Urgent items stay on top.`}</p>
+      {sp.error && <div className="card urgent" role="alert"><b>Not saved.</b> {sp.error}</div>}
+      {sp.saved && <div className="note" role="status" style={{ marginBottom: 12, background: "var(--sage)", borderColor: "var(--sage)", color: "var(--sage-ink)" }}>{sp.saved}</div>}
       <div className="grid">
         <div>
+          {tasks.length > 0 && (
+            <>
+              <h2>Calls to make</h2>
+              <div className="card">
+                {tasks.map((t) => (
+                  <form className="row" key={t.id} action={completeTaskAction} style={{ flexWrap: "wrap" }}>
+                    <div style={{ flex: "1 1 240px" }}>
+                      <b><Link href={`/nurse/patients/${t.patientId}`}>{t.patientName}</Link></b> <span className={`pill ${TASK[t.kind]![1]}`}>{TASK[t.kind]![0]}</span>
+                      <div className="muted" style={{ fontSize: 13.5 }}>{t.reason}</div>
+                    </div>
+                    <input type="hidden" name="taskId" value={t.id} />
+                    <div style={{ display: "flex", gap: 8, flex: "1 1 260px" }}>
+                      <input name="note" placeholder="Note about the call" aria-label="Note about the call" required />
+                      <button className="btn btn-line" type="submit">Done</button>
+                    </div>
+                  </form>
+                ))}
+              </div>
+            </>
+          )}
           <h2>Queue</h2>
           <div className="card">
             {queue.length === 0 && <div className="muted">All caught up.</div>}
@@ -40,6 +72,12 @@ export default async function NurseHome() {
           </div>
         </div>
         <div>
+          <h2>Patients</h2>
+          <div className="card">
+            {patients.map((p) => (
+              <div className="row" key={p.id}><Link href={`/nurse/patients/${p.id}`}>{p.name}</Link><span className="muted" style={{ fontSize: 13 }}>{p.stage ? STAGE[p.stage] ?? p.stage : ""}</span></div>
+            ))}
+          </div>
           <h2>Enter a result (pilot)</h2>
           <form className="card" action={enterResult}>
             <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>Until the records-system connection is live, staff enter results here. Kinpath labels them against Bayside&apos;s ranges; anything out of range comes back to the queue.</p>
