@@ -37,6 +37,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <nav className="topnav" aria-label="Main">
             <Link className="brand" href="/">Bayside Fertility</Link>
             {clinician && <Link href="/nurse">Queue</Link>}
+            {(clinician || s.role === "scheduler") && <Link href="/patients">Patients</Link>}
             {s.role === "clinic_admin" && <Link href="/admin">Audit log</Link>}
             {s.role === "clinic_admin" && <Link href="/admin/team">Team</Link>}
             {s.role === "clinic_admin" && <Link href="/admin/records">Records connection</Link>}

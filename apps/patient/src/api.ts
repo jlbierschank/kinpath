@@ -23,7 +23,9 @@ export interface Today {
   reminders: PlannedReminder[];
   sharing: { partners: SupportPerson[]; notes: Note[]; invites: Invite[] };
   wait: Wait;
+  appointments?: Appointment[];
 }
+export interface Appointment { id: string; startsAt: string; kind: string; title: string; location: string | null; status: string; source: string }
 export type Shareable = "schedule" | "meds" | "results";
 export type ResultHow = "call" | "app" | "together";
 export type Feeling = "okay" | "anxious" | "struggling";
@@ -49,6 +51,7 @@ export type PartnerHome =
       notes: Note[];
       wait: { dayOfWait: number | null; testAt: string | null; resultIsIn: boolean } | null;
       news: "positive" | "negative" | "repeat" | "graduated" | null;
+      appointments?: Appointment[];
     };
 export type KeepsakeId = "start" | "injections" | "transfer" | "wait" | "positive" | "graduated";
 export interface Graduation {

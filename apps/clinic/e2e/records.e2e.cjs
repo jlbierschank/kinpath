@@ -41,7 +41,7 @@ const B = process.env.B || 'http://localhost:3000';
   ok(j.resultsAdded === 1, 'A results CSV works too');
 
   await p.goto(B + '/admin/records'); await p.click('[data-testid=send-sample]'); await p.locator('[data-testid=records-saved]').waitFor();
-  ok(/2 results added \(1 to the nurse first\), 1 order waiting for a nurse, 1 to review/.test(await p.textContent('[data-testid=records-saved]')), 'Demo sample records arrive');
+  ok(/2 results added \(1 to the nurse first\), 1 order waiting for a nurse, 1 appointment, 1 to review/.test(await p.textContent('[data-testid=records-saved]')), 'Demo sample records arrive');
   ok(await p.locator('[data-testid=import-row]').count() === 4, 'The log shows each delivery');
   await shot('r2-admin-log');
   await p.goto(B + '/admin'); await p.waitForLoadState('networkidle');

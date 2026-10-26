@@ -1,4 +1,4 @@
-import { patientInbox, patientResults, patientToday } from "@kinpath/db";
+import { patientInbox, patientResults, patientToday, upcomingAppointments } from "@kinpath/db";
 import { getDb } from "@/lib/db";
 import { requireSession } from "@/lib/session";
 import { markRead, messageTeam, reportMissed } from "../actions";
@@ -8,8 +8,8 @@ const fmt = (iso: string) => new Date(iso).toLocaleString("en-US", { weekday: "s
 export default async function PatientHome() {
   const s = await requireSession(["patient"]);
   const db = await getDb();
-  const [today, inbox, results] = await Promise.all([
-    patientToday(db, s, s.patientId!), patientInbox(db, s, s.patientId!), patientResults(db, s, s.patientId!),
+  const [today, inbox, results, visits] = await Promise.all([
+    patientToday(db, s, s.patientId!), patientInbox(db, s, s.patientId!), patientResults(db, s, s.patientId!), upcomingAppointments(db, s, s.patientId!),
   ]);
   const es = today.lang === "es";
   const t = (en: string, sp: string) => (es ? sp : en);
@@ -59,6 +59,17 @@ export default async function PatientHome() {
           ))}
         </div>
         <div>
+          {visits.length > 0 && (
+            <>
+              <h2>{t("Coming up", "Próximas citas")}</h2>
+              <div className="card" data-testid="visits">
+                {visits.slice(0, 5).map((v) => (
+                  <div className="row" key={v.id}><div><b>{new Date(v.startsAt).toLocaleString(es ? "es-US" : "en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</b>
+                    <div className="muted" style={{ fontSize: 13.5 }}>{v.title}{v.location ? ` · ${v.location}` : ""}</div></div></div>
+                ))}
+              </div>
+            </>
+          )}
           <h2>{t("Results", "Resultados")}</h2>
           <div className="card">
             {results.length === 0 && <div className="muted">{t("No results yet.", "Aún no hay resultados.")}</div>}

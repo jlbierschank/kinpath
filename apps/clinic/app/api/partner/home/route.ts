@@ -1,4 +1,4 @@
-import { partnerHome, partnerWait } from "@kinpath/db";
+import { partnerHome, partnerWait, upcomingAppointments } from "@kinpath/db";
 import { getDb } from "@/lib/db";
 import { handle, preflight } from "@/lib/api";
 
@@ -10,10 +10,12 @@ export async function GET(req: Request) {
     const h = await partnerHome(await getDb(), s);
     const clinic = { name: "Bayside Fertility" };
     if (!h.shared) return { clinic, shared: false, name: s.name };
+    // Visits only when she shares her schedule (row-level security enforces this too).
+    const appointments = h.sections.includes("schedule") ? await upcomingAppointments(await getDb(), s, h.patientId) : [];
     const wait = h.sections.includes("schedule") && (h.stage === "wait" || h.stage === "result") ? await partnerWait(await getDb(), s, h.patientId) : null;
     return {
       clinic, shared: true, name: s.name, firstName: h.firstName, sections: h.sections, stage: h.stage, stimDay: h.stimDay,
-      schedule: h.schedule, notes: h.notes, wait, news: h.news,
+      schedule: h.schedule, notes: h.notes, wait, news: h.news, appointments,
       results: h.results?.map((r) => ({ id: r.id, analyte: r.analyte, value: r.value, unit: r.unit, status: r.label.status, text: r.label.patientText })) ?? null,
     };
   });

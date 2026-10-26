@@ -330,9 +330,10 @@ async function systemAudit(tx: Tx, clinicId: string, keyId: string | null, actio
 
 /** The import log: when records arrived and what happened, in counts only. */
 export async function recordImports(db: Db, actor: Actor, limit = 20) {
-  return asActor(db, actor, async (tx) => (await tx.query<{ id: string; format: string; received_at: Date; counts: ImportCounts; key_name: string | null }>(
-    `SELECT i.id, i.format, i.received_at, i.counts, k.name AS key_name FROM record_imports i LEFT JOIN integration_keys k ON k.id = i.key_id ORDER BY i.received_at DESC LIMIT $1`, [limit])).rows.map((r) => ({
-    id: r.id, format: r.format, receivedAt: new Date(r.received_at).toISOString(), counts: { ...zero(), ...r.counts }, source: r.key_name ?? (r.format === "sample" ? "Sample records" : "Records system"),
+  return asActor(db, actor, async (tx) => (await tx.query<{ id: string; format: string; received_at: Date; counts: ImportCounts; key_name: string | null; uploaded_by_name: string | null }>(
+    `SELECT i.id, i.format, i.received_at, i.counts, i.uploaded_by_name, k.name AS key_name FROM record_imports i LEFT JOIN integration_keys k ON k.id = i.key_id ORDER BY i.received_at DESC LIMIT $1`, [limit])).rows.map((r) => ({
+    id: r.id, format: r.format, receivedAt: new Date(r.received_at).toISOString(), counts: { ...zero(), ...r.counts },
+    source: r.key_name ?? (r.format === "sample" ? "Sample records" : r.format === "upload" ? `Upload by ${r.uploaded_by_name ?? "staff"}` : r.format === "pull" ? "FHIR check" : "Records system"),
   })));
 }
 
@@ -468,6 +469,9 @@ export function sampleBundle(today: string) {
       obs("p4", "2839-9", "Progesterone [Mass/volume] in Serum or Plasma", 1.9, "ng/mL"),
       obs("tsh", "3016-3", "Thyrotropin [Units/volume] in Serum or Plasma", 1.2, "m[IU]/L"),
       obs("e2x", "2243-4", "Estradiol (E2) [Mass/volume] in Serum or Plasma", 655, "pg/mL", "BF-999999"),
+      { resource: { resourceType: "Appointment", id: `demo-${id}-visit`, status: "booked", start: `${t}T07:30:00-04:00`,
+        serviceType: [{ text: "Monitoring visit: ultrasound and blood work" }],
+        participant: [{ actor: { reference: "urn:uuid:maya" } }, { actor: { reference: "Location/tampa", display: "Bayside Tampa, 2nd floor" } }] } },
       { resource: { resourceType: "MedicationRequest", id: `demo-${id}-trigger`, status: "active", intent: "order",
         medicationCodeableConcept: { text: "Ovidrel (trigger shot)" }, subject: { reference: "urn:uuid:maya" },
         dosageInstruction: [{ text: "250 mcg once at 9:30 pm", timing: { repeat: { timeOfDay: ["21:30:00"], boundsPeriod: { start: t, end: t } } }, doseAndRate: [{ doseQuantity: { value: 250, unit: "mcg" } }] }] } },

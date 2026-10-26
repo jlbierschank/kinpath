@@ -333,6 +333,22 @@ function Home({ data, api, t, go, afterSend, reload }: { data: TodayData; api: A
         )}
       </View>
 
+      {(data.appointments?.length ?? 0) > 0 && (
+        <View style={{ gap: 8 }} testID="visits">
+          <Cap>{t("Coming up", "Próximas citas")}</Cap>
+          <Card pad={false} style={{ paddingHorizontal: 16, paddingVertical: 4 }}>
+            {data.appointments!.slice(0, 3).map((a, i) => (
+              <View key={a.id} testID="visit" style={[st.row, i === 0 && { borderTopWidth: 0 }]}>
+                <View style={{ flex: 1 }}>
+                  <T style={{ fontFamily: F.sans600, fontSize: 15 }}>{new Date(a.startsAt).toLocaleString(data.lang === "es" ? "es-US" : "en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</T>
+                  <Muted style={{ fontSize: 13.5 }}>{a.title}{a.location ? ` · ${a.location}` : ""}</Muted>
+                </View>
+              </View>
+            ))}
+          </Card>
+        </View>
+      )}
+
       <Card style={{ paddingHorizontal: 16, paddingVertical: 4 }} pad={false}>
         {missed.map((d, i) => (
           <TimelineItem key={d.id} first={i === 0} icon="drop" tone="clay" when={t("Not logged", "Sin registrar")} what={t(`${d.medication} · ${dayClock(d.scheduledFor)}`, `${d.medication} · ${dayClock(d.scheduledFor)}`)} action={t("Tell us what happened", "Cuéntanos qué pasó")} onAction={() => go({ name: "missed", dose: d })} />
@@ -1220,6 +1236,21 @@ function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHom
       )}
 
       {data.sections.includes("schedule") && <JourneyPath current={stageIndex(data.stage)} labels={STAGES} />}
+      {(data.appointments?.length ?? 0) > 0 && (
+        <View style={{ gap: 8 }} testID="partner-visits">
+          <Cap>{her === "your partner" ? "Coming up" : `${her}'s visits`}</Cap>
+          <Card pad={false} style={{ paddingHorizontal: 16, paddingVertical: 4 }}>
+            {data.appointments!.slice(0, 3).map((a, i) => (
+              <View key={a.id} style={[st.row, i === 0 && { borderTopWidth: 0 }]}>
+                <View style={{ flex: 1 }}>
+                  <T style={{ fontFamily: F.sans600, fontSize: 15 }}>{new Date(a.startsAt).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</T>
+                  <Muted style={{ fontSize: 13.5 }}>{a.title}{a.location ? ` · ${a.location}` : ""}</Muted>
+                </View>
+              </View>
+            ))}
+          </Card>
+        </View>
+      )}
 
       {data.sections.includes("meds") && (!waiting || tonight.length > 0) && (
         <View style={{ gap: 8 }}>

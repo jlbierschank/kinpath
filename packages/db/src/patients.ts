@@ -144,7 +144,12 @@ export interface Appointment { id: string; startsAt: string; kind: AppointmentKi
 
 export async function bookAppointment(db: Db, staff: Staff, input: { patientId: string; startsAt: string; kind: string; title?: string; location?: string }) {
   if (!ADDERS.includes(staff.role)) throw new HandoffError("Only nurses, physicians and schedulers can book appointments.");
-  const at = new Date(input.startsAt);
+  // A time typed without a zone (a date-time field) is the clinic's local time.
+  let iso = input.startsAt;
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(iso)) {
+    iso = new Date((await db.query<{ t: Date }>(`SELECT ($2::timestamp AT TIME ZONE timezone) AS t FROM clinics WHERE id = $1`, [staff.clinicId, iso])).rows[0]!.t).toISOString();
+  }
+  const at = new Date(iso);
   if (Number.isNaN(at.getTime())) throw new HandoffError("Choose the date and time.");
   if (!(input.kind in APPOINTMENT_KINDS)) throw new HandoffError("Choose the kind of visit.");
   const title = clean(input.title) || APPOINTMENT_KINDS[input.kind as AppointmentKind];
@@ -178,5 +183,15 @@ export async function upcomingAppointments(db: Db, actor: Actor, patientId: stri
     `SELECT id, starts_at, kind, title, location, status, source FROM appointments
       WHERE patient_id = $1 AND ($2 OR (starts_at > now() - interval '2 hours' AND status = 'booked')) ORDER BY starts_at LIMIT 50`, [patientId, !!opts.includePast])).rows.map((r) => ({
     id: r.id, startsAt: new Date(r.starts_at).toISOString(), kind: r.kind, title: r.title, location: r.location, status: r.status, source: r.source,
+  })));
+}
+
+/** The clinic's booked visits for the next two weeks. */
+export async function clinicAppointments(db: Db, staff: Actor) {
+  if (!ADDERS.includes(staff.role)) throw new HandoffError("Only nurses, physicians and schedulers can see the appointment list.");
+  return asActor(db, staff, async (tx) => (await tx.query<{ id: string; starts_at: Date; title: string; location: string | null; source: string; first_name: string; last_name: string; patient_id: string }>(
+    `SELECT a.id, a.starts_at, a.title, a.location, a.source, p.first_name, p.last_name, p.id AS patient_id FROM appointments a JOIN patients p ON p.id = a.patient_id
+      WHERE a.status = 'booked' AND a.starts_at > now() - interval '2 hours' AND a.starts_at < now() + interval '14 days' ORDER BY a.starts_at LIMIT 200`)).rows.map((r) => ({
+    id: r.id, startsAt: new Date(r.starts_at).toISOString(), title: r.title, location: r.location, source: r.source, patientId: r.patient_id, patientName: `${r.first_name} ${r.last_name}`,
   })));
 }

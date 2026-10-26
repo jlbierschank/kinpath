@@ -17,7 +17,8 @@ RUN pnpm --filter @kinpath/db gen && pnpm --filter @kinpath/clinic build
 
 FROM node:22-alpine AS run
 WORKDIR /app
-ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0 NEXT_TELEMETRY_DISABLED=1
+# TZ: times on staff pages are shown in the clinic's time (one clinic per server for now).
+ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0 NEXT_TELEMETRY_DISABLED=1 TZ=America/New_York
 RUN addgroup -S kinpath && adduser -S kinpath -G kinpath
 COPY --from=build --chown=kinpath:kinpath /app/apps/clinic/.next/standalone ./
 COPY --from=build --chown=kinpath:kinpath /app/apps/clinic/.next/static ./apps/clinic/.next/static

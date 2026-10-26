@@ -177,8 +177,8 @@ describe("medication orders", () => {
 describe("demo sample and the import log", () => {
   it("the sample shows each path, and sending it twice duplicates nothing", async () => {
     const r = await sendSampleRecords(db, kara);
-    expect(r).toMatchObject({ resultsAdded: 2, resultsToNurse: 1, ordersWaiting: 1, toReview: 1, skipped: 1 });
-    expect(await sendSampleRecords(db, kara)).toMatchObject({ resultsAdded: 0, duplicates: 4 });
+    expect(r).toMatchObject({ resultsAdded: 2, resultsToNurse: 1, ordersWaiting: 1, appointments: 1, toReview: 1, skipped: 1 });
+    expect(await sendSampleRecords(db, kara)).toMatchObject({ resultsAdded: 0, duplicates: 5 });
     const log = await recordImports(db, kara);
     expect(log).toHaveLength(2);
     expect(JSON.stringify(log)).not.toMatch(/Torres|BF-100231|412/);
@@ -188,6 +188,6 @@ describe("demo sample and the import log", () => {
     await sendSampleRecords(db, kara);
     await expect(recordsToReview(db, kara)).rejects.toThrow(/nurses and physicians/);
     expect(await asActor(db, kara, async (tx) => (await tx.query(`SELECT * FROM record_items`)).rows.length)).toBe(0);
-    expect(sampleBundle("2026-10-26").entry).toHaveLength(6);
+    expect(sampleBundle("2026-10-26").entry).toHaveLength(7);
   });
 });

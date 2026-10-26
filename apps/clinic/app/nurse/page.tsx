@@ -123,11 +123,13 @@ const RKIND: Record<RecordToReview["kind"], [string, string]> = {
   hcg: ["Pregnancy test (hCG)", "p-clay"],
   med_order: ["New medication order", "p-clay"],
   med_stop: ["Order stopped", "p-clay"],
+  appointment: ["Appointment", "p-lav"],
 };
 
 function describe(r: RecordToReview): string {
   const d = r.data as Record<string, string | number | null>;
   const test: Record<string, string> = { estradiol: "Estradiol", progesterone: "Progesterone", lh: "LH", fsh: "FSH", hcg: "hCG" };
+  if (r.kind === "appointment") return `${d.title} · ${new Date(String(d.startsAt)).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}${d.location ? ` · ${d.location}` : ""}`;
   if (r.kind === "result" || r.kind === "hcg") return `${test[String(d.analyte)] ?? d.analyte} ${d.value} ${d.unit} · collected ${new Date(String(d.collectedAt)).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`;
   const day = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
   const time = (hm: string) => { const [h, m] = hm.split(":").map(Number); return `${((h! + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h! < 12 ? "am" : "pm"}`; };
@@ -137,7 +139,7 @@ function describe(r: RecordToReview): string {
 
 function RecordRow({ r, patients }: { r: RecordToReview; patients: { id: string; name: string }[] }) {
   const first = r.patientName?.split(" ")[0] ?? "";
-  const confirmLabel = r.kind === "med_order" ? `Add to ${first}'s schedule` : r.kind === "med_stop" ? "Cancel remaining doses"
+  const confirmLabel = r.kind === "appointment" ? `Add to ${first}'s appointments` : r.kind === "med_order" ? `Add to ${first}'s schedule` : r.kind === "med_stop" ? "Cancel remaining doses"
     : r.kind === "hcg" ? `Add to ${first}'s test` : `Add to ${first}'s results`;
   const ok = r.kind === "med_order" ? `Added to ${first}'s schedule. She was told her schedule changed.` : r.kind === "med_stop" ? "Remaining doses canceled. She was told her schedule changed."
     : r.kind === "hcg" ? `hCG added to ${first}'s test. You decide the outcome on her page.` : "Result added.";
