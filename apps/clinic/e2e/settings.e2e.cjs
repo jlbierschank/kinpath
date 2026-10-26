@@ -5,7 +5,7 @@ const { chromium } = require('playwright');
   const D = require('path').join(__dirname, '..', '.data', 'settings-shots') + '/'; require('fs').mkdirSync(D, { recursive: true });
   const shot = n => p.screenshot({ path: D + n + '.png', fullPage: true });
   const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process.exitCode = 1; };
-  const as = async (name) => { await p.goto('http://localhost:3000/'); const sw = p.locator('button:has-text("Switch person")'); if (await sw.count()) { await sw.click(); await p.waitForURL('http://localhost:3000/'); } await p.click(`button:has-text("${name}")`); await p.waitForURL(u => !u.toString().endsWith(':3000/')); await p.locator('text=Who are you testing as?').waitFor({ state: 'detached', timeout: 10000 }); await p.waitForLoadState('networkidle'); };
+  const as = async (name) => { await p.goto('http://localhost:3000/'); const sw = p.locator('button:has-text("Switch person")'); if (await sw.count()) { await sw.click(); await p.waitForURL('http://localhost:3000/'); } await p.click(`button:has-text("${name}")`); await p.waitForURL(u => !u.toString().endsWith(':3000/')); await p.locator('text=Who are you testing as?').waitFor({ state: 'detached', timeout: 10000 }); await p.reload(); await p.waitForLoadState('networkidle'); };
   const settled = () => p.waitForLoadState('networkidle');
   const sees = (t) => p.locator('text=' + t).first().waitFor({ timeout: 10000 }).then(() => true, () => false);
   const submit = async (loc) => { const prev = p.url(); await loc.click(); await p.waitForURL(u => u.toString() !== prev, { timeout: 10000 }); await settled(); };

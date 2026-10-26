@@ -17,6 +17,7 @@ const TASK: Record<string, [string, string]> = {
   wellbeing_call: ["Check-in call", "p-clay"],
   negative_followup: ["Follow-up after negative", "p-clay"],
   result_call: ["Result call", "p-lav"],
+  next_steps: ["Ready for next steps", "p-lav"],
 };
 const STAGE: Record<string, string> = { stimulation: "Stimulation", wait: "Two-week wait", result: "Result released", graduated: "Graduated" };
 

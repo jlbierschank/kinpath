@@ -25,7 +25,7 @@ You'll need Node 22 or newer and pnpm.
 
 ```bash
 pnpm install
-pnpm test                 # 116 safety, settings, sharing, result and access tests
+pnpm test                 # 119 safety, settings, sharing, result and access tests
 pnpm dev:clinic           # http://localhost:3000
 ```
 

@@ -50,6 +50,8 @@ export default async function PatientCycle({ params, searchParams }: { params: P
               <input id="transferOn" name="transferOn" type="date" defaultValue={ymd(now)} required />
               <label htmlFor="testAt">Pregnancy blood test</label>
               <input id="testAt" name="testAt" type="datetime-local" defaultValue={local(testDefault)} required />
+              <label htmlFor="embryosFrozen">Embryos frozen (optional)</label>
+              <input id="embryosFrozen" name="embryosFrozen" type="number" min="0" max="50" step="1" placeholder="0" />
               <div style={{ marginTop: 12 }}><button className="btn btn-dark" type="submit">Record transfer</button></div>
             </form>
           )}
@@ -120,6 +122,20 @@ export default async function PatientCycle({ params, searchParams }: { params: P
           )}
         </div>
         <div>
+          {c.embryosFrozen !== null && <div className="card"><b>{c.embryosFrozen}</b> embryo{c.embryosFrozen === 1 ? "" : "s"} in storage</div>}
+          {c.nextCycle && (
+            <>
+              <h2>Next cycle</h2>
+              <div className="card" data-testid="next-cycle">
+                {c.nextCycle.readyAt
+                  ? <span className="pill p-lav">Ready to talk since {fmt(c.nextCycle.readyAt)}</span>
+                  : <span className="pill p-clay">Not ready yet. Don&apos;t push.</span>}
+                {c.nextCycle.questions
+                  ? <><p style={{ margin: "10px 0 4px", fontWeight: 600 }}>Her questions</p><p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{c.nextCycle.questions}</p></>
+                  : <p className="muted" style={{ margin: "8px 0 0" }}>No questions written yet.</p>}
+              </div>
+            </>
+          )}
           <h2>Daily check-ins</h2>
           <div className="card">
             {c.checkins.length === 0 && <span className="muted">None yet.</span>}

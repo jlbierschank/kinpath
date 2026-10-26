@@ -7,7 +7,7 @@ import { useFonts } from "expo-font";
 import { Newsreader_400Regular_Italic, Newsreader_500Medium } from "@expo-google-fonts/newsreader";
 import { InstrumentSans_400Regular, InstrumentSans_500Medium, InstrumentSans_600SemiBold, InstrumentSans_700Bold } from "@expo-google-fonts/instrument-sans";
 import Svg, { Path } from "react-native-svg";
-import { acceptInvite, Api, type Dose, type Feeling, type Graduation, type KeepsakeId, type ResultHow, type Guide, type Invite, type PartnerHome, type Relationship, type SendResult, type Shareable, type SupportPerson, type Today as TodayData } from "./src/api";
+import { acceptInvite, Api, type NextCycle, type Dose, type Feeling, type Graduation, type KeepsakeId, type ResultHow, type Guide, type Invite, type PartnerHome, type Relationship, type SendResult, type Shareable, type SupportPerson, type Today as TodayData } from "./src/api";
 import { askPermission, remindersSupported, syncReminders } from "./src/reminders";
 import { AskBox, Avatar, Button, C, Cap, Card, Chip, Chips, F, H1, JourneyPath, Moment, Muted, Pill, Row, st, T, TimelineItem, Today, Toggle } from "./src/ui";
 
@@ -22,7 +22,7 @@ const initialsOf = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 
 const NURSE_LINE = "tel:+18135550100"; // placeholder
 
 type Tab = "home" | "community" | "record" | "team";
-type Screen = { name: Tab } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; kind: SendResult["kind"] } | { name: "missed"; dose: Dose } | { name: "invite" } | { name: "rough" } | { name: "breathe" } | { name: "keepsake" } | { name: "share-summary"; ob: string | null };
+type Screen = { name: Tab } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; kind: SendResult["kind"] } | { name: "missed"; dose: Dose } | { name: "invite" } | { name: "rough" } | { name: "breathe" } | { name: "keepsake" } | { name: "share-summary"; ob: string | null } | { name: "next-cycle" };
 type Tx = (en: string, es: string) => string;
 
 const STAGES = ["Consult", "Testing", "Stims", "Retrieval", "Transfer", "Wait", "Result", "OB-GYN"];
@@ -173,6 +173,7 @@ function Signed({ api, initials, onSignOut }: { api: Api; initials: string; onSi
         : data.wait.stage === "wait"
           ? <WaitHome data={data} api={api} t={t} go={go} reload={load} notice={notice} />
           : <Home data={data} api={api} t={t} go={go} afterSend={afterSend} reload={load} />)}
+      {screen.name === "next-cycle" && <NextCycleScreen api={api} t={t} />}
       {screen.name === "keepsake" && <KeepsakeScreen api={api} t={t} lang={data.lang} />}
       {screen.name === "share-summary" && <ShareSummary api={api} t={t} ob={screen.ob} />}
       {screen.name === "rough" && <RoughDay api={api} t={t} go={go} done={(msg) => { setNotice(msg); home(); }} />}
@@ -454,6 +455,9 @@ function ResultHome({ data, api, t, go, reload, notice, setNotice }: { data: Tod
             <Pressable testID="quiet-off" onPress={async () => { await api.setWaitPrefs({ quietOff: true }); await reload(); }}><T style={{ color: C.lavDeep, fontFamily: F.sans600, textDecorationLine: "underline" }}>{t("Turn this off", "Desactivar")}</T></Pressable>
           </View>
         ) : null}
+        <Pressable testID="when-ready" onPress={() => go({ name: "next-cycle" })} style={{ paddingVertical: 6 }}>
+          <T style={{ color: C.lavInk, fontFamily: F.sans600, textDecorationLine: "underline" }}>{t("When you're ready: what a next cycle could look like", "Cuando estés lista: cómo podría ser un próximo ciclo")}</T>
+        </Pressable>
         <Muted style={{ fontSize: 12.5 }}>{t("When you're ready, your team will talk through what comes next. If you're in crisis, call or text 988 any time.", "Cuando estés lista, tu equipo hablará contigo sobre los próximos pasos. Si estás en crisis, llama o escribe al 988 en cualquier momento.")}</Muted>
       </>
     );
@@ -483,6 +487,47 @@ function ResultHome({ data, api, t, go, reload, notice, setNotice }: { data: Tod
         : t("You decide when to tell anyone, including the people you've invited. They can't see your result.", "Tú decides cuándo contárselo a alguien, incluidas las personas que invitaste. Ellas no pueden ver tu resultado.")}</Muted>
       <NoteCards data={data} api={api} t={t} reload={reload} />
       <Button kind="line" label={t("Message my team", "Escribir a mi equipo")} onPress={() => go({ name: "team" })} />
+    </>
+  );
+}
+
+// ---------- "When you're ready": next-cycle planning, at her pace ----------
+function NextCycleScreen({ api, t }: { api: Api; t: Tx }) {
+  const [n, setN] = useState<NextCycle | null>(null);
+  const [questions, setQuestions] = useState("");
+  const [savedQ, setSavedQ] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => { const x = await api.nextCycle(); setN(x); setQuestions(x.questions); }, [api]);
+  useEffect(() => { void load(); }, [load]);
+  if (!n) return <Muted>{t("Loading…", "Cargando…")}</Muted>;
+  return (
+    <>
+      <Today size={34}>{t("When you're ready.", "Cuando estés lista.")}</Today>
+      <T style={{ fontSize: 15.5, lineHeight: 23 }}>{t("There's no rush. Here's what a next cycle could look like, so nothing surprises you. Nothing here is a decision.", "No hay prisa. Así podría ser un próximo ciclo, para que nada te sorprenda. Nada de esto es una decisión.")}</T>
+      <Card pad={false}>
+        {n.options.map((o, i) => (
+          <View key={o.id} style={[st.row, i === 0 && { borderTopWidth: 0 }, { flexDirection: "column", alignItems: "stretch", gap: 4 }]}>
+            <T style={{ fontFamily: F.sans700, fontSize: 15.5 }}>{o.title}</T>
+            {o.id.includes("fet") && n.embryosFrozen !== null && n.embryosFrozen > 0 && (
+              <T testID="embryos" style={{ fontFamily: F.sans600, color: C.lavInk }}>{t(`You have ${n.embryosFrozen} embryo${n.embryosFrozen === 1 ? "" : "s"} in storage at Bayside.`, `Tienes ${n.embryosFrozen} embrión${n.embryosFrozen === 1 ? "" : "es"} guardado${n.embryosFrozen === 1 ? "" : "s"} en Bayside.`)}</T>
+            )}
+            <Muted style={{ fontSize: 14 }}>{o.text}</Muted>
+          </View>
+        ))}
+      </Card>
+      <Card style={{ gap: 8 }}>
+        <Cap>{t("Questions for your follow-up", "Preguntas para tu seguimiento")}</Cap>
+        <Muted>{t("Write them down whenever they come to you. Only you and your care team see these.", "Escríbelas cuando se te ocurran. Solo tú y tu equipo las ven.")}</Muted>
+        <TextInput testID="next-questions" style={[st.input, { minHeight: 100, textAlignVertical: "top" }]} multiline value={questions} onChangeText={(v) => { setQuestions(v); setSavedQ(false); }}
+          placeholder={t("What would you change next time?", "¿Qué cambiarías la próxima vez?")} placeholderTextColor={C.stone} />
+        {savedQ && <T style={{ color: C.sageInk, fontSize: 13 }}>{t("Saved.", "Guardado.")}</T>}
+        <Button testID="save-questions" kind="line" label={t("Save my questions", "Guardar mis preguntas")} onPress={async () => { await api.saveNextCycle({ questions }); setSavedQ(true); }} />
+      </Card>
+      {n.readyAt
+        ? <Moment>{t("Your care team knows you're ready. They'll call you to set up your follow-up visit.", "Tu equipo sabe que estás lista. Te llamarán para programar tu visita de seguimiento.")}</Moment>
+        : <Button testID="im-ready" kind="esp" label={busy ? t("Sending…", "Enviando…") : t("I'm ready to talk about next steps", "Estoy lista para hablar de los próximos pasos")} disabled={busy}
+            onPress={async () => { setBusy(true); try { await api.saveNextCycle({ questions, ready: true }); await load(); } finally { setBusy(false); } }} />}
+      <Muted style={{ fontSize: 12.5 }}>{t("Your care team won't bring this up until you tell them you're ready. If you're in crisis, call or text 988 any time.", "Tu equipo no hablará de esto hasta que les digas que estás lista. Si estás en crisis, llama o escribe al 988 en cualquier momento.")}</Muted>
     </>
   );
 }

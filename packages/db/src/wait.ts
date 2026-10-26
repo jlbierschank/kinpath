@@ -34,7 +34,7 @@ export function waitDay(transferOn: string, now: Date): number {
 
 // ---------- clinic side ----------
 
-export async function recordTransfer(db: Db, nurse: Staff, input: { patientId: string; transferOn: string; testAt: string }) {
+export async function recordTransfer(db: Db, nurse: Staff, input: { patientId: string; transferOn: string; testAt: string; embryosFrozen?: number | null }) {
   requireClinician(nurse);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.transferOn)) throw new HandoffError("Enter the transfer date.");
   const testAt = new Date(input.testAt);
@@ -45,7 +45,9 @@ export async function recordTransfer(db: Db, nurse: Staff, input: { patientId: s
     const cycleId = c.rows[0]?.id;
     if (!cycleId) throw new HandoffError("No active cycle for this patient.");
     if (input.transferOn < c.rows[0]!.started_on) throw new HandoffError("The transfer date can't be before the cycle started.");
-    await tx.query(`UPDATE cycles SET stage = 'wait', transfer_on = $2, stim_day = NULL WHERE id = $1`, [cycleId, input.transferOn]);
+    const frozen = input.embryosFrozen ?? null;
+    if (frozen !== null && (!Number.isInteger(frozen) || frozen < 0 || frozen > 50)) throw new HandoffError("Embryos frozen should be a whole number.");
+    await tx.query(`UPDATE cycles SET stage = 'wait', transfer_on = $2, stim_day = NULL, embryos_frozen = $3 WHERE id = $1`, [cycleId, input.transferOn, frozen]);
     const canceled = await tx.query(
       `UPDATE dose_logs SET canceled_at = now() WHERE patient_id = $1 AND taken_at IS NULL AND reported_missed_at IS NULL AND canceled_at IS NULL AND scheduled_for > now() RETURNING id`,
       [input.patientId]);
@@ -132,8 +134,9 @@ export async function nursePatientCycle(db: Db, nurse: Actor, patientId: string)
   return asActor(db, nurse, async (tx) => {
     const p = await tx.query<{ first_name: string; last_name: string; preferred_lang: Lang }>(`SELECT first_name, last_name, preferred_lang FROM patients WHERE id = $1`, [patientId]);
     if (!p.rows[0]) return null;
-    const c = await tx.query<{ stage: string; stim_day: number | null; transfer_on: string | null }>(
-      `SELECT stage, stim_day, transfer_on::text FROM cycles WHERE patient_id = $1 ORDER BY started_on DESC LIMIT 1`, [patientId]);
+    const c = await tx.query<{ stage: string; stim_day: number | null; transfer_on: string | null; embryos_frozen: number | null }>(
+      `SELECT stage, stim_day, transfer_on::text, embryos_frozen FROM cycles WHERE patient_id = $1 ORDER BY started_on DESC LIMIT 1`, [patientId]);
+    const plan = await tx.query<{ questions: string; ready_at: Date | null }>(`SELECT questions, ready_at FROM next_cycle_plans WHERE patient_id = $1`, [patientId]);
     const t = await tx.query<{ id: string; scheduled_at: Date; hcg: string | null; outcome: Outcome | null; nurse_note: string | null; entered_by_name: string | null; released_at: Date | null; released_by_name: string | null; told_by: string | null }>(
       `SELECT * FROM pregnancy_tests WHERE patient_id = $1 ORDER BY scheduled_at DESC LIMIT 1`, [patientId]);
     const w = await tx.query<{ result_how: ResultHow | null }>(`SELECT result_how FROM wait_prefs WHERE patient_id = $1`, [patientId]);
@@ -144,6 +147,8 @@ export async function nursePatientCycle(db: Db, nurse: Actor, patientId: string)
       name: `${p.rows[0].first_name} ${p.rows[0].last_name}`, firstName: p.rows[0].first_name, lang: p.rows[0].preferred_lang,
       stage: c.rows[0]?.stage ?? null, stimDay: c.rows[0]?.stim_day ?? null, transferOn: c.rows[0]?.transfer_on ?? null,
       resultHow: w.rows[0]?.result_how ?? null,
+      embryosFrozen: c.rows[0]?.embryos_frozen ?? null,
+      nextCycle: plan.rows[0] ? { questions: plan.rows[0].questions, readyAt: plan.rows[0].ready_at ? new Date(plan.rows[0].ready_at).toISOString() : null } : null,
       test: test ? {
         id: test.id, scheduledAt: new Date(test.scheduled_at).toISOString(), hcg: test.hcg === null ? null : Number(test.hcg), outcome: test.outcome,
         note: test.nurse_note, enteredBy: test.entered_by_name, releasedAt: test.released_at ? new Date(test.released_at).toISOString() : null,
@@ -259,5 +264,45 @@ export async function partnerWait(db: Db, actor: Actor, patientId: string, now =
       testAt: t.rows[0] ? new Date(t.rows[0].scheduled_at).toISOString() : null,
       resultIsIn: t.rows[0]?.released ?? false,
     };
+  });
+}
+
+// ---------- "When you're ready": next-cycle planning ----------
+
+export async function patientNextCycle(db: Db, actor: Actor, patientId: string) {
+  return asActor(db, actor, async (tx) => {
+    const p = await tx.query<{ preferred_lang: Lang }>(`SELECT preferred_lang FROM patients WHERE id = $1`, [patientId]);
+    const lang = p.rows[0]?.preferred_lang ?? "en";
+    const c = await tx.query<{ embryos_frozen: number | null }>(`SELECT embryos_frozen FROM cycles WHERE patient_id = $1 ORDER BY started_on DESC LIMIT 1`, [patientId]);
+    const a = await tx.query<{ id: string; title: string; body_en: string; body_es: string }>(`SELECT id, title, body_en, body_es FROM protocol_sections WHERE id LIKE 'next.%' ORDER BY id`);
+    const plan = await tx.query<{ questions: string; ready_at: Date | null }>(`SELECT questions, ready_at FROM next_cycle_plans WHERE patient_id = $1`, [patientId]);
+    return {
+      embryosFrozen: c.rows[0]?.embryos_frozen ?? null,
+      options: a.rows.map((r) => ({ id: r.id, title: r.title, text: lang === "es" ? r.body_es : r.body_en })),
+      questions: plan.rows[0]?.questions ?? "",
+      readyAt: plan.rows[0]?.ready_at ? new Date(plan.rows[0].ready_at).toISOString() : null,
+    };
+  });
+}
+
+/** She writes her questions, and says when she's ready. Ready puts a call on the nurse's list, once. */
+export async function saveNextCyclePlan(db: Db, actor: Actor, patientId: string, change: { questions?: string; ready?: boolean }) {
+  if (actor.role !== "patient") throw new HandoffError("Only the patient can change this.");
+  const q = change.questions === undefined ? undefined : change.questions.trim();
+  if (q !== undefined && q.length > 2000) throw new HandoffError("Keep your questions under 2,000 characters.");
+  return asActor(db, actor, async (tx) => {
+    await tx.query(`INSERT INTO next_cycle_plans (patient_id, clinic_id) VALUES ($1,$2) ON CONFLICT (patient_id) DO NOTHING`, [patientId, actor.clinicId]);
+    if (q !== undefined) await tx.query(`UPDATE next_cycle_plans SET questions = $2, updated_at = now() WHERE patient_id = $1`, [patientId, q]);
+    let newlyReady = false;
+    if (change.ready) {
+      const r = await tx.query(`UPDATE next_cycle_plans SET ready_at = now(), updated_at = now() WHERE patient_id = $1 AND ready_at IS NULL RETURNING patient_id`, [patientId]);
+      newlyReady = r.rows.length > 0;
+      if (newlyReady) {
+        await tx.query(`INSERT INTO nurse_tasks (clinic_id, patient_id, kind, reason) VALUES ($1,$2,'next_steps','Says she is ready to talk about a next cycle. Her questions are on her page.')`, [actor.clinicId, patientId]);
+      }
+    }
+    // The audit log records that she saved or said she's ready, never her questions.
+    await audit(tx, actor, "patient.saved_next_cycle_plan", patientId, { ready: newlyReady });
+    return { newlyReady };
   });
 }

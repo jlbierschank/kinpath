@@ -21,7 +21,8 @@ async function run(back: string, fn: () => Promise<unknown>, ok: string) {
 export async function recordTransferAction(f: FormData) {
   const s = await requireSession(["nurse", "physician"]);
   const id = str(f, "patientId");
-  await run(`/nurse/patients/${id}`, async () => recordTransfer(await getDb(), s, { patientId: id, transferOn: str(f, "transferOn"), testAt: str(f, "testAt") }),
+  const frozen = str(f, "embryosFrozen").trim();
+  await run(`/nurse/patients/${id}`, async () => recordTransfer(await getDb(), s, { patientId: id, transferOn: str(f, "transferOn"), testAt: str(f, "testAt"), embryosFrozen: frozen === "" ? null : Number(frozen) }),
     "Transfer recorded. Her app now shows the wait and her blood test date. Remaining stimulation doses were canceled.");
 }
 

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   askForCall, asActor, checkIn, completeTask, enterPregnancyResult, IDS, migrate, nursePatientCycle, nurseTasks, openDb, partnerWait,
-  patientSchedule, patientWait, recordTransfer, releasePregnancyResult, seed, setPartnerSharing, setWaitPrefs, waitDay,
+  patientNextCycle, patientSchedule, patientWait, recordTransfer, saveNextCyclePlan, releasePregnancyResult, seed, setPartnerSharing, setWaitPrefs, waitDay,
   type Actor, type Db,
 } from "../src";
 
@@ -173,5 +173,40 @@ describe("the wait, for Maya", () => {
     await checkIn(db, maya, IDS.maya, "struggling");
     expect(await nurseTasks(db, lee)).toEqual([]);
     expect(await nursePatientCycle(db, lee, IDS.maya)).toBeNull();
+  });
+});
+
+describe("when you're ready: next-cycle planning", () => {
+  beforeEach(async () => {
+    await recordTransfer(db, maria, { patientId: IDS.maya, transferOn: daysAgo(5), testAt: inDays(4), embryosFrozen: 2 });
+    await enterPregnancyResult(db, maria, { patientId: IDS.maya, hcg: 2, outcome: "negative", note: "I'm so sorry." });
+    await releasePregnancyResult(db, maria, { patientId: IDS.maya, toldByPhone: true });
+  });
+
+  it("shows Bayside's options and her embryos in storage", async () => {
+    const n = await patientNextCycle(db, maya, IDS.maya);
+    expect(n.embryosFrozen).toBe(2);
+    expect(n.options.map((o) => o.title)).toEqual(["A follow-up visit with your doctor", "A frozen embryo transfer", "Another full IVF cycle"]);
+    expect(n.readyAt).toBeNull();
+  });
+
+  it("saves her questions privately, and 'ready' puts one call on the nurse's list", async () => {
+    await saveNextCyclePlan(db, maya, IDS.maya, { questions: "Should we test the embryos next time?" });
+    expect((await nurseTasks(db, maria)).map((t) => t.kind)).toEqual(["negative_followup"]);
+    expect((await saveNextCyclePlan(db, maya, IDS.maya, { ready: true })).newlyReady).toBe(true);
+    expect((await saveNextCyclePlan(db, maya, IDS.maya, { ready: true })).newlyReady).toBe(false);
+    expect((await nurseTasks(db, maria)).map((t) => t.kind)).toEqual(["negative_followup", "next_steps"]);
+    const c = await nursePatientCycle(db, maria, IDS.maya);
+    expect(c!.nextCycle).toMatchObject({ questions: "Should we test the embryos next time?" });
+    expect(c!.embryosFrozen).toBe(2);
+    const a = await db.query(`SELECT detail FROM audit_events WHERE action = 'patient.saved_next_cycle_plan'`);
+    expect(JSON.stringify(a.rows)).not.toContain("embryos next time");
+  });
+
+  it("is private from support people and other clinics", async () => {
+    await saveNextCyclePlan(db, maya, IDS.maya, { questions: "x" });
+    expect(await asActor(db, jordan, async (tx) => (await tx.query(`SELECT * FROM next_cycle_plans`)).rows.length)).toBe(0);
+    await expect(saveNextCyclePlan(db, jordan, IDS.maya, { ready: true })).rejects.toThrow();
+    expect(await asActor(db, lee, async (tx) => (await tx.query(`SELECT * FROM next_cycle_plans`)).rows.length)).toBe(0);
   });
 });

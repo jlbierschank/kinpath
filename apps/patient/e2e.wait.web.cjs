@@ -30,6 +30,7 @@ const SERVER = (process.env.SERVER_URL ?? 'http://localhost:3000/').replace(/\/$
     await webAs('Maria Lopez, RN');
     await web.click('a:has-text("Maya Torres")'); await web.waitForURL('**/nurse/patients/*'); await web.waitForLoadState('networkidle');
     await web.fill('input[name=transferOn]', daysAgo(5));
+    await web.fill('input[name=embryosFrozen]', '2');
     await submit(web.locator('button:has-text("Record transfer")'));
   };
 
@@ -103,6 +104,17 @@ const SERVER = (process.env.SERVER_URL ?? 'http://localhost:3000/').replace(/\/$
   ok(await sees('will help you find a counselor'), 'She can ask about a counselor');
   await shot('w8-maya-negative');
 
+  // When you're ready
+  await byId('when-ready').click();
+  ok(await sees('There’s no rush') || await sees("There's no rush"), '"When you’re ready" opens at her pace');
+  ok((await byId('embryos').innerText()).includes('2 embryos in storage'), 'It shows her 2 embryos in storage');
+  await byId('next-questions').fill('Should we test the embryos next time?');
+  await byId('save-questions').click();
+  ok(await sees('Saved.'), 'She saves her questions');
+  await shot('w11-next-cycle');
+  await byId('im-ready').click();
+  ok(await sees('Your care team knows you’re ready') || await sees("Your care team knows you're ready"), 'She tells her team she’s ready');
+
   await as('Jordan Torres');
   const jt = await p.locator('body').innerText();
   ok(jt.includes("result is in") && !/negative|sorry|hCG/i.test(jt), 'Jordan learns only that the result is in, not what it is');
@@ -111,6 +123,10 @@ const SERVER = (process.env.SERVER_URL ?? 'http://localhost:3000/').replace(/\/$
   await webAs('Maria Lopez, RN');
   await web.goto(SERVER + '/nurse'); await web.waitForLoadState('networkidle');
   ok(await wsees('Follow-up after negative'), 'A follow-up call is on Maria’s list');
+  ok(await wsees('Ready for next steps'), 'And a "ready for next steps" call');
+  await web.click('a:has-text("Maya Torres")'); await web.waitForURL('**/nurse/patients/*'); await web.waitForLoadState('networkidle');
+  ok((await web.locator('[data-testid=next-cycle]').innerText()).includes('Should we test the embryos'), 'Maria sees Maya’s questions');
+  await wshot('w12-nurse-next-cycle');
 
   // ---- Part 2: a positive result, straight to the app ----
   await reset();

@@ -10,6 +10,7 @@
 - End-to-end browser check of the full loop
 - Patient phone app (Expo): Today, injection walkthroughs, dose logging, late or missed doses, messages, urgent safety screen, Spanish
 - Private dose reminders with quiet hours (tested rules in @kinpath/core) and a patient API the phone app calls
+- "When you're ready" after a negative result: a quiet link, never a push. Bayside's options (follow-up visit, frozen embryo transfer, another full cycle; nurse-editable), her embryos in storage (recorded at transfer), a private list of questions for her follow-up, and "I'm ready to talk about next steps", which puts one call on the nurse's list. The nurse sees her questions and when she said she was ready, with a reminder not to push before then.
 - Graduation: after a released positive result, a nurse graduates the patient to her OB-GYN. She gets a keepsake of her journey (she can leave out any part), can thank her care team (still triaged), and can share an IVF pregnancy summary with her OB-GYN through a secure link: 7-day expiry, only the parts she picks, stoppable anytime, every view logged, only a hash of the token stored. Her support people learn her result or graduation only when she taps "Share the news."
 - Two-week wait and result day: a nurse records the transfer (which cancels the remaining stimulation doses and schedules the pregnancy blood test). The patient sees "Day N of the wait" (or hides the count), picks how to hear her result (a call, the app, or a call with her partner), checks in each day, reads the clinic's approved answers, and can use "Rough day?" (talk to someone, a breathing exercise). "Struggling" or "Talk to someone" puts a call on the nurse's list. The nurse enters the hCG and chooses the outcome by hand; Kinpath never decides it. The result stays hidden until she releases it, and release requires a phone call first if the patient asked for one. Support people never see the result. A negative result shows a gentle screen, quiets the app for 14 days (no cheerful messages or follow-up nudges; dose reminders still ring), and puts a follow-up call on the nurse's list.
 - Support people: the patient invites a partner, family member or friend from Settings, picks what they see, and sends a one-time code (expires in 7 days, only its hash is stored) with her phone's share sheet. Up to five people; she can cancel an invite, change each person's access, or remove someone, which ends access right away.
@@ -19,7 +20,6 @@
 ## Next (stage 1, continued)
 
 - [ ] OB-GYN summary links: add a short code sent separately, so a forwarded link alone isn't enough
-- [ ] "When you're ready" next-cycle planning after a negative result (follow-up visit, frozen embryos, counselor)
 - [ ] A real counselor directory (today "A counselor who knows this" asks the nurse to call)
 - [ ] Move internal nurse tasks (result reviews) into their own table so patients can never read them, even through the API
 - [ ] AI gateway: one HIPAA-eligible model vendor behind a Kinpath service that only drafts from approved protocol sections, plus an evaluation test set with 100% urgent recall as a launch gate

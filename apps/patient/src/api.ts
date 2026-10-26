@@ -54,6 +54,7 @@ export interface Graduation {
   shares: { id: string; recipient: string; includeResults: boolean; includeMeds: boolean; createdAt: string; expiresAt: string; active: boolean; views: number; lastViewedAt: string | null }[];
   toldSupport: boolean;
 }
+export interface NextCycle { embryosFrozen: number | null; options: { id: string; title: string; text: string }[]; questions: string; readyAt: string | null }
 export interface Guide { medication: string; steps: Record<Lang, string>[]; videoUrl: string | null; approvedBy: string }
 export interface SendResult { handoffId: string; kind: "missed_dose" | "question" | "urgent_symptom" | "crisis" | "result_review" }
 
@@ -91,6 +92,8 @@ export class Api {
   stopSummaryShare = (id: string) => this.call<{ ok: boolean }>(`/api/patient/summary-shares/${id}/stop`, { method: "POST", body: {} });
   shareNews = () => this.call<{ ok: boolean }>("/api/patient/share-news", { method: "POST", body: {} });
   sendThanks = (text: string) => this.call<{ sent: "thanks" } | { sent: "urgent"; kind: SendResult["kind"]; handoffId: string }>("/api/patient/thanks", { method: "POST", body: { text } });
+  nextCycle = () => this.call<NextCycle>("/api/patient/next-cycle");
+  saveNextCycle = (change: { questions?: string; ready?: boolean }) => this.call<{ newlyReady: boolean }>("/api/patient/next-cycle", { method: "POST", body: change });
   noteSeen = (id: string) => this.call<{ ok: boolean }>(`/api/patient/notes/${id}/seen`, { method: "POST", body: {} });
   // Partner side
   partnerHome = () => this.call<PartnerHome>("/api/partner/home");
