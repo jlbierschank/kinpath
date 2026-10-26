@@ -7,7 +7,9 @@
  */
 import type { Lang, PlannedReminder, ReminderPrefs } from "@kinpath/core";
 
-export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3000";
+// "same-origin" is used when the phone app is published as web pages on the clinic server (/phone).
+const RAW_API_URL = process.env.EXPO_PUBLIC_API_URL;
+export const API_URL = RAW_API_URL === "same-origin" ? "" : (RAW_API_URL ?? "http://localhost:3000");
 
 export interface Dose { id: string; medication: string; dose: string; scheduledFor: string; takenAt: string | null; reportedMissed: boolean }
 export interface InboxItem { id: string; kind: string; status: string; patientMessage: string; sentText: string | null; sender: string | null }

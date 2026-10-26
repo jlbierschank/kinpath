@@ -130,7 +130,7 @@ function SignIn({ onSignedIn, onDemo }: { onSignedIn: (u: SignedInUser) => void;
         <Button testID="signin-send" label={busy ? "Sending…" : "Send me a code"} disabled={busy || !identifier.trim()} onPress={() => run(async () => { const r = await auth.requestCode(identifier); setCode(""); setStep({ name: "code", identifier, sentTo: r.sentTo }); })} />
       </Card>
       <Button testID="have-code" kind="line" label="I have an invite code" onPress={() => { setError(null); setStep({ name: "join" }); }} />
-      {__DEV__ && (
+      {(__DEV__ || process.env.EXPO_PUBLIC_DEMO === "1") && (
         <>
           <View style={{ height: 1, backgroundColor: C.line, marginVertical: 6 }} />
           <Cap>Demo build · test people (synthetic data only)</Cap>

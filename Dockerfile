@@ -22,6 +22,9 @@ RUN addgroup -S kinpath && adduser -S kinpath -G kinpath
 COPY --from=build --chown=kinpath:kinpath /app/apps/clinic/.next/standalone ./
 COPY --from=build --chown=kinpath:kinpath /app/apps/clinic/.next/static ./apps/clinic/.next/static
 COPY --from=build --chown=kinpath:kinpath /app/apps/clinic/scripts ./apps/clinic/scripts
+COPY --from=build --chown=kinpath:kinpath /app/apps/clinic/public ./apps/clinic/public
+# Demo mode only (no DATABASE_URL): the embedded database lives here and is rebuilt on each restart.
+RUN mkdir -p /app/apps/clinic/.data && chown kinpath:kinpath /app/apps/clinic/.data
 USER kinpath
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s CMD wget -qO- http://127.0.0.1:3000/api/health || exit 1

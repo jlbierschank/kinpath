@@ -28,6 +28,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <span>Synthetic data only. No real patient information.</span>
             <span data-testid="ai-chip">{aiDraftingStatus().on ? "AI drafting: on" : "AI drafting: off"}</span>
             {s?.demo && <form action={signOut}><button type="submit">Switch person</button></form>}
+            <a href="/phone" style={{ color: "#f6f1e8" }} data-testid="phone-link">Phone app</a>
             <Link href="/dev/outbox" style={{ color: "#f6f1e8" }}>Dev outbox</Link>
             {!process.env.DATABASE_URL && <form action={resetDemo}><button type="submit">Reset demo data</button></form>}
           </div>

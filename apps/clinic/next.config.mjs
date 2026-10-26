@@ -24,6 +24,10 @@ const nextConfig = {
   transpilePackages: ["@kinpath/core", "@kinpath/db"],
   serverExternalPackages: ["@electric-sql/pglite", "pg"],
   poweredByHeader: false,
+  // The phone app, published as web pages for the shared demo (scripts/build-phone-web.sh).
+  async rewrites() {
+    return [{ source: "/phone", destination: "/phone/index.html" }];
+  },
   async headers() {
     return [{ source: "/:path*", headers: security }];
   },
