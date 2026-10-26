@@ -202,3 +202,47 @@ export async function auditLog(db: Db, actor: Actor, limit = 50) {
     return r.rows;
   });
 }
+
+/** Urgent and crisis items are closed by a person after they call the patient. */
+export async function closeAfterCall(db: Db, actor: Actor & { name: string }, handoffId: string, note: string) {
+  return asActor(db, actor, async (tx) => {
+    if (actor.role !== "nurse" && actor.role !== "physician") throw new HandoffError(`A ${actor.role} cannot close clinical items.`);
+    const r = await tx.query<{ patient_id: string }>(
+      `UPDATE handoffs SET status = 'closed', sent_text = $2, sent_by = $3, sent_at = now() WHERE id = $1 AND status IN ('open','drafted') RETURNING patient_id`,
+      [handoffId, `${actor.name} called you. ${note}`.trim(), actor.userId]);
+    if (!r.rows[0]) throw new HandoffError("Already closed.");
+    await audit(tx, actor, "staff.called_patient", r.rows[0].patient_id, { handoffId });
+  });
+}
+
+export interface DoseRow { id: string; medication: string; dose: string; scheduledFor: string; takenAt: string | null; reportedMissed: boolean }
+
+export async function patientToday(db: Db, actor: Actor, patientId: string) {
+  return asActor(db, actor, async (tx) => {
+    const p = await tx.query<{ first_name: string; preferred_lang: Lang }>(`SELECT first_name, preferred_lang FROM patients WHERE id = $1`, [patientId]);
+    const c = await tx.query<{ stage: string; stim_day: number | null }>(`SELECT stage, stim_day FROM cycles WHERE patient_id = $1 ORDER BY started_on DESC LIMIT 1`, [patientId]);
+    const d = await tx.query<{ id: string; medication: string; dose: string; scheduled_for: Date; taken_at: Date | null; reported_missed_at: Date | null }>(
+      `SELECT d.id, m.medication, m.dose, d.scheduled_for, d.taken_at, d.reported_missed_at FROM dose_logs d JOIN med_orders m ON m.id = d.med_order_id
+        WHERE d.patient_id = $1 ORDER BY d.scheduled_for DESC LIMIT 6`, [patientId]);
+    const r = await tx.query<{ id: string }>(`SELECT id FROM lab_results WHERE patient_id = $1`, [patientId]);
+    return {
+      firstName: p.rows[0]?.first_name ?? null,
+      lang: p.rows[0]?.preferred_lang ?? "en",
+      stage: c.rows[0]?.stage ?? null,
+      stimDay: c.rows[0]?.stim_day ?? null,
+      doses: d.rows.map((x): DoseRow => ({ id: x.id, medication: x.medication, dose: x.dose, scheduledFor: new Date(x.scheduled_for).toISOString(), takenAt: x.taken_at ? new Date(x.taken_at).toISOString() : null, reportedMissed: x.reported_missed_at !== null })),
+      visibleResults: r.rows.length,
+    };
+  });
+}
+
+export async function patientResults(db: Db, actor: Actor, patientId: string) {
+  return asActor(db, actor, async (tx) => {
+    const p = await tx.query<{ preferred_lang: Lang }>(`SELECT preferred_lang FROM patients WHERE id = $1`, [patientId]);
+    const lang = p.rows[0]?.preferred_lang ?? "en";
+    const ranges = await tx.query<{ analyte: string; unit: string; day_from: number; day_to: number; low: string; high: string; in_range_en: string; in_range_es: string; approved_by: string }>(`SELECT * FROM clinic_ranges`);
+    const cr: ClinicRange[] = ranges.rows.map((r) => ({ analyte: r.analyte, unit: r.unit, dayFrom: r.day_from, dayTo: r.day_to, low: Number(r.low), high: Number(r.high), inRangeText: { en: r.in_range_en, es: r.in_range_es }, approvedBy: r.approved_by }));
+    const res = await tx.query<{ id: string; analyte: string; unit: string; value: string; stim_day: number }>(`SELECT id, analyte, unit, value, stim_day FROM lab_results WHERE patient_id = $1 ORDER BY collected_at DESC`, [patientId]);
+    return res.rows.map((r) => ({ id: r.id, analyte: r.analyte, unit: r.unit, value: Number(r.value), stimDay: r.stim_day, label: labelResult({ analyte: r.analyte, unit: r.unit, value: Number(r.value), stimDay: r.stim_day }, cr, lang) }));
+  });
+}

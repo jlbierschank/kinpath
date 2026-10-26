@@ -6,10 +6,8 @@
  * user, clinic and role for row-level security. There is no other way to read patient data.
  */
 import { PGlite, type Transaction } from "@electric-sql/pglite";
-import { readFileSync, readdirSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { Role } from "@kinpath/core";
+import { MIGRATIONS } from "./migrations.generated";
 
 export type Db = PGlite;
 export type Tx = Transaction;
@@ -20,8 +18,6 @@ export interface Actor {
   role: Role;
 }
 
-const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "migrations");
-
 export async function openDb(dataDir?: string): Promise<Db> {
   const db = dataDir ? new PGlite(dataDir) : new PGlite();
   await db.waitReady;
@@ -30,13 +26,12 @@ export async function openDb(dataDir?: string): Promise<Db> {
 
 export async function migrate(db: Db): Promise<void> {
   await db.exec(`CREATE TABLE IF NOT EXISTS kp_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`);
-  const files = readdirSync(migrationsDir).filter((f) => f.endsWith(".sql")).sort();
-  for (const file of files) {
-    const done = await db.query<{ name: string }>(`SELECT name FROM kp_migrations WHERE name = $1`, [file]);
+  for (const m of MIGRATIONS) {
+    const done = await db.query<{ name: string }>(`SELECT name FROM kp_migrations WHERE name = $1`, [m.name]);
     if (done.rows.length > 0) continue;
     await db.transaction(async (tx) => {
-      await tx.exec(readFileSync(join(migrationsDir, file), "utf8"));
-      await tx.query(`INSERT INTO kp_migrations (name) VALUES ($1)`, [file]);
+      await tx.exec(m.sql);
+      await tx.query(`INSERT INTO kp_migrations (name) VALUES ($1)`, [m.name]);
     });
   }
 }
