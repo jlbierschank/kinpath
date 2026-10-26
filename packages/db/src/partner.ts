@@ -6,6 +6,7 @@
 import { createHash, randomInt } from "node:crypto";
 import { HandoffError, triage, type ClinicTerm, type TriageResult } from "@kinpath/core";
 import { asActor, audit, type Actor, type Db } from "./client";
+import { alertPatient, notify, patientInfo } from "./notify";
 import { patientResults, patientSchedule } from "./loop";
 
 /** What a patient can choose to share with a partner from the phone app. */
@@ -61,6 +62,12 @@ export async function partnerHome(db: Db, actor: Actor, now = new Date()) {
  * The note still reaches the patient. Clinic staff never see these notes.
  */
 export async function sendPartnerNote(db: Db, actor: Actor & { name: string }, text: string): Promise<{ id: string; triage: TriageResult }> {
+  const r = await sendPartnerNoteTx(db, actor, text);
+  const pid = (await db.query<{ patient_id: string }>(`SELECT patient_id FROM partner_notes WHERE id = $1`, [r.id])).rows[0]?.patient_id;
+  if (pid) await alertPatient(db, pid, "support_note", `${actor.name.split(" ")[0]} sent you a note.`);
+  return r;
+}
+async function sendPartnerNoteTx(db: Db, actor: Actor & { name: string }, text: string): Promise<{ id: string; triage: TriageResult }> {
   const body = text.trim();
   if (!body) throw new HandoffError("Write a note first.");
   if (body.length > 500) throw new HandoffError("Keep notes under 500 characters.");
@@ -102,6 +109,12 @@ export async function patientSharing(db: Db, actor: Actor, patientId: string) {
 
 /** The patient chooses exactly what a partner sees. An empty choice stops sharing. */
 export async function setPartnerSharing(db: Db, actor: Actor, patientId: string, partnerUserId: string, sections: string[]) {
+  const r = await setPartnerSharingTx(db, actor, patientId, partnerUserId, sections);
+  const p = await patientInfo(db, patientId);
+  if (p) await notify(db, { clinicId: p.clinic_id, kind: "access_changed", title: `${p.first_name} changed what she shares with you.`, to: { userIds: [partnerUserId] } });
+  return r;
+}
+async function setPartnerSharingTx(db: Db, actor: Actor, patientId: string, partnerUserId: string, sections: string[]) {
   if (actor.role !== "patient") throw new HandoffError("Only the patient can change sharing.");
   const clean = [...new Set(sections)];
   if (clean.some((s) => !(SHAREABLE as readonly string[]).includes(s))) throw new HandoffError("Messages with your care team are always private.");

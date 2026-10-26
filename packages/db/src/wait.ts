@@ -12,6 +12,7 @@
  */
 import { HandoffError, type Lang } from "@kinpath/core";
 import { asActor, audit, type Actor, type Db } from "./client";
+import { alertPatient, alertStaffOfCall } from "./notify";
 
 export type ResultHow = "call" | "app" | "together";
 export type Feeling = "okay" | "anxious" | "struggling";
@@ -82,6 +83,13 @@ export async function enterPregnancyResult(db: Db, nurse: Staff, input: { patien
  * partner), the nurse must confirm the call happened first.
  */
 export async function releasePregnancyResult(db: Db, nurse: Staff, input: { patientId: string; toldByPhone: boolean }) {
+  const r = await releaseTx(db, nurse, input);
+  // The alert says only that something is ready. Never the outcome.
+  await alertPatient(db, input.patientId, "result_ready", "Your result is ready in the app.");
+  if (r.negative) await alertStaffOfCall(db, input.patientId, "follow-up after a negative result");
+  return { releasedTo: r.releasedTo };
+}
+async function releaseTx(db: Db, nurse: Staff, input: { patientId: string; toldByPhone: boolean }) {
   requireClinician(nurse);
   return asActor(db, nurse, async (tx) => {
     const t = await tx.query<{ id: string; outcome: Outcome | null; released_at: Date | null }>(
@@ -103,7 +111,7 @@ export async function releasePregnancyResult(db: Db, nurse: Staff, input: { pati
         [nurse.clinicId, input.patientId, `Follow-up call after a negative result. Her app is quiet for ${QUIET_DAYS} days.`]);
     }
     await audit(tx, nurse, "result.released_pregnancy_test", input.patientId, { testId: test.id, toldBy: input.toldByPhone ? "phone" : "app" });
-    return { releasedTo: how };
+    return { releasedTo: how, negative: test.outcome === "negative" };
   });
 }
 
@@ -227,6 +235,11 @@ export async function setWaitPrefs(db: Db, actor: Actor, patientId: string, chan
 
 /** "How are you today?" Struggling puts a call on the nurse's list. */
 export async function checkIn(db: Db, actor: Actor, patientId: string, feeling: string) {
+  const r = await checkInTx(db, actor, patientId, feeling);
+  if (r.nurseWillCall) await alertStaffOfCall(db, patientId, "struggling in the wait");
+  return r;
+}
+async function checkInTx(db: Db, actor: Actor, patientId: string, feeling: string) {
   if (!["okay", "anxious", "struggling"].includes(feeling)) throw new HandoffError("Choose how you're feeling.");
   return asActor(db, actor, async (tx) => {
     await tx.query(`INSERT INTO wellbeing_checkins (clinic_id, patient_id, feeling) VALUES ($1,$2,$3)`, [actor.clinicId, patientId, feeling]);
@@ -244,6 +257,11 @@ const CALL_REASONS = {
 } as const;
 
 export async function askForCall(db: Db, actor: Actor, patientId: string, why: string) {
+  const r = await askForCallTx(db, actor, patientId, why);
+  await alertStaffOfCall(db, patientId, why === "counselor" ? "asked about a counselor" : "asked to talk to someone");
+  return r;
+}
+async function askForCallTx(db: Db, actor: Actor, patientId: string, why: string) {
   if (!(why in CALL_REASONS)) throw new HandoffError("Something went wrong.");
   return asActor(db, actor, async (tx) => {
     await tx.query(`INSERT INTO nurse_tasks (clinic_id, patient_id, kind, reason) VALUES ($1,$2,'wellbeing_call',$3)`, [actor.clinicId, patientId, CALL_REASONS[why as keyof typeof CALL_REASONS]]);
@@ -287,6 +305,11 @@ export async function patientNextCycle(db: Db, actor: Actor, patientId: string) 
 
 /** She writes her questions, and says when she's ready. Ready puts a call on the nurse's list, once. */
 export async function saveNextCyclePlan(db: Db, actor: Actor, patientId: string, change: { questions?: string; ready?: boolean }) {
+  const r = await saveNextCyclePlanTx(db, actor, patientId, change);
+  if (r.newlyReady) await alertStaffOfCall(db, patientId, "ready to talk about a next cycle");
+  return r;
+}
+async function saveNextCyclePlanTx(db: Db, actor: Actor, patientId: string, change: { questions?: string; ready?: boolean }) {
   if (actor.role !== "patient") throw new HandoffError("Only the patient can change this.");
   const q = change.questions === undefined ? undefined : change.questions.trim();
   if (q !== undefined && q.length > 2000) throw new HandoffError("Keep your questions under 2,000 characters.");

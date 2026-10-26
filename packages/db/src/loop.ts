@@ -7,6 +7,7 @@ import {
   type ClinicRange, type Handoff, type Lang, type TriageResult,
 } from "@kinpath/core";
 import { asActor, audit, type Actor, type Db, type Tx } from "./client";
+import { alertPatient, alertStaffOfMessage, notify } from "./notify";
 import type { ClinicTerm } from "@kinpath/core";
 import { DEFAULT_PREFS, type ReminderPrefs } from "@kinpath/core";
 
@@ -42,6 +43,11 @@ function toHandoff(r: HandoffRow): Handoff {
 
 /** Patient reports a missed dose (optionally with a note). The note is triaged first. */
 export async function reportMissedDose(db: Db, actor: Actor, input: { patientId: string; doseLogId: string; note?: string }) {
+  const r = await reportMissedDoseTx(db, actor, input);
+  await alertStaffOfMessage(db, input.patientId, r.handoffId, r.kind);
+  return r;
+}
+async function reportMissedDoseTx(db: Db, actor: Actor, input: { patientId: string; doseLogId: string; note?: string }) {
   return asActor(db, actor, async (tx) => {
     const message = input.note?.trim() || "I missed a dose.";
     const { kind, triage } = classifyMessage(message, { reportedMissedDose: true, clinicTerms: await clinicTerms(tx) });
@@ -59,6 +65,11 @@ export async function reportMissedDose(db: Db, actor: Actor, input: { patientId:
 
 /** Patient sends a free-text message. Urgent and crisis messages are flagged before anything else happens. */
 export async function sendPatientMessage(db: Db, actor: Actor, input: { patientId: string; text: string }) {
+  const r = await sendPatientMessageTx(db, actor, input);
+  await alertStaffOfMessage(db, input.patientId, r.handoffId, r.kind);
+  return r;
+}
+async function sendPatientMessageTx(db: Db, actor: Actor, input: { patientId: string; text: string }) {
   return asActor(db, actor, async (tx) => {
     const { kind, triage } = classifyMessage(input.text, { clinicTerms: await clinicTerms(tx) });
     const res = await tx.query<{ id: string }>(
@@ -147,6 +158,12 @@ export async function draftReply(db: Db, actor: Actor, handoffId: string) {
 }
 
 export async function sendReply(db: Db, actor: Actor & { name: string }, handoffId: string, finalText: string) {
+  const sent = await sendReplyTx(db, actor, handoffId, finalText);
+  const pid = (await db.query<{ patient_id: string }>(`SELECT patient_id FROM handoffs WHERE id = $1`, [handoffId])).rows[0]?.patient_id;
+  if (pid) await alertPatient(db, pid, "nurse_reply", `${actor.name.split(/[ ,]/)[0]} replied to your message.`);
+  return sent;
+}
+async function sendReplyTx(db: Db, actor: Actor & { name: string }, handoffId: string, finalText: string) {
   return asActor(db, actor, async (tx) => {
     const h = await tx.query<HandoffRow>(`SELECT * FROM handoffs WHERE id = $1`, [handoffId]);
     const row = h.rows[0];
@@ -179,6 +196,14 @@ export async function markReplyRead(db: Db, actor: Actor, handoffId: string) {
 
 /** Pilot path: clinic staff enter a result. Out-of-range results open a nurse task automatically. */
 export async function enterLabResult(db: Db, actor: Actor, input: { patientId: string; analyte: string; unit: string; value: number; stimDay: number }) {
+  const r = await enterLabResultTx(db, actor, input);
+  if (r.label.routeToNurse) {
+    const p = (await db.query<{ first_name: string; last_name: string }>(`SELECT first_name, last_name FROM patients WHERE id = $1`, [input.patientId])).rows[0];
+    await notify(db, { clinicId: actor.clinicId, kind: "result_to_review", title: `${p?.first_name} ${p?.last_name} · ${input.analyte} to review`, link: "/nurse", to: { clinicians: true }, except: actor.userId });
+  }
+  return r;
+}
+async function enterLabResultTx(db: Db, actor: Actor, input: { patientId: string; analyte: string; unit: string; value: number; stimDay: number }) {
   return asActor(db, actor, async (tx) => {
     const ranges = await tx.query<{ analyte: string; unit: string; day_from: number; day_to: number; low: string; high: string; in_range_en: string; in_range_es: string; approved_by: string }>(`SELECT * FROM clinic_ranges`);
     const clinicRanges: ClinicRange[] = ranges.rows.map((r) => ({

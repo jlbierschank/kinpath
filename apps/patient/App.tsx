@@ -7,8 +7,10 @@ import { useFonts } from "expo-font";
 import { Newsreader_400Regular_Italic, Newsreader_500Medium } from "@expo-google-fonts/newsreader";
 import { InstrumentSans_400Regular, InstrumentSans_500Medium, InstrumentSans_600SemiBold, InstrumentSans_700Bold } from "@expo-google-fonts/instrument-sans";
 import Svg, { Path } from "react-native-svg";
-import { acceptInvite, Api, type NextCycle, type Dose, type Feeling, type Graduation, type KeepsakeId, type ResultHow, type Guide, type Invite, type PartnerHome, type Relationship, type SendResult, type Shareable, type SupportPerson, type Today as TodayData } from "./src/api";
+import { Api, auth, type Auth, type SignedInUser, type NextCycle, type Dose, type Feeling, type Graduation, type KeepsakeId, type ResultHow, type Guide, type Invite, type PartnerHome, type Relationship, type SendResult, type Shareable, type SupportPerson, type Today as TodayData } from "./src/api";
 import { askPermission, remindersSupported, syncReminders } from "./src/reminders";
+import { clearSession, deviceName, loadSession, saveSession } from "./src/session";
+import { Bell, InboxScreen, NotificationSettingsScreen, SignInSection } from "./src/account";
 import { AskBox, Avatar, Button, C, Cap, Card, Chip, Chips, F, H1, JourneyPath, Moment, Muted, Pill, Row, st, T, TimelineItem, Today, Toggle } from "./src/ui";
 
 // DEV ONLY: synthetic seed people. Real passwordless sign-in replaces this screen.
@@ -22,7 +24,7 @@ const initialsOf = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 
 const NURSE_LINE = "tel:+18135550100"; // placeholder
 
 type Tab = "home" | "community" | "record" | "team";
-type Screen = { name: Tab } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; kind: SendResult["kind"] } | { name: "missed"; dose: Dose } | { name: "invite" } | { name: "rough" } | { name: "breathe" } | { name: "keepsake" } | { name: "share-summary"; ob: string | null } | { name: "next-cycle" };
+type Screen = { name: Tab } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; kind: SendResult["kind"] } | { name: "missed"; dose: Dose } | { name: "invite" } | { name: "rough" } | { name: "breathe" } | { name: "keepsake" } | { name: "share-summary"; ob: string | null } | { name: "next-cycle" } | { name: "inbox" } | { name: "notif-settings" };
 type Tx = (en: string, es: string) => string;
 
 const STAGES = ["Consult", "Testing", "Stims", "Retrieval", "Transfer", "Wait", "Result", "OB-GYN"];
@@ -35,17 +37,26 @@ export default function App() {
   return <SafeAreaProvider><AppInner /></SafeAreaProvider>;
 }
 
+type Who = { auth: Auth; name: string; initials: string; partner: boolean; demo: boolean };
+
 function AppInner() {
   const [fontsLoaded] = useFonts({ Newsreader_400Regular_Italic, Newsreader_500Medium, InstrumentSans_400Regular, InstrumentSans_500Medium, InstrumentSans_600SemiBold, InstrumentSans_700Bold });
-  const [who, setWho] = useState<DevPerson | null>(null);
-  // People who joined with an invite code during this session (dev only; real sign-in remembers them).
-  const [joined, setJoined] = useState<DevPerson[]>([]);
-  const [joining, setJoining] = useState(false);
-  if (!fontsLoaded) return <View style={{ flex: 1, backgroundColor: C.oat, alignItems: "center", justifyContent: "center" }}><ActivityIndicator color={C.espresso} /></View>;
-  if (joining) return <AcceptInvite onBack={() => setJoining(false)} onJoined={(p) => { setJoined([...joined, p]); setJoining(false); setWho(p); }} />;
-  if (!who) return <DevSignIn people={[...DEV_PEOPLE, ...joined]} onPick={setWho} onInvite={() => setJoining(true)} />;
-  if (who.partner) return <PartnerApp api={new Api(who.id)} initials={who.initials} onSignOut={() => setWho(null)} />;
-  return <Signed api={new Api(who.id)} initials={who.initials} onSignOut={() => setWho(null)} />;
+  const [who, setWho] = useState<Who | null>(null);
+  const [booting, setBooting] = useState(true);
+  useEffect(() => {
+    loadSession().then((x) => { if (x) setWho({ auth: { token: x.token }, name: x.name, initials: initialsOf(x.name), partner: x.role === "partner", demo: false }); }).finally(() => setBooting(false));
+  }, []);
+  const signOut = useCallback(async () => { await clearSession(); setWho(null); }, []);
+  const api = useMemo(() => (who ? new Api(who.auth, () => void signOut()) : null), [who, signOut]);
+  if (!fontsLoaded || booting) return <View style={{ flex: 1, backgroundColor: C.oat, alignItems: "center", justifyContent: "center" }}><ActivityIndicator color={C.espresso} /></View>;
+  if (!who || !api) {
+    return <SignIn
+      onSignedIn={async (u) => { await saveSession(u); setWho({ auth: { token: u.token }, name: u.name, initials: initialsOf(u.name), partner: u.role === "partner", demo: false }); }}
+      onDemo={(p) => setWho({ auth: { devUserId: p.id }, name: p.name, initials: p.initials, partner: p.partner, demo: true })} />;
+  }
+  const out = async () => { if (!who.demo) await api.signOut(); await signOut(); };
+  if (who.partner) return <PartnerApp api={api} initials={who.initials} onSignOut={out} demo={who.demo} />;
+  return <Signed api={api} initials={who.initials} onSignOut={out} demo={who.demo} />;
 }
 
 function Frame({ children, tabs, top }: { children: ReactNode; tabs?: ReactNode; top?: ReactNode }) {
@@ -61,56 +72,90 @@ function Frame({ children, tabs, top }: { children: ReactNode; tabs?: ReactNode;
   );
 }
 
-function DevSignIn({ people, onPick, onInvite }: { people: DevPerson[]; onPick: (p: DevPerson) => void; onInvite: () => void }) {
-  return (
-    <Frame top={<View style={{ padding: 18, paddingBottom: 6 }}><Muted>Kinpath dev build · synthetic data only</Muted></View>}>
-      <Today size={34}>Who are you testing as?</Today>
-      <Card pad={false}>
-        {people.map((p, i) => (
-          <Pressable key={p.id} testID={`pick-${p.name}`} onPress={() => onPick(p)} style={[st.row, i === 0 && { borderTopWidth: 0 }]}>
-            <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}><Avatar text={p.initials} /><View><T style={{ fontFamily: F.sans600, fontSize: 15 }}>{p.name}</T><Muted>{p.note}</Muted></View></View>
-          </Pressable>
-        ))}
-      </Card>
-      <Button testID="have-code" kind="line" label="I have an invite code" onPress={onInvite} />
-    </Frame>
-  );
-}
-
-function AcceptInvite({ onBack, onJoined }: { onBack: () => void; onJoined: (p: DevPerson) => void }) {
+// ---------- Sign in: a one-time code, no password. Demo builds can also pick a test person. ----------
+type SignInStep = { name: "start" } | { name: "code"; identifier: string; sentTo: string } | { name: "join" } | { name: "join-confirm"; code: string; sentTo: string; patient: string };
+function SignIn({ onSignedIn, onDemo }: { onSignedIn: (u: SignedInUser) => void; onDemo: (p: DevPerson) => void }) {
+  const [step, setStep] = useState<SignInStep>({ name: "start" });
+  const [identifier, setIdentifier] = useState("");
   const [code, setCode] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const join = async () => {
-    setBusy(true); setError(null);
-    try {
-      const r = await acceptInvite(code, name);
-      onJoined({ id: r.userId, name: r.name, initials: initialsOf(r.name), note: `Supporting ${r.patientFirstName}`, partner: true });
-    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
-  };
-  return (
-    <Frame top={<BackBar label="Back" onBack={onBack} />}>
+  const run = async (fn: () => Promise<void>) => { setBusy(true); setError(null); try { await fn(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
+  const back = <BackBar label="Back" onBack={() => { setStep({ name: "start" }); setCode(""); setError(null); }} />;
+  const codeInput = <TextInput testID="signin-code" style={[st.input, { fontFamily: F.sans600, fontSize: 24, letterSpacing: 6 }]} value={code} onChangeText={setCode} keyboardType="number-pad" textContentType="oneTimeCode" autoComplete="one-time-code" maxLength={7} placeholder="123456" placeholderTextColor={C.stone} />;
+  const err = error && <T testID="signin-error" style={{ color: C.red }}>{error}</T>;
+
+  if (step.name === "code") return (
+    <Frame top={back}>
+      <Today size={34}>Enter your code</Today>
+      <Muted>{`If ${step.sentTo} has an account, we sent a 6-digit code. It expires in 10 minutes.`}</Muted>
+      <Card style={{ gap: 10 }}>{codeInput}{err}
+        <Button testID="signin-verify" label={busy ? "Signing in…" : "Sign in"} disabled={busy || code.replace(/\D/g, "").length !== 6} onPress={() => run(async () => onSignedIn(await auth.verifyCode(step.identifier, code, deviceName())))} />
+      </Card>
+      <Pressable onPress={() => run(async () => { await auth.requestCode(step.identifier); setError(null); })}><T style={{ color: C.lavInk, textDecorationLine: "underline" }}>Send a new code</T></Pressable>
+    </Frame>
+  );
+  if (step.name === "join") return (
+    <Frame top={back}>
       <Today size={34}>Join with an invite</Today>
       <Muted>Someone going through treatment at Bayside invited you to follow along. You'll see only what they choose to share.</Muted>
       <Card style={{ gap: 10 }}>
         <Cap>Invite code</Cap>
-        <TextInput testID="invite-code" style={[st.input, { fontFamily: F.sans600, fontSize: 20, letterSpacing: 2 }]} value={code} onChangeText={setCode} autoCapitalize="characters" autoCorrect={false} placeholder="ABCD-EFGH" placeholderTextColor={C.stone} />
+        <TextInput testID="invite-code" style={[st.input, { fontFamily: F.sans600, fontSize: 20, letterSpacing: 2 }]} value={inviteCode} onChangeText={setInviteCode} autoCapitalize="characters" autoCorrect={false} placeholder="ABCD-EFGH" placeholderTextColor={C.stone} />
         <Cap>Your name</Cap>
         <TextInput testID="invite-name" style={st.input} value={name} onChangeText={setName} placeholder="First and last name" placeholderTextColor={C.stone} />
-        {error && <T testID="invite-error" style={{ color: C.red }}>{error}</T>}
-        <Button testID="join" label={busy ? "Joining…" : "Join"} disabled={busy || !code.trim() || !name.trim()} onPress={join} />
+        {err}
+        <Button testID="join" label={busy ? "Checking…" : "Continue"} disabled={busy || !inviteCode.trim() || !name.trim()} onPress={() => run(async () => { const r = await auth.startJoin(inviteCode, name); setCode(""); setStep({ name: "join-confirm", code: inviteCode, sentTo: r.sentTo, patient: r.patientFirstName }); })} />
       </Card>
-      <Muted style={{ fontSize: 12 }}>In the released app, you'll also confirm your phone number or email with a one-time sign-in link.</Muted>
+    </Frame>
+  );
+  if (step.name === "join-confirm") return (
+    <Frame top={back}>
+      <Today size={34}>Confirm it's you</Today>
+      <Muted>{`${step.patient} invited you. To make sure it's really you, we sent a 6-digit code to ${step.sentTo}, the number or email ${step.patient} entered.`}</Muted>
+      <Card style={{ gap: 10 }}>{codeInput}{err}
+        <Button testID="join-confirm" label={busy ? "Joining…" : "Join"} disabled={busy || code.replace(/\D/g, "").length !== 6} onPress={() => run(async () => onSignedIn(await auth.finishJoin(step.code, code, deviceName())))} />
+      </Card>
+    </Frame>
+  );
+  return (
+    <Frame top={<View style={{ padding: 18, paddingBottom: 6 }}><Muted>Bayside Fertility · powered by Kinpath</Muted></View>}>
+      <Today size={38}>Welcome.</Today>
+      <Muted>Sign in with the mobile number or email Bayside has for you. We'll send a code. No password needed.</Muted>
+      <Card style={{ gap: 10 }}>
+        <TextInput testID="signin-identifier" style={st.input} value={identifier} onChangeText={setIdentifier} autoCapitalize="none" keyboardType="email-address" textContentType="username" placeholder="(813) 555-0142 or you@email.com" placeholderTextColor={C.stone} />
+        {err}
+        <Button testID="signin-send" label={busy ? "Sending…" : "Send me a code"} disabled={busy || !identifier.trim()} onPress={() => run(async () => { const r = await auth.requestCode(identifier); setCode(""); setStep({ name: "code", identifier, sentTo: r.sentTo }); })} />
+      </Card>
+      <Button testID="have-code" kind="line" label="I have an invite code" onPress={() => { setError(null); setStep({ name: "join" }); }} />
+      {__DEV__ && (
+        <>
+          <View style={{ height: 1, backgroundColor: C.line, marginVertical: 6 }} />
+          <Cap>Demo build · test people (synthetic data only)</Cap>
+          <Card pad={false}>
+            {DEV_PEOPLE.map((p, i) => (
+              <Pressable key={p.id} testID={`pick-${p.name}`} onPress={() => onDemo(p)} style={[st.row, i === 0 && { borderTopWidth: 0 }]}>
+                <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}><Avatar text={p.initials} /><View><T style={{ fontFamily: F.sans600, fontSize: 15 }}>{p.name}</T><Muted>{p.note}</Muted></View></View>
+              </Pressable>
+            ))}
+          </Card>
+          <Muted style={{ fontSize: 12 }}>Sign-in codes show up on the clinic web app's Dev outbox page.</Muted>
+        </>
+      )}
     </Frame>
   );
 }
 
-function TopBar({ clinic, initials, onAvatar }: { clinic: string; initials: string; onAvatar: () => void }) {
+function TopBar({ clinic, initials, onAvatar, unread, onBell, t }: { clinic: string; initials: string; onAvatar: () => void; unread: number; onBell: () => void; t: Tx }) {
   return (
     <View style={{ paddingHorizontal: 18, paddingTop: 16, paddingBottom: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
       <T style={{ fontFamily: F.sans500, fontSize: 14, color: C.stone }}>{clinic}</T>
-      <Pressable testID="avatar" accessibilityLabel="Settings and notifications" onPress={onAvatar}><Avatar text={initials} /></Pressable>
+      <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+        <Bell unread={unread} onPress={onBell} t={t} />
+        <Pressable testID="avatar" accessibilityLabel={t("Settings", "Ajustes")} onPress={onAvatar}><Avatar text={initials} /></Pressable>
+      </View>
     </View>
   );
 }
@@ -140,17 +185,19 @@ function TabBar({ current, t, go, badge }: { current: string; t: Tx; go: (s: Scr
   );
 }
 
-function Signed({ api, initials, onSignOut }: { api: Api; initials: string; onSignOut: () => void }) {
+function Signed({ api, initials, onSignOut, demo }: { api: Api; initials: string; onSignOut: () => void; demo: boolean }) {
   const [data, setData] = useState<TodayData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [screen, setScreen] = useState<Screen>({ name: "home" });
   const [scheduled, setScheduled] = useState(0);
   // A short line shown at the top of home after a support action ("Your nurse will call you today").
   const [notice, setNotice] = useState<string | null>(null);
+  const [alerts, setAlerts] = useState(0);
+  const refreshAlerts = useCallback(() => { api.notifications().then((n) => setAlerts(n.unread)).catch(() => {}); }, [api]);
   const load = useCallback(async () => {
-    try { const d = await api.today(); setData(d); setError(null); setScheduled(await syncReminders(d.reminders)); }
+    try { const d = await api.today(); setData(d); setError(null); setScheduled(await syncReminders(d.reminders)); refreshAlerts(); }
     catch (e) { setError((e as Error).message); }
-  }, [api]);
+  }, [api, refreshAlerts]);
   useEffect(() => { void load(); }, [load]);
 
   if (error) return <Frame><Today size={34}>Can't reach Bayside</Today><Muted>{error}</Muted><Button label="Try again" onPress={load} /></Frame>;
@@ -161,7 +208,9 @@ function Signed({ api, initials, onSignOut }: { api: Api; initials: string; onSi
   const afterSend = (r: SendResult) => (r.kind === "urgent_symptom" || r.kind === "crisis" ? go({ name: "urgent", kind: r.kind }) : (void load(), go({ name: "team" })));
   const unread = data.inbox.filter((m) => m.status === "sent").length;
   const isTab = ["home", "community", "record", "team"].includes(screen.name);
-  const top = isTab ? <TopBar clinic={data.clinic.name} initials={initials} onAvatar={() => go({ name: "settings" })} /> : <BackBar label={t("Home", "Inicio")} onBack={home} />;
+  const top = isTab ? <TopBar clinic={data.clinic.name} initials={initials} onAvatar={() => go({ name: "settings" })} unread={alerts} onBell={() => go({ name: "inbox" })} t={t} /> : <BackBar label={t("Home", "Inicio")} onBack={home} />;
+  // Where a notification takes you in the app.
+  const openAlert = (n: { kind: string }) => go(n.kind === "nurse_reply" ? { name: "team" } : n.kind === "support_joined" ? { name: "settings" } : { name: "home" });
   const tabs = isTab ? <TabBar current={screen.name} t={t} go={go} badge={unread} /> : undefined;
 
   return (
@@ -183,7 +232,9 @@ function Signed({ api, initials, onSignOut }: { api: Api; initials: string; onSi
       {screen.name === "team" && <CareTeam data={data} api={api} t={t} reload={load} afterSend={afterSend} />}
       {screen.name === "record" && <Record data={data} t={t} />}
       {screen.name === "community" && <Community t={t} />}
-      {screen.name === "settings" && <Settings data={data} api={api} t={t} reload={load} scheduled={scheduled} onSignOut={onSignOut} go={go} />}
+      {screen.name === "settings" && <Settings data={data} api={api} t={t} reload={load} scheduled={scheduled} onSignOut={onSignOut} go={go} demo={demo} />}
+      {screen.name === "inbox" && <InboxScreen api={api} t={t} open={(n) => { void load(); openAlert(n); }} changed={refreshAlerts} />}
+      {screen.name === "notif-settings" && <NotificationSettingsScreen api={api} t={t} lang={data.lang} />}
       {screen.name === "invite" && <InviteScreen api={api} t={t} reload={load} done={() => { void load(); go({ name: "settings" }); }} />}
       {screen.name === "urgent" && <Urgent kind={screen.kind} t={t} back={home} />}
     </Frame>
@@ -540,8 +591,8 @@ const listNames = (names: string[], t: Tx) => names.length <= 1 ? names.join("")
 function NewsCard({ data, api, t, reload, told }: { data: TodayData; api: Api; t: Tx; reload: () => Promise<void>; told: boolean }) {
   const [done, setDone] = useState(false);
   const people = data.sharing.partners.filter((p) => p.sections.includes("schedule")).map((p) => p.name.split(" ")[0]!);
-  if (people.length === 0 || told === true) return null;
   if (done) return <Moment>{t(`${listNames(people, t)} can see your news now.`, `${listNames(people, t)} ya pueden ver tu noticia.`)}</Moment>;
+  if (people.length === 0 || told) return null;
   return (
     <Card style={{ gap: 8 }}>
       <T style={{ fontFamily: F.sans700, fontSize: 15 }}>{t(`Share the news with ${listNames(people, t)}?`, `¿Compartir la noticia con ${listNames(people, t)}?`)}</T>
@@ -857,11 +908,14 @@ function Community({ t }: { t: Tx }) {
 }
 
 // ---------- Settings ----------
-function Settings({ data, api, t, reload, scheduled, onSignOut, go }: { data: TodayData; api: Api; t: Tx; reload: () => Promise<void>; scheduled: number; onSignOut: () => void; go: (s: Screen) => void }) {
+function Settings({ data, api, t, reload, scheduled, onSignOut, go, demo }: { data: TodayData; api: Api; t: Tx; reload: () => Promise<void>; scheduled: number; onSignOut: () => void; go: (s: Screen) => void; demo: boolean }) {
   const [perm, setPerm] = useState<string | null>(null);
   return (
     <>
-      <H1>{t("Settings and notifications", "Ajustes y notificaciones")}</H1>
+      <H1>{t("Settings", "Ajustes")}</H1>
+      <Card pad={false}>
+        <Row testID="open-notif-settings" title={t("Notifications", "Notificaciones")} sub={t("Which alerts you get, and how", "Qué alertas recibes y cómo")} onPress={() => go({ name: "notif-settings" })} right={<T style={{ color: C.stone, fontSize: 18 }}>›</T>} />
+      </Card>
       <Cap>{t("Reminders", "Recordatorios")}</Cap>
       <Card style={{ gap: 8 }}>
         <Muted>{remindersSupported
@@ -886,7 +940,7 @@ function Settings({ data, api, t, reload, scheduled, onSignOut, go }: { data: To
         {data.reminders.length === 0 && <Row title={t("None right now", "Ninguno por ahora")} />}
         {data.reminders.map((r) => <Row key={r.key} title={dayClock(r.at)} sub={r.body} />)}
       </Card>
-      <Button kind="plain" label={t("Switch test patient", "Cambiar paciente de prueba")} onPress={onSignOut} />
+      <SignInSection api={api} t={t} onSignOut={onSignOut} demo={demo} />
     </>
   );
 }
@@ -1049,7 +1103,7 @@ function Urgent({ kind, t, back }: { kind: SendResult["kind"]; t: Tx; back: () =
 
 // ---------- Partner side ----------
 // English only for now; partner Spanish follows once the medical translator has reviewed the patient text.
-type PScreen = { name: "home" } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; level: "urgent" | "crisis" };
+type PScreen = { name: "home" } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; level: "urgent" | "crisis" } | { name: "inbox" } | { name: "notif-settings" };
 // Injection offers only appear when injections are shared with this person.
 const quickNotes = (meds: boolean, waiting: boolean, news: string | null) => news === "negative"
   ? ["I love you", "I'm here, whatever you need", "Dinner's on me tonight", "No need to reply"]
@@ -1062,20 +1116,22 @@ const quickNotes = (meds: boolean, waiting: boolean, news: string | null) => new
   : ["Thinking of you today", "So proud of you", "Whatever you need, I'm here", "Dinner's on me tonight"];
 const label = (s: string) => `${s[0]!.toUpperCase()}${s.slice(1)}`;
 
-function PartnerApp({ api, initials, onSignOut }: { api: Api; initials: string; onSignOut: () => void }) {
+function PartnerApp({ api, initials, onSignOut, demo }: { api: Api; initials: string; onSignOut: () => void; demo: boolean }) {
   const [data, setData] = useState<PartnerHome | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [screen, setScreen] = useState<PScreen>({ name: "home" });
+  const [alerts, setAlerts] = useState(0);
+  const refreshAlerts = useCallback(() => { api.notifications().then((n) => setAlerts(n.unread)).catch(() => {}); }, [api]);
   const load = useCallback(async () => {
-    try { setData(await api.partnerHome()); setError(null); } catch (e) { setError((e as Error).message); }
-  }, [api]);
+    try { setData(await api.partnerHome()); setError(null); refreshAlerts(); } catch (e) { setError((e as Error).message); }
+  }, [api, refreshAlerts]);
   useEffect(() => { void load(); }, [load]);
 
   if (error) return <Frame><Today size={34}>Can't reach Bayside</Today><Muted>{error}</Muted><Button label="Try again" onPress={load} /></Frame>;
   if (!data) return <Frame><Muted>Loading…</Muted></Frame>;
   const home = () => { void load(); setScreen({ name: "home" }); };
   const top = screen.name === "home"
-    ? <TopBar clinic={data.clinic.name} initials={initials} onAvatar={() => setScreen({ name: "settings" })} />
+    ? <TopBar clinic={data.clinic.name} initials={initials} onAvatar={() => setScreen({ name: "settings" })} unread={alerts} onBell={() => setScreen({ name: "inbox" })} t={(en) => en} />
     : <BackBar label="Home" onBack={home} />;
   const her = data.shared ? data.firstName ?? "your partner" : "your partner";
   const t: Tx = (en) => en;
@@ -1088,19 +1144,25 @@ function PartnerApp({ api, initials, onSignOut }: { api: Api; initials: string; 
           <>
             <Today size={34}>Nothing shared right now</Today>
             <Muted>When your partner shares parts of her treatment with you in her Bayside app, they'll show up here.</Muted>
-            <Button kind="plain" label="Switch test person" onPress={onSignOut} />
+            <Button kind="plain" label={demo ? "Switch test person" : "Sign out"} onPress={onSignOut} />
           </>
         ))}
       {screen.name === "walk" && <Walk doses={screen.doses} focus={screen.focus} api={api} lang="en" t={t} done={home} helper={her} somethingWrong={() => Linking.openURL(NURSE_LINE)} />}
       {screen.name === "urgent" && <PartnerUrgent level={screen.level} her={her} back={home} />}
+      {screen.name === "inbox" && <InboxScreen api={api} t={t} open={() => home()} changed={refreshAlerts} />}
+      {screen.name === "notif-settings" && <NotificationSettingsScreen api={api} t={t} lang="en" />}
       {screen.name === "settings" && (
         <>
-          <H1>Your access</H1>
+          <H1>Settings</H1>
+          <Card pad={false}>
+            <Row testID="open-notif-settings" title="Notifications" sub="Which alerts you get, and how" onPress={() => setScreen({ name: "notif-settings" })} right={<T style={{ color: C.stone, fontSize: 18 }}>›</T>} />
+          </Card>
+          <Cap>Your access</Cap>
           <Card style={{ gap: 8 }}>
             <T style={{ fontSize: 15, lineHeight: 22 }}>{data.shared ? `You see what ${her} chooses to share: ${data.sections.map((s) => ({ schedule: "her cycle", meds: "injections", results: "results" })[s]).join(", ")}.` : "Nothing is shared with you right now."}</T>
             <Muted>{`${her === "your partner" ? "Her" : `${her}'s`} messages with the care team are always private. She can change what you see at any time, and Bayside keeps a record each time you look.`}</Muted>
           </Card>
-          <Button kind="plain" label="Switch test person" onPress={onSignOut} />
+          <SignInSection api={api} t={t} onSignOut={onSignOut} demo={demo} />
         </>
       )}
     </Frame>

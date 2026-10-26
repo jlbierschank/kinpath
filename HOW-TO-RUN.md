@@ -28,6 +28,13 @@ Scan the QR code with your iPhone camera to open the app in Expo Go. Or press **
 
 ## Using it
 
+**Demo sign-in.** The home page lets you pick a test person. That only works in this demo build.
+
+**Real sign-in** (to try it like a real user):
+- Staff: go to **localhost:3000/login**, use a staff email (for example `maria@bayside.example` or `kara@bayside.example`) and the demo password `bayside demo 2026`. The first time, you'll set up two-step sign-in: scan the QR code with an authenticator app on your phone (Google Authenticator, Microsoft Authenticator or 1Password).
+- Patients: in the phone app, enter `maya@example.com` and tap **Send me a code**.
+- Nothing is really texted or emailed yet. Codes and alerts appear on **localhost:3000/dev/outbox** (the **Dev outbox** link in the top bar).
+
 - **Reset demo data** (top of localhost:3000) starts everything over with the fictional patients.
 - Pick who you're testing as: Maya (patient), Maria (nurse), Jordan (Maya's partner), Priya (Spanish), Kara (clinic admin).
 - To switch people in the phone app, tap the initials at the top right, then **Switch test person**.

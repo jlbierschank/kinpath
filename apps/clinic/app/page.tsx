@@ -1,4 +1,7 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
 import { IDS } from "@kinpath/db";
+import { devLoginEnabled, getSession, homeFor } from "@/lib/session";
 import { signIn } from "./actions";
 
 const PEOPLE = [
@@ -10,11 +13,15 @@ const PEOPLE = [
   { id: IDS.harborNurse, name: "Lee Grant, RN", what: "Nurse at a different clinic. Sees none of Bayside's patients." },
 ];
 
-export default function Home() {
+export default async function Home() {
+  if (!devLoginEnabled()) {
+    const s = await getSession();
+    redirect(s ? homeFor(s.role) : "/login");
+  }
   return (
     <>
       <h1>Who are you testing as?</h1>
-      <p className="muted">Pick a person to see the app through their eyes. Try the loop: Maya reports a missed dose, then Maria answers it.</p>
+      <p className="muted">Pick a person to see the app through their eyes. Try the loop: Maya reports a missed dose, then Maria answers it. Or <Link href="/login">sign in for real</Link> (staff password <code>bayside demo 2026</code>).</p>
       <div className="chooser">
         {PEOPLE.map((p) => (
           <form key={p.id} action={signIn}>

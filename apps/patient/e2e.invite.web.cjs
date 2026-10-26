@@ -11,7 +11,9 @@ const SERVER = process.env.SERVER_URL ?? 'http://localhost:3000/';
   const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process.exitCode = 1; };
   const byId = id => p.locator(`[data-testid="${id}"]`);
   const sees = s => p.getByText(s, { exact: false }).first().waitFor({ timeout: 10000 }).then(() => true, () => false);
-  const as = async (name) => { await p.goto(APP); await byId(`pick-${name}`).click(); };
+  const as = async (name) => { await p.evaluate(() => { try { localStorage.clear(); } catch {} }).catch(() => {}); await p.goto(APP); await byId(`pick-${name}`).click(); };
+  // Dev outbox: where sign-in and confirmation codes land until a texting/email service is connected.
+  const codeFor = async (to) => { const o = await b.newPage(); await o.goto(SERVER + 'dev/outbox'); const rows = await o.locator('[data-testid=outbox-row]').allInnerTexts(); await o.close(); const r = rows.find((x) => x.includes(to) && /\b\d{6}\b/.test(x)); return r.match(/\b(\d{6})\b/)[1]; };
 
   const web = await b.newPage();
   await web.goto(SERVER); await web.click('button:has-text("Reset demo data")'); await web.waitForTimeout(1500);
@@ -47,6 +49,10 @@ const SERVER = process.env.SERVER_URL ?? 'http://localhost:3000/';
   await byId('invite-name').fill('Rosa Torres');
   await shot('4-join');
   await byId('join').click();
+  ok(await sees("Confirm it's you"), 'Rosa is asked to confirm her email first');
+  await shot('4b-confirm');
+  await byId('signin-code').fill(await codeFor('rosa@example.com'));
+  await byId('join-confirm').click();
   ok(await sees('Hi Rosa.'), 'Rosa joins and lands on her own home screen');
   ok(await sees('Supporting Maya'), 'She is supporting Maya');
   ok((await byId('shared-list').innerText()) === 'Her cycle', 'She sees only Maya’s cycle');
@@ -55,17 +61,23 @@ const SERVER = process.env.SERVER_URL ?? 'http://localhost:3000/';
   await shot('5-rosa-home');
 
   // The code can't be reused
+  await p.evaluate(() => { try { localStorage.clear(); } catch {} });
   await p.goto(APP);
   await byId('have-code').click();
   await byId('invite-code').fill(code);
   await byId('invite-name').fill('Someone Else');
   await byId('join').click();
   ok(await sees("That code didn't work"), 'A used code is refused');
+  await p.evaluate(() => { try { localStorage.clear(); } catch {} });
 
   // Maya sees Rosa connected, and removes Jordan
   await as('Maya Torres');
-  await byId('avatar').click();
-  ok(await sees('Sharing with Rosa'), 'Rosa now appears in Maya’s support people');
+  ok((await byId('bell-count').innerText()) === '1', 'Maya’s bell shows a new notification');
+  await byId('bell').click();
+  ok(await sees('Rosa accepted your invite.'), 'Her inbox says Rosa accepted');
+  await shot('6a-maya-inbox');
+  await byId('notification').first().click(); await p.waitForTimeout(800);
+  ok(await sees('Sharing with Rosa'), 'Tapping it opens her support people, where Rosa now appears');
   await byId('remove-Jordan').click();
   ok(await sees('Tap again to remove Jordan'), 'Removing asks for a second tap');
   await byId('remove-Jordan').click();

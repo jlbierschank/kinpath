@@ -10,6 +10,7 @@ const { chromium } = require('playwright');
   const byId = id => p.locator(`[data-testid="${id}"]`);
   const text = s => p.getByText(s, { exact: false });
 
+  { const w = await b.newPage(); await w.goto('http://localhost:3000/'); await w.click('button:has-text("Reset demo data")'); await w.waitForTimeout(1500); await w.close(); }
   await p.goto('http://localhost:8081/');
   await byId('pick-Maya Torres').click();
   await text('Up next').waitFor({ timeout: 15000 });
@@ -55,7 +56,7 @@ const { chromium } = require('playwright');
   ok(true, 'Message shows as waiting for the nurse');
 
   await byId('tab-record').click(); await text('Your record').waitFor(); await shot('7-record');
-  await byId('avatar').click(); await text('Settings and notifications').waitFor(); await shot('8-settings');
+  await byId('avatar').click(); await p.getByText('Settings', { exact: true }).waitFor(); await shot('8-settings');
   ok(true, 'Record and Settings open');
 
   await p.goto('http://localhost:8081/');

@@ -16,6 +16,8 @@ A clinic-branded patient app and nurse workspace for fertility clinics ("Bayside
 - **Clinic walls and audit log:** clinics can't see each other's data, enforced by the database itself. Every view and change is logged, and the log can't be edited or deleted.
 - **Spanish:** drafts and the patient view follow the patient's language. The Spanish text is a placeholder until a medical translator reviews it.
 - **Patient phone app (Expo, iPhone and Android):** a Today screen; step-by-step injection walkthroughs written and approved by the clinic's nurses, with a "first one done" moment; one-tap dose logging; "took it late" or "missed it" for unlogged doses; messages to the care team; and the urgent-symptom safety screen.
+- **Sign-in and accounts:** staff sign in with a password and an authenticator-app code; patients and support people get a one-time code. Everyone has an account page; clinic admins manage the team.
+- **Notifications:** a bell and inbox, per-alert and per-channel choices, quiet hours. Urgent safety alerts can't be turned off, and nothing outside the app carries health details.
 - **Clinic settings:** nurses and physicians edit the clinic's result ranges, protocol answers, injection walkthroughs (order, steps, video) and extra urgent words. Each change is signed with their name and kept in a change history that can't be edited. Clinic admins can look but not change anything, and the built-in urgent words can't be removed.
 - **Private reminders:** dose reminders 15 minutes early that never get silenced, and "did you log it?" follow-ups that wait out quiet hours. The lock screen says only "You have a reminder" unless the patient chooses to show medication names.
 
@@ -25,7 +27,7 @@ You'll need Node 22 or newer and pnpm.
 
 ```bash
 pnpm install
-pnpm test                 # 119 safety, settings, sharing, result and access tests
+pnpm test                 # 146 safety, sign-in, sharing, result and access tests
 pnpm dev:clinic           # http://localhost:3000
 ```
 

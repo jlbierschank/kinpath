@@ -4,6 +4,10 @@
  */
 import type { Db } from "./client";
 
+/** scrypt hash of the demo staff password "bayside demo 2026". Synthetic seed accounts only. */
+export const DEMO_STAFF_PASSWORD = "bayside demo 2026";
+const DEMO_STAFF_PASSWORD_HASH = "scrypt$16384$8$1$AoryJqPoWqlQ9h7iR43y6Q==$NZpRY2FQ6ItfKSpsAXUzEAMHkB0cK1b0UBxIBTgSx+I=";
+
 export const IDS = {
   bayside: "bayside",
   harbor: "harbor",
@@ -56,6 +60,12 @@ export async function seed(db: Db, now = new Date("2026-10-26T09:00:00-04:00")):
     for (const u of users) {
       await tx.query(`INSERT INTO app_users (id, clinic_id, role, display_name, email, preferred_lang) VALUES ($1,$2,$3,$4,$5,$6)`, u);
     }
+    // Demo staff password for every seed staff account: "bayside demo 2026" (synthetic accounts only).
+    // Two-step sign-in is set up at first sign-in, as it would be for a real new staff member.
+    for (const id of [i.maria, i.patel, i.sam, i.kara, i.harborNurse]) {
+      await tx.query(`INSERT INTO user_credentials (user_id, password_hash, password_changed_at) VALUES ($1,$2,now())`, [id, DEMO_STAFF_PASSWORD_HASH]);
+    }
+    await tx.query(`UPDATE app_users SET title = 'IVF nurse', signature = '— Maria, Bayside nursing team' WHERE id = $1`, [i.maria]);
     await tx.query(
       `INSERT INTO patients (id, clinic_id, user_id, first_name, last_name, preferred_lang) VALUES
        ($1,$4,$5,'Maya','Torres','en'), ($2,$4,$6,'Priya','Shah','es'), ($3,$7,$8,'Dana','Ruiz','en')`,

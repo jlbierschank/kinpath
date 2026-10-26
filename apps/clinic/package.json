@@ -13,14 +13,16 @@
     "@kinpath/core": "workspace:*",
     "@kinpath/db": "workspace:*",
     "next": "15.5.28",
+    "qrcode": "1.5.4",
     "react": "19.1.10",
     "react-dom": "19.1.10",
     "server-only": "0.0.1"
   },
   "devDependencies": {
     "@types/node": "22.18.0",
+    "@types/qrcode": "1.5.5",
     "@types/react": "19.1.10",
-    "typescript": "5.9.3",
-    "@types/react-dom": "19.1.7"
+    "@types/react-dom": "19.1.7",
+    "typescript": "5.9.3"
   }
 }

@@ -2,7 +2,8 @@
  * Talks to the Kinpath server (apps/clinic). Every call is checked on the server with
  * row-level security, so the app never sees more than the signed-in patient may.
  *
- * DEV ONLY: the "Dev <user id>" header picks a synthetic seed patient or partner. Real sign-in replaces it.
+ * Signed in with a session token from a one-time code ("Bearer"). Demo builds can also use
+ * "Dev <user id>" to pick a synthetic test person; the server refuses that outside demo builds.
  */
 import type { Lang, PlannedReminder, ReminderPrefs } from "@kinpath/core";
 
@@ -55,21 +56,42 @@ export interface Graduation {
   toldSupport: boolean;
 }
 export interface NextCycle { embryosFrozen: number | null; options: { id: string; title: string; text: string }[]; questions: string; readyAt: string | null }
+export type Channel = "in_app" | "push" | "sms" | "email";
+export interface AppNotification { id: string; kind: string; title: string; link: string | null; urgent: boolean; at: string; read: boolean }
+export interface NotificationSettings {
+  audience: "patient" | "partner" | "staff";
+  kinds: { kind: string; label: { en: string; es: string }; description: { en: string; es: string }; urgent: boolean; channels: Record<Channel, boolean> }[];
+  quiet: { on: boolean; start: string; end: string };
+  phone: string | null;
+}
 export interface Guide { medication: string; steps: Record<Lang, string>[]; videoUrl: string | null; approvedBy: string }
 export interface SendResult { handoffId: string; kind: "missed_dose" | "question" | "urgent_symptom" | "crisis" | "result_review" }
 
+export type Auth = { token: string } | { devUserId: string };
+export class SignedOutError extends Error {}
+
 export class Api {
-  constructor(private userId: string) {}
+  constructor(private auth: Auth, private onSignedOut?: () => void) {}
   private async call<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
     const res = await fetch(`${API_URL}${path}`, {
       method: init?.method ?? "GET",
-      headers: { Authorization: `Dev ${this.userId}`, "Content-Type": "application/json" },
+      headers: { Authorization: "token" in this.auth ? `Bearer ${this.auth.token}` : `Dev ${this.auth.devUserId}`, "Content-Type": "application/json" },
       body: init?.body === undefined ? undefined : JSON.stringify(init.body),
     });
     const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+    if (res.status === 401) { this.onSignedOut?.(); throw new SignedOutError(data.error ?? "Please sign in again."); }
     if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
     return data;
   }
+  // Account
+  notifications = () => this.call<{ unread: number; items: AppNotification[] }>("/api/me/notifications");
+  markNotificationsRead = (ids: string[] | "all") => this.call<{ ok: boolean }>("/api/me/notifications", { method: "POST", body: { ids } });
+  notificationSettings = () => this.call<NotificationSettings>("/api/me/notification-settings");
+  saveNotificationSettings = (change: { kind?: string; channels?: Partial<Record<Channel, boolean>>; quiet?: { on: boolean; start: string; end: string }; phone?: string | null }) =>
+    this.call<NotificationSettings>("/api/me/notification-settings", { method: "POST", body: change });
+  sessions = () => this.call<{ id: string; device: string; createdAt: string; lastSeenAt: string; current: boolean }[]>("/api/me/sessions");
+  signOutOthers = () => this.call<{ signedOut: number }>("/api/auth/signout-others", { method: "POST", body: {} });
+  signOut = () => this.call<{ ok: boolean }>("/api/auth/signout", { method: "POST", body: {} }).catch(() => ({ ok: false }));
   today = () => this.call<Today>("/api/patient/today");
   guide = (medication: string) => this.call<Guide>(`/api/patient/guides/${encodeURIComponent(medication)}`);
   logDose = (id: string) => this.call<{ ok: boolean }>(`/api/patient/doses/${id}/log`, { method: "POST", body: {} });
@@ -100,10 +122,17 @@ export class Api {
   sendNote = (text: string) => this.call<{ id: string; level: "routine" | "urgent" | "crisis" }>("/api/partner/notes", { method: "POST", body: { text } });
 }
 
-/** The invited person enters their code. No account exists yet, so no Authorization header. */
-export async function acceptInvite(code: string, name: string): Promise<{ userId: string; name: string; patientFirstName: string }> {
-  const res = await fetch(`${API_URL}/api/invites/accept`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, name }) });
-  const data = (await res.json().catch(() => ({}))) as { error?: string; userId: string; name: string; patientFirstName: string };
+async function openCall<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
   return data;
 }
+export interface SignedInUser { token: string; userId: string; name: string; role: "patient" | "partner" }
+/** Sign-in, before there's a session. */
+export const auth = {
+  requestCode: (identifier: string) => openCall<{ sentTo: string }>("/api/auth/code", { identifier }),
+  verifyCode: (identifier: string, code: string, device: string) => openCall<SignedInUser>("/api/auth/verify", { identifier, code, device }),
+  startJoin: (code: string, name: string) => openCall<{ sentTo: string; patientFirstName: string }>("/api/auth/join/start", { code, name }),
+  finishJoin: (code: string, confirm: string, device: string) => openCall<SignedInUser & { patientFirstName: string }>("/api/auth/join/finish", { code, confirm, device }),
+};

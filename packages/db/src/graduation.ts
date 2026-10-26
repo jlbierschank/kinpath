@@ -11,6 +11,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { HandoffError, triage, type ClinicTerm } from "@kinpath/core";
 import { asActor, audit, type Actor, type Db } from "./client";
 import { sendPatientMessage } from "./loop";
+import { alertPatient, notify, patientInfo, supportPeople } from "./notify";
 
 type Staff = Actor & { name: string };
 const hash = (token: string) => createHash("sha256").update(token).digest("hex");
@@ -121,11 +122,23 @@ export interface SharedSummary {
 export async function openSummary(db: Db, token: string): Promise<SharedSummary | null> {
   if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) return null;
   const r = await db.query<{ s: SharedSummary | null }>(`SELECT kp_open_summary($1) AS s`, [hash(token)]);
-  return r.rows[0]?.s ?? null;
+  const s = r.rows[0]?.s ?? null;
+  if (s) {
+    const pid = (await db.query<{ patient_id: string }>(`SELECT patient_id FROM summary_shares WHERE token_hash = $1`, [hash(token)])).rows[0]?.patient_id;
+    if (pid) await alertPatient(db, pid, "summary_opened", `${s.recipient} opened your summary.`);
+  }
+  return s;
 }
 
 /** She chooses when Jordan and the others hear the news. */
 export async function shareNews(db: Db, actor: Actor, patientId: string) {
+  const r = await shareNewsTx(db, actor, patientId);
+  const p = await patientInfo(db, patientId);
+  const people = await supportPeople(db, patientId, "schedule");
+  if (p && people.length) await notify(db, { clinicId: p.clinic_id, kind: "news_shared", title: `${p.first_name} shared news with you.`, to: { userIds: people } });
+  return r;
+}
+async function shareNewsTx(db: Db, actor: Actor, patientId: string) {
   if (actor.role !== "patient") throw new HandoffError("Only the patient can share her news.");
   return asActor(db, actor, async (tx) => {
     const t = await tx.query<{ released: boolean }>(`SELECT released FROM kp_pregnancy_test_view($1)`, [patientId]);
@@ -159,6 +172,10 @@ export async function sendThankYou(db: Db, actor: Actor & { name: string }, pati
     await tx.query(`INSERT INTO thank_you_notes (clinic_id, patient_id, from_name, body) VALUES ($1,$2,$3,$4)`, [actor.clinicId, patientId, actor.name, body]);
     await audit(tx, actor, "patient.sent_thank_you", patientId, {});
     return { sent: "thanks" as const };
+  }).then(async (r) => {
+    const p = await patientInfo(db, patientId);
+    if (p) await notify(db, { clinicId: p.clinic_id, kind: "thank_you", title: `${p.first_name} ${p.last_name} sent the team a thank-you.`, link: "/nurse", to: { clinicians: true } });
+    return r;
   });
 }
 

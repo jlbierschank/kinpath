@@ -7,12 +7,15 @@ import {
   closeAfterCall, draftReply, enterLabResult, markReplyRead, reportMissedDose, sendPatientMessage, sendReply,
 } from "@kinpath/db";
 import { getDb, resetDb } from "@/lib/db";
-import { getSession, homeFor, requireSession } from "@/lib/session";
+import { devLoginEnabled, getSession, homeFor, requireSession, SESSION_COOKIE } from "@/lib/session";
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "");
 
 export async function signIn(form: FormData) {
-  (await cookies()).set("kp_dev_user", str(form, "userId"), { httpOnly: true, sameSite: "lax", path: "/" });
+  if (!devLoginEnabled()) redirect("/login");
+  const jar = await cookies();
+  jar.delete(SESSION_COOKIE);
+  jar.set("kp_dev_user", str(form, "userId"), { httpOnly: true, sameSite: "lax", path: "/" });
   const s = await getSession();
   redirect(s ? homeFor(s.role) : "/");
 }
@@ -23,7 +26,9 @@ export async function signOut() {
 }
 
 export async function resetDemo() {
+  if (!devLoginEnabled()) redirect("/login");
   await resetDb();
+  (await cookies()).delete(SESSION_COOKIE);
   (await cookies()).delete("kp_dev_user");
   redirect("/");
 }
