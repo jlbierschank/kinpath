@@ -10,3 +10,5 @@ export * from "./auth";
 export * from "./account";
 export * from "./ai";
 export * from "./records";
+export * from "./patients";
+export * from "./fhir-pull";

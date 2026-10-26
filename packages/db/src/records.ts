@@ -7,7 +7,7 @@
  * The importer has no signed-in person, so it runs as the database owner and scopes every query to
  * the clinic its key belongs to. Nurse review runs as the nurse, under row-level security.
  */
-import { HandoffError, labelResult, parseFhirBundle, sameName, type IncomingRecord, type MedRecord, type ParsedRecords, type ResultRecord } from "@kinpath/core";
+import { HandoffError, labelResult, parseFhirBundle, sameName, type AppointmentRecord, type IncomingRecord, type MedRecord, type ParsedRecords, type ResultRecord } from "@kinpath/core";
 import { newToken, sha256 } from "@kinpath/core/server";
 import { asActor, audit, type Actor, type Db, type Tx } from "./client";
 import { recordLabResult, routeResultToNurse } from "./loop";
@@ -67,9 +67,9 @@ export async function keyFromToken(db: Db, token: string): Promise<{ keyId: stri
 
 export interface ImportCounts {
   received: number; resultsAdded: number; resultsToNurse: number; hcgAdded: number; corrected: number;
-  ordersWaiting: number; toReview: number; duplicates: number; skipped: number;
+  ordersWaiting: number; appointments: number; toReview: number; duplicates: number; skipped: number;
 }
-const zero = (): ImportCounts => ({ received: 0, resultsAdded: 0, resultsToNurse: 0, hcgAdded: 0, corrected: 0, ordersWaiting: 0, toReview: 0, duplicates: 0, skipped: 0 });
+const zero = (): ImportCounts => ({ received: 0, resultsAdded: 0, resultsToNurse: 0, hcgAdded: 0, corrected: 0, ordersWaiting: 0, appointments: 0, toReview: 0, duplicates: 0, skipped: 0 });
 
 interface ItemRow {
   id: string; kind: string; status: string; reason: string | null; patient_id: string | null; mrn: string | null;
@@ -77,6 +77,7 @@ interface ItemRow {
 }
 
 const resultData = (r: ResultRecord) => ({ analyte: r.analyte, value: r.value, unit: r.unit, collectedAt: r.collectedAt });
+const apptData = (r: AppointmentRecord) => ({ startsAt: r.startsAt, title: r.title, kind: r.apptKind, location: r.location, cancelled: r.cancelled });
 const medData = (r: MedRecord) => ({ medication: r.medication, dose: r.dose, timeOfDay: r.timeOfDay, startsOn: r.startsOn, endsOn: r.endsOn });
 // jsonb reorders keys, so compare key by key.
 const stable = (o: Record<string, unknown>) => JSON.stringify(Object.keys(o).sort().map((k) => [k, o[k] ?? null]));
@@ -89,6 +90,13 @@ async function matchPatient(tx: Tx, clinicId: string, rec: IncomingRecord): Prom
   if (!p) return { reason: "No patient in Pumpkin has this medical record number." };
   if (rec.lastName && !sameName(rec.lastName, p.last_name)) return { reason: "The last name doesn't match Pumpkin's record for this medical record number." };
   return { id: p.id, first: p.first_name };
+}
+
+/** A time with no zone (common in HL7 v2) is read as the clinic's local time. */
+async function toInstant(tx: Tx, clinicId: string, s: string): Promise<string> {
+  if (/(Z|[+-]\d{2}:?\d{2})$/i.test(s)) return s;
+  const r = await tx.query<{ t: Date }>(`SELECT ($2::timestamp AT TIME ZONE timezone) AS t FROM clinics WHERE id = $1`, [clinicId, s]);
+  return new Date(r.rows[0]!.t).toISOString();
 }
 
 /** Stimulation day on the day a sample was collected, from the patient's latest cycle (0 if unknown). */
@@ -111,18 +119,20 @@ async function addItem(tx: Tx, f: { clinicId: string; importId: string; rec: Inc
  * Applies records from the clinic's records system. One transaction: either all of it lands or
  * none of it does, and sending the same records again changes nothing.
  */
-export async function importRecords(db: Db, source: { clinicId: string; keyId: string | null; format: "fhir" | "csv" | "sample" }, parsed: ParsedRecords) {
-  const touched = { review: new Set<string>(), results: new Set<string>(), hcg: new Set<string>() };
+export async function importRecords(db: Db, source: { clinicId: string; keyId: string | null; format: "fhir" | "csv" | "sample" | "hl7" | "upload" | "pull"; uploadedBy?: string }, parsed: ParsedRecords) {
+  const touched = { review: new Set<string>(), results: new Set<string>(), hcg: new Set<string>(), appts: new Set<string>() };
   const counts = zero();
   counts.received = parsed.records.length + parsed.skipped.length;
   counts.skipped = parsed.skipped.length;
   const clinicId = source.clinicId;
 
   const importId = await db.transaction(async (tx) => {
-    const imp = await tx.query<{ id: string }>(`INSERT INTO record_imports (clinic_id, key_id, format) VALUES ($1,$2,$3) RETURNING id`, [clinicId, source.keyId, source.format]);
+    const imp = await tx.query<{ id: string }>(`INSERT INTO record_imports (clinic_id, key_id, format, uploaded_by_name) VALUES ($1,$2,$3,$4) RETURNING id`, [clinicId, source.keyId, source.format, source.uploadedBy ?? null]);
     const importId = imp.rows[0]!.id;
 
     for (const rec of parsed.records) {
+      if (rec.kind === "result" || rec.kind === "hcg") rec.collectedAt = await toInstant(tx, clinicId, rec.collectedAt);
+      if (rec.kind === "appointment") rec.startsAt = await toInstant(tx, clinicId, rec.startsAt);
       const prior = (await tx.query<ItemRow>(`SELECT * FROM record_items WHERE clinic_id = $1 AND kind = $2 AND external_id = $3 FOR UPDATE`, [clinicId, rec.kind, rec.externalId])).rows[0];
 
       if (rec.kind === "result" || rec.kind === "hcg") {
@@ -187,6 +197,32 @@ export async function importRecords(db: Db, source: { clinicId: string; keyId: s
         await systemAudit(tx, clinicId, source.keyId, "records.added_result", who.id, { resultId: r.resultId, status: r.label.status });
         counts.resultsAdded++;
         if (r.label.routeToNurse) { counts.resultsToNurse++; touched.results.add(who.id); }
+        continue;
+      }
+
+      // ----- appointments: applied directly (they don't change care), and the patient is told -----
+      if (rec.kind === "appointment") {
+        const data = apptData(rec);
+        if (prior) {
+          if (sameData(prior.data, data)) { counts.duplicates++; continue; }
+          if (prior.status === "applied" && prior.patient_id) {
+            await tx.query(`UPDATE appointments SET starts_at = $3, title = $4, kind = $5, location = $6, status = $7, updated_at = now() WHERE clinic_id = $1 AND external_id = $2`,
+              [clinicId, rec.externalId, rec.startsAt, rec.title, rec.apptKind, rec.location, rec.cancelled ? "cancelled" : "booked"]);
+            await tx.query(`UPDATE record_items SET data = $2, updated_at = now() WHERE id = $1`, [prior.id, JSON.stringify(data)]);
+            counts.appointments++; touched.appts.add(prior.patient_id);
+          } else {
+            await tx.query(`UPDATE record_items SET data = $2, updated_at = now() WHERE id = $1`, [prior.id, JSON.stringify(data)]);
+            counts.toReview++;
+          }
+          continue;
+        }
+        if (rec.cancelled) { counts.skipped++; continue; }
+        const who = await matchPatient(tx, clinicId, rec);
+        if ("reason" in who) { await addItem(tx, { clinicId, importId, rec, status: "needs_review", reason: who.reason, data }); counts.toReview++; continue; }
+        await tx.query(`INSERT INTO appointments (clinic_id, patient_id, starts_at, kind, title, location, source, external_id) VALUES ($1,$2,$3,$4,$5,$6,'records',$7)`,
+          [clinicId, who.id, rec.startsAt, rec.apptKind, rec.title, rec.location, rec.externalId]);
+        await addItem(tx, { clinicId, importId, rec, status: "applied", patientId: who.id, data });
+        counts.appointments++; touched.appts.add(who.id);
         continue;
       }
 
@@ -257,6 +293,7 @@ export async function importRecords(db: Db, source: { clinicId: string; keyId: s
     `SELECT id, first_name || ' ' || last_name AS name FROM patients WHERE id = ANY($1::uuid[])`, [[...ids]])).rows;
   for (const p of await names(touched.results)) await notify(db, { clinicId, kind: "result_to_review", title: `${p.name} · result from the records system to review`, link: "/nurse", to: { clinicians: true } });
   for (const p of await names(touched.hcg)) await notify(db, { clinicId, kind: "result_to_review", title: `${p.name} · hCG arrived. You decide the outcome`, link: `/nurse/patients/${p.id}`, to: { clinicians: true } });
+  for (const id of touched.appts) await alertPatient(db, id, "schedule_changed", "Your appointments were updated.");
   const unmatched = counts.toReview + counts.ordersWaiting - touched.review.size;
   if (touched.review.size || unmatched > 0) {
     const n = counts.toReview + counts.ordersWaiting;
@@ -302,7 +339,7 @@ export async function recordImports(db: Db, actor: Actor, limit = 20) {
 // ---------- nurse review ----------
 
 export interface RecordToReview {
-  id: string; kind: "result" | "hcg" | "med_order" | "med_stop"; reason: string; createdAt: string;
+  id: string; kind: "result" | "hcg" | "med_order" | "med_stop" | "appointment"; reason: string; createdAt: string;
   patientId: string | null; patientName: string | null; mrn: string | null; data: Record<string, unknown>;
   canConfirm: boolean;
 }
@@ -314,7 +351,7 @@ export async function recordsToReview(db: Db, nurse: Actor): Promise<RecordToRev
       WHERE i.status = 'needs_review' ORDER BY i.created_at`)).rows.map((r) => ({
     id: r.id, kind: r.kind as RecordToReview["kind"], reason: r.reason ?? "", createdAt: new Date(r.created_at).toISOString(),
     patientId: r.patient_id, patientName: r.first_name ? `${r.first_name} ${r.last_name}` : null, mrn: r.mrn, data: r.data,
-    canConfirm: r.kind === "med_stop" ? true : r.kind === "med_order" ? !!r.med_order_id || missingFields({ kind: "med_order", externalId: "", mrn: null, lastName: null, ...(r.data as object) } as MedRecord).length === 0 : !r.lab_result_id,
+    canConfirm: r.kind === "med_stop" || r.kind === "appointment" ? true : r.kind === "med_order" ? !!r.med_order_id || missingFields({ kind: "med_order", externalId: "", mrn: null, lastName: null, ...(r.data as object) } as MedRecord).length === 0 : !r.lab_result_id,
   })));
 }
 
@@ -352,6 +389,14 @@ export async function confirmRecord(db: Db, nurse: Staff, itemId: string, opts: 
       await audit(tx, nurse, "records.placed_hcg", patientId, { itemId, testId: t.id });
       return { patientId, alert: false };
     }
+    if (item.kind === "appointment") {
+      const ext = (await tx.query<{ external_id: string }>(`SELECT external_id FROM record_items WHERE id = $1`, [itemId])).rows[0]!.external_id;
+      await tx.query(`INSERT INTO appointments (clinic_id, patient_id, starts_at, kind, title, location, source, external_id, created_by_name) VALUES ($1,$2,$3,$4,$5,$6,'records',$7,$8)`,
+        [nurse.clinicId, patientId, d.startsAt, d.kind, d.title, d.location ?? null, ext, nurse.name]);
+      await done();
+      await audit(tx, nurse, "records.placed_appointment", patientId, { itemId });
+      return { patientId, alert: true, text: "You have a new appointment." as string | undefined };
+    }
     if (item.kind === "med_stop") {
       await tx.query(`UPDATE dose_logs SET canceled_at = now() WHERE med_order_id = $1 AND scheduled_for > now() AND taken_at IS NULL AND canceled_at IS NULL`, [item.med_order_id]);
       await tx.query(`UPDATE med_orders SET status = 'stopped' WHERE id = $1`, [item.med_order_id]);
@@ -386,7 +431,7 @@ export async function confirmRecord(db: Db, nurse: Staff, itemId: string, opts: 
     await audit(tx, nurse, "records.confirmed_order", patientId, { itemId, medOrderId: orderId });
     return { patientId, alert: true };
   });
-  if (out.alert) await alertPatient(db, out.patientId, "schedule_changed", "Your medication schedule was updated.");
+  if (out.alert) await alertPatient(db, out.patientId, "schedule_changed", ("text" in out && out.text) || "Your medication schedule was updated.");
   return { ok: true };
 }
 

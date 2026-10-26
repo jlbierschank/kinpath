@@ -68,7 +68,35 @@ export interface MedRecord {
   startsOn: string | null;
   endsOn: string | null;
 }
-export type IncomingRecord = ResultRecord | MedRecord;
+export interface AppointmentRecord {
+  kind: "appointment";
+  externalId: string;
+  mrn: string | null;
+  lastName: string | null;
+  startsAt: string;
+  apptKind: "monitoring" | "blood_test" | "consult" | "retrieval" | "transfer" | "procedure" | "other";
+  title: string;
+  location: string | null;
+  cancelled: boolean;
+}
+export type IncomingRecord = ResultRecord | MedRecord | AppointmentRecord;
+
+const APPT_TITLES: Record<AppointmentRecord["apptKind"], string> = {
+  monitoring: "Monitoring visit", blood_test: "Blood test", consult: "Consultation", retrieval: "Egg retrieval",
+  transfer: "Embryo transfer", procedure: "Procedure", other: "Appointment",
+};
+/** Guesses the kind of visit from its description, for the icon and default title only. */
+export function apptKindOf(text: string): AppointmentRecord["apptKind"] {
+  const t = text.toLowerCase();
+  if (/monitor|ultrasound|scan|follicle/.test(t)) return "monitoring";
+  if (/blood|lab|draw|beta|hcg|pregnancy test/.test(t)) return "blood_test";
+  if (/retriev/.test(t)) return "retrieval";
+  if (/transfer|\bfet\b/.test(t)) return "transfer";
+  if (/consult|follow.?up|new patient|visit with/.test(t)) return "consult";
+  if (/procedure|hysteroscop|sono|hsg|iui|insemination/.test(t)) return "procedure";
+  return "other";
+}
+const apptTitle = (text: string | null, kind: AppointmentRecord["apptKind"]) => (text && text.length <= 120 ? text : APPT_TITLES[kind]);
 export interface ParsedRecords { records: IncomingRecord[]; skipped: string[] }
 
 type J = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -108,6 +136,9 @@ export function parseFhirBundle(input: unknown): ParsedRecords {
     if (!s) return { mrn: null, lastName: null };
     const ref = str(s.reference);
     if (ref && people.has(ref)) return people.get(ref)!;
+    // Absolute references ("https://ehr.example/fhir/Patient/123") match by their last two parts.
+    const tail = ref?.match(/(Patient\/[^/]+)$/)?.[1];
+    if (tail && people.has(tail)) return people.get(tail)!;
     return { mrn: str(s.identifier?.value), lastName: null };
   };
 
@@ -158,6 +189,21 @@ export function parseFhirBundle(input: unknown): ParsedRecords {
         startsOn: dateOnly(repeat?.boundsPeriod?.start) ?? dateOnly(r.dispenseRequest?.validityPeriod?.start),
         endsOn: dateOnly(repeat?.boundsPeriod?.end) ?? dateOnly(r.dispenseRequest?.validityPeriod?.end),
       });
+      continue;
+    }
+    if (r.resourceType === "Appointment") {
+      if (!externalId) { skipped.push("an appointment without an id"); continue; }
+      const status = str(r.status) ?? "";
+      const cancelled = ["cancelled", "noshow", "entered-in-error"].includes(status);
+      if (!cancelled && !["booked", "pending", "arrived", "checked-in", "fulfilled"].includes(status)) { skipped.push(`an appointment that isn't booked (${status || "no status"})`); continue; }
+      const start = str(r.start);
+      if (!start) { skipped.push("an appointment without a start time"); continue; }
+      const parts = (r.participant as J[] | undefined) ?? [];
+      const who = parts.map((x) => x?.actor).find((a: J) => /(^|\/)Patient\//.test(str(a?.reference) ?? "") || a?.type === "Patient" || people.has(str(a?.reference) ?? ""));
+      const loc = parts.map((x) => x?.actor).find((a: J) => /(^|\/)Location\//.test(str(a?.reference) ?? "") || a?.type === "Location");
+      const text = str(r.appointmentType?.text) ?? str(r.serviceType?.[0]?.text) ?? str(r.serviceType?.[0]?.coding?.[0]?.display) ?? str(r.description);
+      const kind = apptKindOf(text ?? "");
+      records.push({ kind: "appointment", externalId, ...subjectOf(who), startsAt: start, apptKind: kind, title: apptTitle(text, kind), location: str(loc?.display), cancelled });
       continue;
     }
     skipped.push(`a ${str(r.resourceType) ?? "record"} Pumpkin doesn't use`);
@@ -214,3 +260,135 @@ export const sameName = (a: string, b: string) => {
   const n = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z]/g, "");
   return n(a) === n(b);
 };
+
+// ---------- HL7 v2 ----------
+// Field positions (HL7 v2.5.1): PID-3 patient identifier list (CX, component 5 = identifier type, "MR"),
+// PID-5 name; OBR-3 filler order number, OBR-7 observation date/time; OBX-3 observation identifier
+// (code^text^system, "LN" = LOINC), OBX-5 value, OBX-6 units, OBX-11 result status, OBX-14 observation
+// date/time; ORC-1 order control (NW new, CA cancel, DC discontinue, OD discontinued, XO change),
+// ORC-2/3 placer/filler order number; RXE-2 give code, RXE-3 give amount minimum, RXE-5 give units;
+// TQ1-4 explicit time, TQ1-7 start, TQ1-8 end; SCH-1/2 placer/filler appointment id, SCH-7 reason,
+// SCH-25 filler status; AIS-3 service, AIS-4 start date/time.
+
+/** "20261026074500-0400" → ISO. Dates without a zone are read as the clinic's local time by the caller. */
+export function hl7Time(v: string): string | null {
+  const m = /^(\d{4})(\d{2})(\d{2})(\d{2})?(\d{2})?(\d{2})?(?:\.\d+)?([+-]\d{4})?$/.exec(v.trim());
+  if (!m) return null;
+  const [, y, mo, d, h = "00", mi = "00", se = "00", z] = m;
+  return `${y}-${mo}-${d}T${h}:${mi}:${se}${z ? `${z.slice(0, 3)}:${z.slice(3)}` : ""}`;
+}
+
+/** segments[segment][field][repetition][component] */
+interface Hl7Message { type: string; event: string; controlId: string; segments: string[][][][] }
+
+/** Splits a batch of HL7 v2 messages (segments separated by CR or newlines). */
+export function splitHl7(text: string): Hl7Message[] {
+  const lines = text.replace(/\r\n?/g, "\n").split("\n").map((l) => l.trim()).filter(Boolean)
+    .filter((l) => !/^(FHS|BHS|BTS|FTS)\|/.test(l));
+  const msgs: string[][] = [];
+  for (const l of lines) { if (l.startsWith("MSH")) msgs.push([l]); else if (msgs.length) msgs[msgs.length - 1]!.push(l); }
+  if (!msgs.length) throw new RecordsError("Expected HL7 v2 messages starting with MSH.");
+  return msgs.map((segs) => {
+    const msh = segs[0]!;
+    const fs = msh[3] ?? "|";
+    const comp = msh[4] ?? "^";
+    const rep = msh[5] ?? "~";
+    const parsed = segs.map((seg) => {
+      const fields = seg.split(fs);
+      // MSH-1 is the field separator itself; shift so field numbers line up with the standard.
+      if (fields[0] === "MSH") fields.splice(1, 0, fs);
+      return fields.map((f) => f.split(rep).map((r) => r.split(comp)));
+    });
+    const mshF = parsed[0]!;
+    return { type: mshF[9]?.[0]?.[0] ?? "", event: mshF[9]?.[0]?.[1] ?? "", controlId: mshF[10]?.[0]?.[0] ?? "", segments: parsed };
+  });
+}
+
+const fld = (seg: string[][][] | undefined, n: number, c = 1) => (seg?.[n]?.[0]?.[c - 1] ?? "").trim();
+const segsOf = (m: Hl7Message, name: string) => m.segments.filter((s) => s[0]?.[0]?.[0] === name);
+
+function hl7Patient(m: Hl7Message): { mrn: string | null; lastName: string | null } {
+  const pid = segsOf(m, "PID")[0];
+  if (!pid) return { mrn: null, lastName: null };
+  // PID-3 may repeat (MRN, account number, …): prefer the one typed MR.
+  const ids = pid[3] ?? [];
+  const mr = ids.find((r) => (r[4] ?? "").trim() === "MR") ?? ids[0];
+  const mrn = (mr?.[0] ?? "").trim();
+  return { mrn: mrn || null, lastName: fld(pid, 5) || null };
+}
+
+/** Reads HL7 v2 lab results (ORU^R01), pharmacy orders (RDE^O11, OMP^O09) and scheduling (SIU^S12–S17). */
+export function parseHl7(text: string): ParsedRecords & { messages: { controlId: string; type: string }[] } {
+  const msgs = splitHl7(text);
+  if (msgs.length > 2000) throw new RecordsError("Send at most 2,000 messages at a time.");
+  const records: IncomingRecord[] = []; const skipped: string[] = [];
+  for (const m of msgs) {
+    const who = hl7Patient(m);
+    if (m.type === "ORU") {
+      let obr: string[][][] | undefined;
+      for (const seg of m.segments) {
+        if (seg[0]?.[0]?.[0] === "OBR") { obr = seg; continue; }
+        if (seg[0]?.[0]?.[0] !== "OBX") continue;
+        const code = fld(seg, 3, 1), system = fld(seg, 3, 3);
+        const loincCode = system === "LN" || LOINC[code] ? code : fld(seg, 3, 6) === "LN" ? fld(seg, 3, 4) : "";
+        const map = LOINC[loincCode];
+        if (!map) { skipped.push("a result Pumpkin doesn't track"); continue; }
+        const status = fld(seg, 11);
+        const withdrawn = status === "W" || status === "D";
+        if (!withdrawn && !["F", "C"].includes(status)) { skipped.push(`a result that isn't final yet (${status || "no status"})`); continue; }
+        const value = Number(fld(seg, 5));
+        if (!withdrawn && !Number.isFinite(value)) { skipped.push("a result without a number"); continue; }
+        const order = fld(obr, 3) || fld(obr, 2) || m.controlId;
+        const when = hl7Time(fld(seg, 14)) ?? hl7Time(fld(obr, 7)) ?? new Date().toISOString();
+        records.push({ kind: map.kind, externalId: `${order}:${loincCode}:${fld(seg, 4) || "1"}`, ...who, analyte: map.analyte,
+          value: Number.isFinite(value) ? value : 0, unit: normalizeUnit(fld(seg, 6)), collectedAt: when, corrected: status === "C", withdrawn });
+      }
+      continue;
+    }
+    if (m.type === "RDE" || m.type === "OMP") {
+      const orc = segsOf(m, "ORC")[0];
+      const rx = segsOf(m, m.type === "RDE" ? "RXE" : "RXO")[0];
+      const tq1 = segsOf(m, "TQ1")[0];
+      const control = fld(orc, 1);
+      const externalId = fld(orc, 3) || fld(orc, 2);
+      if (!externalId) { skipped.push("a medication order without an id"); continue; }
+      const stop = ["CA", "DC", "OD", "OC"].includes(control);
+      if (!stop && !["NW", "XO", "OK", "SC", ""].includes(control)) { skipped.push(`a medication message Pumpkin doesn't use (${control})`); continue; }
+      // RXE-2 / RXO-1 give code (code^text); RXE-3 / RXO-2 amount; RXE-5 / RXO-4 units.
+      const codeField = m.type === "RDE" ? 2 : 1, amt = m.type === "RDE" ? 3 : 2, units = m.type === "RDE" ? 5 : 4;
+      const medication = fld(rx, codeField, 2) || fld(rx, codeField, 1) || null;
+      const dose = fld(rx, amt) ? `${fld(rx, amt)} ${fld(rx, units, 2) || fld(rx, units, 1)}`.trim() : null;
+      // TQ1-4 explicit time ("2130"); otherwise the time part of TQ1-7 start, if it has one.
+      const t = fld(tq1, 4);
+      const startIso = hl7Time(fld(tq1, 7));
+      const startTime = fld(tq1, 7).length >= 12 ? startIso?.slice(11, 16) ?? null : null;
+      records.push({ kind: stop ? "med_stop" : "med_order", externalId, ...who, medication, dose,
+        timeOfDay: /^\d{4}$/.test(t) ? `${t.slice(0, 2)}:${t.slice(2)}` : startTime,
+        startsOn: hl7Time(fld(tq1, 7))?.slice(0, 10) ?? null, endsOn: hl7Time(fld(tq1, 8))?.slice(0, 10) ?? null });
+      continue;
+    }
+    if (m.type === "SIU") {
+      const sch = segsOf(m, "SCH")[0]; const ais = segsOf(m, "AIS")[0]; const ail = segsOf(m, "AIL")[0];
+      const externalId = fld(sch, 2) || fld(sch, 1);
+      if (!externalId) { skipped.push("an appointment without an id"); continue; }
+      const cancelled = ["S15", "S17"].includes(m.event) || /cancel/i.test(fld(sch, 25));
+      const start = hl7Time(fld(ais, 4)) ?? hl7Time(fld(sch, 11, 4));
+      if (!start) { skipped.push("an appointment without a start time"); continue; }
+      const text = fld(ais, 3, 2) || fld(sch, 7, 2) || fld(sch, 7, 1) || null;
+      const kind = apptKindOf(text ?? "");
+      records.push({ kind: "appointment", externalId, ...who, startsAt: start, apptKind: kind, title: apptTitle(text, kind), location: fld(ail, 3, 1) || null, cancelled });
+      continue;
+    }
+    skipped.push(`an HL7 ${m.type}^${m.event} message Pumpkin doesn't use`);
+  }
+  return { records, skipped, messages: msgs.map((m) => ({ controlId: m.controlId, type: `${m.type}^${m.event}` })) };
+}
+
+/** An HL7 v2 acknowledgment for each message: AA accepted, AE error. */
+export function hl7Ack(messages: { controlId: string; type: string }[], ok: boolean, text = ""): string {
+  const now = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+  return messages.map((m) => [
+    `MSH|^~\\&|PUMPKIN|PUMPKIN|||${now}||ACK^${m.type.split("^")[1] ?? ""}|ACK${m.controlId}|P|2.5.1`,
+    `MSA|${ok ? "AA" : "AE"}|${m.controlId}${text ? `|${text.replace(/[|^~\\&\r\n]/g, " ").slice(0, 80)}` : ""}`,
+  ].join("\r")).join("\r");
+}
