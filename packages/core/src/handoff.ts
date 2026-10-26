@@ -71,7 +71,7 @@ export function draftFromProtocol(handoff: Handoff, protocol: ProtocolSection | 
     return { draft: fallback, source: null };
   }
   const greeting = lang === "es" ? `Hola ${patientFirstName},` : `Hi ${patientFirstName},`;
-  return { draft: `${greeting} ${protocol.body[lang]}`, source: protocol.id };
+  return { draft: `${greeting}\n\n${protocol.body[lang]}`, source: protocol.id };
 }
 
 export function disclosureLine(lang: Lang, reviewerName: string): string {

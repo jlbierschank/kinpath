@@ -1,0 +1,26 @@
+{
+  "name": "@kinpath/clinic",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.3.15",
+    "@kinpath/core": "workspace:*",
+    "@kinpath/db": "workspace:*",
+    "next": "15.5.28",
+    "react": "19.1.10",
+    "react-dom": "19.1.10",
+    "server-only": "0.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.0",
+    "@types/react": "19.1.10",
+    "@types/react-dom": "19.1.7",
+    "typescript": "5.9.3"
+  }
+}

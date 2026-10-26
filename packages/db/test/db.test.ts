@@ -133,5 +133,7 @@ describe("the missed-dose loop, end to end", () => {
     expect(r.label.status).toBe("above_range");
     expect(r.label.explanation).toBeUndefined();
     expect((await nurseQueue(db, maria)).some((q) => q.kind === "result_review")).toBe(true);
+    // The nurse's internal task never shows up in the patient's inbox.
+    expect((await patientInbox(db, maya, IDS.maya)).some((m) => m.kind === "result_review")).toBe(false);
   });
 });

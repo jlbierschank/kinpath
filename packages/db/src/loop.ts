@@ -157,7 +157,7 @@ export async function patientInbox(db: Db, actor: Actor, patientId: string) {
   return asActor(db, actor, async (tx) => {
     const res = await tx.query<HandoffRow & { sender: string | null }>(
       `SELECT h.*, u.display_name AS sender FROM handoffs h LEFT JOIN app_users u ON u.id = h.sent_by
-        WHERE h.patient_id = $1 ORDER BY h.created_at DESC`, [patientId]);
+        WHERE h.patient_id = $1 AND h.kind <> 'result_review' ORDER BY h.created_at DESC`, [patientId]);
     return res.rows.map((r) => ({ ...toHandoff(r), sender: r.sender, sentAt: r.sent_at, readAt: r.read_at }));
   });
 }
