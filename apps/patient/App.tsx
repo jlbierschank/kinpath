@@ -7,7 +7,7 @@ import { useFonts } from "expo-font";
 import { Newsreader_400Regular_Italic, Newsreader_500Medium } from "@expo-google-fonts/newsreader";
 import { InstrumentSans_400Regular, InstrumentSans_500Medium, InstrumentSans_600SemiBold, InstrumentSans_700Bold } from "@expo-google-fonts/instrument-sans";
 import Svg, { Path } from "react-native-svg";
-import { acceptInvite, Api, type Dose, type Feeling, type ResultHow, type Guide, type Invite, type PartnerHome, type Relationship, type SendResult, type Shareable, type SupportPerson, type Today as TodayData } from "./src/api";
+import { acceptInvite, Api, type Dose, type Feeling, type Graduation, type KeepsakeId, type ResultHow, type Guide, type Invite, type PartnerHome, type Relationship, type SendResult, type Shareable, type SupportPerson, type Today as TodayData } from "./src/api";
 import { askPermission, remindersSupported, syncReminders } from "./src/reminders";
 import { AskBox, Avatar, Button, C, Cap, Card, Chip, Chips, F, H1, JourneyPath, Moment, Muted, Pill, Row, st, T, TimelineItem, Today, Toggle } from "./src/ui";
 
@@ -22,7 +22,7 @@ const initialsOf = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 
 const NURSE_LINE = "tel:+18135550100"; // placeholder
 
 type Tab = "home" | "community" | "record" | "team";
-type Screen = { name: Tab } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; kind: SendResult["kind"] } | { name: "missed"; dose: Dose } | { name: "invite" } | { name: "rough" } | { name: "breathe" };
+type Screen = { name: Tab } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; kind: SendResult["kind"] } | { name: "missed"; dose: Dose } | { name: "invite" } | { name: "rough" } | { name: "breathe" } | { name: "keepsake" } | { name: "share-summary"; ob: string | null };
 type Tx = (en: string, es: string) => string;
 
 const STAGES = ["Consult", "Testing", "Stims", "Retrieval", "Transfer", "Wait", "Result", "OB-GYN"];
@@ -166,11 +166,15 @@ function Signed({ api, initials, onSignOut }: { api: Api; initials: string; onSi
 
   return (
     <Frame top={top} tabs={tabs}>
-      {screen.name === "home" && (data.wait.result
+      {screen.name === "home" && (data.stage === "graduated"
+        ? <GraduationHome data={data} api={api} t={t} go={go} reload={load} notice={notice} setNotice={setNotice} afterSend={afterSend} />
+        : data.wait.result
         ? <ResultHome data={data} api={api} t={t} go={go} reload={load} notice={notice} setNotice={setNotice} />
         : data.wait.stage === "wait"
           ? <WaitHome data={data} api={api} t={t} go={go} reload={load} notice={notice} />
           : <Home data={data} api={api} t={t} go={go} afterSend={afterSend} reload={load} />)}
+      {screen.name === "keepsake" && <KeepsakeScreen api={api} t={t} lang={data.lang} />}
+      {screen.name === "share-summary" && <ShareSummary api={api} t={t} ob={screen.ob} />}
       {screen.name === "rough" && <RoughDay api={api} t={t} go={go} done={(msg) => { setNotice(msg); home(); }} />}
       {screen.name === "breathe" && <Breathe t={t} done={() => { setNotice(t("That was a few minutes just for you.", "Fueron unos minutos solo para ti.")); home(); }} />}
       {screen.name === "walk" && <Walk doses={screen.doses} focus={screen.focus} api={api} lang={data.lang} t={t} done={home} quiet={data.wait.quietUntil !== null} somethingWrong={() => go({ name: "team" })} />}
@@ -473,11 +477,188 @@ function ResultHome({ data, api, t, go, reload, notice, setNotice }: { data: Tod
         {r.hcg !== null && <Pill tone="lav" label={`hCG ${r.hcg}`} />}
       </View>
       {nurseNote}
+      <NewsCard data={data} api={api} t={t} reload={reload} told={data.wait.prefs.toldSupport} />
       <Muted>{data.wait.prefs.resultHow === "together" && partner
         ? t(`${partner.name.split(" ")[0]} heard the news with you.`, `${partner.name.split(" ")[0]} recibió la noticia contigo.`)
         : t("You decide when to tell anyone, including the people you've invited. They can't see your result.", "Tú decides cuándo contárselo a alguien, incluidas las personas que invitaste. Ellas no pueden ver tu resultado.")}</Muted>
       <NoteCards data={data} api={api} t={t} reload={reload} />
       <Button kind="line" label={t("Message my team", "Escribir a mi equipo")} onPress={() => go({ name: "team" })} />
+    </>
+  );
+}
+
+// ---------- Graduation ----------
+const dateLong = (s: string | null, lang: "en" | "es") => (s ? new Date(s.length === 10 ? `${s}T12:00:00` : s).toLocaleDateString(lang === "es" ? "es-US" : "en-US", { month: "long", day: "numeric" }) : "");
+const listNames = (names: string[], t: Tx) => names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} ${t("and", "y")} ${names[names.length - 1]}`;
+
+/** She decides when her support people hear the news. */
+function NewsCard({ data, api, t, reload, told }: { data: TodayData; api: Api; t: Tx; reload: () => Promise<void>; told: boolean }) {
+  const [done, setDone] = useState(false);
+  const people = data.sharing.partners.filter((p) => p.sections.includes("schedule")).map((p) => p.name.split(" ")[0]!);
+  if (people.length === 0 || told === true) return null;
+  if (done) return <Moment>{t(`${listNames(people, t)} can see your news now.`, `${listNames(people, t)} ya pueden ver tu noticia.`)}</Moment>;
+  return (
+    <Card style={{ gap: 8 }}>
+      <T style={{ fontFamily: F.sans700, fontSize: 15 }}>{t(`Share the news with ${listNames(people, t)}?`, `¿Compartir la noticia con ${listNames(people, t)}?`)}</T>
+      <Muted>{t("They can't see your result until you choose. Only your news is shared, not the numbers.", "No pueden ver tu resultado hasta que tú decidas. Solo se comparte la noticia, no los números.")}</Muted>
+      <Button testID="share-news" kind="esp" label={t("Share the news", "Compartir la noticia")} onPress={async () => { await api.shareNews(); setDone(true); await reload(); }} />
+    </Card>
+  );
+}
+
+function GraduationHome({ data, api, t, go, reload, notice, setNotice, afterSend }: { data: TodayData; api: Api; t: Tx; go: (s: Screen) => void; reload: () => Promise<void>; notice: string | null; setNotice: (s: string | null) => void; afterSend: (r: SendResult) => void }) {
+  const [g, setG] = useState<Graduation | null>(null);
+  const [thanks, setThanks] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { api.graduation().then(setG).catch(() => setG(null)); }, [api, data]);
+  const first = data.firstName ?? "";
+  const active = g?.shares.filter((s) => s.active) ?? [];
+  const send = async () => {
+    if (!thanks.trim() || busy) return;
+    setBusy(true);
+    try {
+      const r = await api.sendThanks(thanks);
+      setThanks("");
+      if (r.sent === "urgent") { afterSend({ handoffId: r.handoffId, kind: r.kind }); return; }
+      setNotice(t("Your note is on its way to your care team.", "Tu nota va en camino a tu equipo."));
+    } finally { setBusy(false); }
+  };
+  return (
+    <>
+      <View style={{ gap: 4 }}>
+        <Today>{t(`You graduated, ${first}.`, `Te graduaste, ${first}.`)}</Today>
+        <Muted>{g?.ob
+          ? t(`From Bayside to ${g.ob}. We're so glad we got to walk this with you.`, `De Bayside a ${g.ob}. Nos alegra mucho haber recorrido este camino contigo.`)
+          : t("From Bayside to your OB-GYN. We're so glad we got to walk this with you.", "De Bayside a tu ginecólogo. Nos alegra mucho haber recorrido este camino contigo.")}</Muted>
+      </View>
+      <JourneyPath current={7} labels={data.lang === "es" ? STAGES_ES : STAGES} />
+      {notice && <Moment>{notice}</Moment>}
+      <NoteCards data={data} api={api} t={t} reload={reload} />
+
+      <Card style={{ gap: 6 }}>
+        <Cap>{t("A keepsake", "Un recuerdo")}</Cap>
+        <Text style={{ fontFamily: F.serifItalic, fontSize: 23, lineHeight: 28, color: C.espresso }}>{g?.days ? t(`Your journey, start to finish · ${g.days} days`, `Tu camino, de principio a fin · ${g.days} días`) : t("Your journey, start to finish", "Tu camino, de principio a fin")}</Text>
+        <Muted>{t("Every step and milestone, yours to keep. Leave out anything you'd rather not remember.", "Cada paso y logro, para que lo guardes. Deja fuera lo que prefieras no recordar.")}</Muted>
+        <Button testID="open-keepsake" kind="line" label={g?.keepsake.saved ? t("See my keepsake", "Ver mi recuerdo") : t("Make my keepsake", "Crear mi recuerdo")} onPress={() => go({ name: "keepsake" })} />
+      </Card>
+
+      {active.length > 0
+        ? <Moment>{t(`Your summary is shared with ${active[0]!.recipient}${active[0]!.views ? ` · opened ${active[0]!.views} time${active[0]!.views > 1 ? "s" : ""}` : ""}.`, `Tu resumen está compartido con ${active[0]!.recipient}${active[0]!.views ? ` · abierto ${active[0]!.views} ${active[0]!.views > 1 ? "veces" : "vez"}` : ""}.`)}</Moment>
+        : null}
+      <Button testID="open-share-summary" kind="esp" label={active.length ? t("Manage my OB-GYN summary", "Administrar mi resumen") : t("Share my summary with my OB-GYN", "Compartir mi resumen con mi ginecólogo")} onPress={() => go({ name: "share-summary", ob: g?.ob ?? null })} />
+
+      <NewsCard data={data} api={api} t={t} reload={reload} told={data.wait.prefs.toldSupport} />
+
+      <Card style={{ gap: 8 }}>
+        <Cap>{t("Send your team a thank-you (optional)", "Envía un agradecimiento a tu equipo (opcional)")}</Cap>
+        <TextInput testID="thanks" style={[st.input, { minHeight: 90, textAlignVertical: "top" }]} multiline value={thanks} onChangeText={setThanks}
+          placeholder={t("Maria, thank you for every late-night answer…", "María, gracias por cada respuesta a altas horas de la noche…")} placeholderTextColor={C.stone} />
+        <Button testID="send-thanks" label={busy ? t("Sending…", "Enviando…") : t("Send to my care team", "Enviar a mi equipo")} disabled={busy || !thanks.trim()} onPress={send} />
+      </Card>
+    </>
+  );
+}
+
+function KeepsakeScreen({ api, t, lang }: { api: Api; t: Tx; lang: "en" | "es" }) {
+  const [g, setG] = useState<Graduation | null>(null);
+  const [hidden, setHidden] = useState<KeepsakeId[]>([]);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => { api.graduation().then((x) => { setG(x); setHidden(x.keepsake.hidden); }).catch(() => {}); }, [api]);
+  if (!g) return <Muted>{t("Loading…", "Cargando…")}</Muted>;
+  const label = (i: Graduation["keepsake"]["items"][number]): [string, string] => ({
+    start: [t("Your cycle began", "Comenzó tu ciclo"), dateLong(i.date, lang)],
+    injections: [t(`${i.injections ?? 0} injections, every one logged`, `${i.injections ?? 0} inyecciones, cada una registrada`), t("You did that.", "Lo lograste.")],
+    transfer: [t("Embryo transfer", "Transferencia de embriones"), dateLong(i.date, lang)],
+    wait: [t("The two-week wait", "La espera de dos semanas"), t("The hardest part, behind you", "Lo más difícil ya pasó")],
+    positive: [t("A positive test", "Una prueba positiva"), `${dateLong(i.date, lang)}${i.hcg !== null ? ` · hCG ${i.hcg}` : ""}`],
+    graduated: [t(`Graduated${g.ob ? ` to ${g.ob}` : ""}`, `Graduada${g.ob ? ` con ${g.ob}` : ""}`), dateLong(i.date, lang)],
+  } as Record<KeepsakeId, [string, string]>)[i.id];
+  return (
+    <>
+      <Today size={34}>{t("Your journey", "Tu camino")}</Today>
+      <Muted>{t("Switch off anything you'd rather leave out. Only you see this.", "Desactiva lo que prefieras dejar fuera. Solo tú ves esto.")}</Muted>
+      <Card pad={false}>
+        {g.keepsake.items.map((i, k) => {
+          const [title, sub] = label(i);
+          const on = !hidden.includes(i.id);
+          return (
+            <View key={i.id} style={[st.row, k === 0 && { borderTopWidth: 0 }, !on && { opacity: 0.45 }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: F.serifItalic, fontSize: 19, color: C.espresso }}>{title}</Text>
+                <Muted>{on ? sub : t("Left out", "Fuera")}</Muted>
+              </View>
+              <Toggle testID={`keep-${i.id}`} value={on} onChange={(v) => { setSaved(false); setHidden(v ? hidden.filter((h) => h !== i.id) : [...hidden, i.id]); }} />
+            </View>
+          );
+        })}
+      </Card>
+      {saved && <Moment>{t("Saved to your record.", "Guardado en tu expediente.")}</Moment>}
+      <Button testID="save-keepsake" label={t("Save my keepsake", "Guardar mi recuerdo")} onPress={async () => { await api.saveKeepsake(hidden); setSaved(true); }} />
+    </>
+  );
+}
+
+function ShareSummary({ api, t, ob }: { api: Api; t: Tx; ob: string | null }) {
+  const [recipient, setRecipient] = useState(ob ?? "");
+  const [results, setResults] = useState(true);
+  const [meds, setMeds] = useState(true);
+  const [made, setMade] = useState<{ url: string; expiresAt: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [shares, setShares] = useState<Graduation["shares"]>([]);
+  const refresh = useCallback(() => { api.graduation().then((g) => setShares(g.shares)).catch(() => {}); }, [api]);
+  useEffect(() => { refresh(); }, [refresh]);
+  const create = async () => {
+    setError(null);
+    try { setMade(await api.createSummaryShare({ recipient, includeResults: results, includeMeds: meds })); refresh(); }
+    catch (e) { setError((e as Error).message); }
+  };
+  const message = made ? t(`Here is my IVF pregnancy summary from Bayside Fertility: ${made.url} (the link works for 7 days).`, `Aquí está mi resumen de embarazo por FIV de Bayside Fertility: ${made.url} (el enlace funciona por 7 días).`) : "";
+  return (
+    <>
+      <H1>{t("Share your summary with your OB-GYN", "Comparte tu resumen con tu ginecólogo")}</H1>
+      <Muted>{t("Your cycle history, transfer date and results in one page your OB-GYN can open or print.", "Tu historial del ciclo, la fecha de transferencia y tus resultados en una página que tu ginecólogo puede abrir o imprimir.")}</Muted>
+      {!made ? (
+        <>
+          <Card style={{ gap: 10 }}>
+            <Cap>{t("Who it's for", "Para quién es")}</Cap>
+            <TextInput testID="summary-recipient" style={st.input} value={recipient} onChangeText={setRecipient} placeholder={t("Dr. Ana Reyes", "Dra. Ana Reyes")} placeholderTextColor={C.stone} />
+          </Card>
+          <Card pad={false}>
+            <View style={[st.row, { borderTopWidth: 0 }]}><View style={{ flex: 1 }}><T style={{ fontFamily: F.sans600, fontSize: 15 }}>{t("Results", "Resultados")}</T><Muted>{t("Pregnancy tests and monitoring labs", "Pruebas de embarazo y análisis de monitoreo")}</Muted></View><Toggle testID="summary-results" value={results} onChange={setResults} /></View>
+            <View style={st.row}><View style={{ flex: 1 }}><T style={{ fontFamily: F.sans600, fontSize: 15 }}>{t("Medications", "Medicamentos")}</T><Muted>{t("What you took during treatment", "Lo que tomaste durante el tratamiento")}</Muted></View><Toggle testID="summary-meds" value={meds} onChange={setMeds} /></View>
+            <View style={st.row}><Muted style={{ flex: 1 }}>{t("Cycle dates are always included. The link expires in 7 days, you can stop it anytime, and each time it's opened is recorded.", "Las fechas del ciclo siempre se incluyen. El enlace vence en 7 días, puedes detenerlo cuando quieras y cada vez que se abre queda registrado.")}</Muted></View>
+          </Card>
+          {error && <T style={{ color: C.red }}>{error}</T>}
+          <Button testID="create-summary" label={t("Create a secure link", "Crear un enlace seguro")} disabled={!recipient.trim()} onPress={create} />
+        </>
+      ) : (
+        <>
+          <View style={st.dark}>
+            <T style={{ fontSize: 13, color: C.tan }}>{t(`Secure link for ${recipient}`, `Enlace seguro para ${recipient}`)}</T>
+            <Text testID="summary-url" selectable numberOfLines={2} style={{ fontFamily: F.sans500, fontSize: 14, color: C.paper }}>{made.url}</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <T style={{ fontSize: 13, color: "#E9DED3" }}>{t("Expires in 7 days", "Vence en 7 días")}</T>
+              <Pressable testID="copy-summary" onPress={async () => { await Clipboard.setStringAsync(made.url); setCopied(true); }} style={{ borderRadius: 999, borderWidth: 1, borderColor: C.tan, paddingHorizontal: 14, paddingVertical: 8 }}>
+                <T style={{ fontFamily: F.sans600, color: C.paper }}>{copied ? t("Copied ✓", "Copiado ✓") : t("Copy link", "Copiar enlace")}</T>
+              </Pressable>
+            </View>
+          </View>
+          <Button label={t("Email it", "Enviarlo por correo")} onPress={() => { void Linking.openURL(`mailto:?subject=${encodeURIComponent(t("My IVF pregnancy summary", "Mi resumen de embarazo por FIV"))}&body=${encodeURIComponent(message)}`).catch(() => {}); }} />
+          <Button kind="line" label={t("Other ways to send", "Otras formas de enviar")} onPress={() => { void Share.share({ message }).catch(() => {}); }} />
+        </>
+      )}
+      {shares.length > 0 && (
+        <>
+          <Cap>{t("Your links", "Tus enlaces")}</Cap>
+          <Card pad={false}>
+            {shares.map((s, i) => (
+              <Row key={s.id} title={s.recipient} sub={s.active ? t(`Opened ${s.views} time${s.views === 1 ? "" : "s"} · expires ${dateLong(s.expiresAt, "en")}`, `Abierto ${s.views} ${s.views === 1 ? "vez" : "veces"} · vence el ${dateLong(s.expiresAt, "es")}`) : t("Stopped or expired", "Detenido o vencido")}
+                right={s.active ? <Pressable testID={`stop-share-${i}`} onPress={async () => { await api.stopSummaryShare(s.id); refresh(); }}><T style={{ fontFamily: F.sans600, color: C.clayInk }}>{t("Stop sharing", "Dejar de compartir")}</T></Pressable> : undefined} />
+            ))}
+          </Card>
+        </>
+      )}
     </>
   );
 }
@@ -825,7 +1006,11 @@ function Urgent({ kind, t, back }: { kind: SendResult["kind"]; t: Tx; back: () =
 // English only for now; partner Spanish follows once the medical translator has reviewed the patient text.
 type PScreen = { name: "home" } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; level: "urgent" | "crisis" };
 // Injection offers only appear when injections are shared with this person.
-const quickNotes = (meds: boolean, waiting: boolean) => waiting
+const quickNotes = (meds: boolean, waiting: boolean, news: string | null) => news === "negative"
+  ? ["I love you", "I'm here, whatever you need", "Dinner's on me tonight", "No need to reply"]
+  : news === "positive" || news === "graduated"
+  ? ["So proud of you", "I love you", "Dinner's on me tonight", "Thinking of you today"]
+  : waiting
   ? ["Thinking of you today", "Dinner's on me tonight", "Whatever happens, we're in this together", "So proud of you"]
   : meds
   ? ["So proud of you", "I'll set up tonight's meds", "Want me to do the injection?", "Dinner's on me tonight"]
@@ -905,7 +1090,15 @@ function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHom
       <View style={{ gap: 4 }}>
         <Cap>{`Supporting ${her}`}</Cap>
         <Today>{`Hi ${data.name.split(" ")[0]}.`}</Today>
-        <T testID="partner-status" style={{ color: C.stone, fontSize: 13.5 }}>{w?.resultIsIn
+        <T testID="partner-status" style={{ color: C.stone, fontSize: 13.5 }}>{data.news === "graduated"
+          ? `${her} graduated to her OB-GYN. You were part of every step.`
+          : data.news === "positive"
+          ? `${her} shared her news: her test is positive.`
+          : data.news === "negative"
+          ? `${her} shared that this cycle didn't work. There's no right thing to say. Being there is enough.`
+          : data.news === "repeat"
+          ? `${her} shared that she needs a second blood test. The waiting continues.`
+          : w?.resultIsIn
           ? `${her}'s result is in. She'll share it with you when she's ready.`
           : waiting
             ? (w?.dayOfWait ? `${her} is on day ${w.dayOfWait} of the two-week wait.` : `${her} is in the two-week wait.`) + " The waiting is hard. Small, steady things help."
@@ -951,7 +1144,7 @@ function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHom
       <View style={{ gap: 8 }}>
         <Cap>{`Send ${her} a note`}</Cap>
         {sent && <Moment>{`Sent. ${her} will see it on her home screen.`}</Moment>}
-        <Chips>{quickNotes(data.sections.includes("meds"), waiting).map((q) => <Chip key={q} label={q} onPress={() => { setSent(false); setNote(q); }} />)}</Chips>
+        <Chips>{quickNotes(data.sections.includes("meds"), waiting, data.news).map((q) => <Chip key={q} label={q} onPress={() => { setSent(false); setNote(q); }} />)}</Chips>
         <AskBox testID="note" value={note} onChange={(v) => { setSent(false); setNote(v); }} onSubmit={() => send(note)} placeholder={`Write something for ${her}`} />
         <Muted style={{ fontSize: 12 }}>{`Notes go to ${her}, not to the clinic. If something's wrong medically, call the nurse line.`}</Muted>
         {data.notes.length > 0 && (

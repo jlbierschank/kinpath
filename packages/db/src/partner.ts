@@ -31,12 +31,18 @@ export async function partnerHome(db: Db, actor: Actor, now = new Date()) {
     const c = await tx.query<{ stage: string; stim_day: number | null }>(`SELECT stage, stim_day FROM cycles WHERE patient_id = $1 ORDER BY started_on DESC LIMIT 1`, [grant.patient_id]);
     const n = await tx.query<NoteRow>(
       `SELECT id, from_name, body, level, created_at, seen_at FROM partner_notes WHERE from_user_id = $1 ORDER BY created_at DESC LIMIT 5`, [actor.userId]);
+    // A support person never learns the outcome from the stage: "graduated" reads as "result"
+    // until the patient shares her news.
+    const news = (await tx.query<{ n: string | null }>(`SELECT kp_shared_news($1) AS n`, [grant.patient_id])).rows[0]?.n ?? null;
+    const rawStage = c.rows[0]?.stage ?? null;
+    const stage = rawStage === "graduated" && news !== "graduated" ? "result" : rawStage;
     await audit(tx, actor, "partner.viewed_shared", grant.patient_id, { sections: grant.sections });
     return {
       patientId: grant.patient_id,
       sections: grant.sections.filter((s): s is Shareable => (SHAREABLE as readonly string[]).includes(s)),
       firstName: p.rows[0]?.first_name ?? null,
-      stage: c.rows[0]?.stage ?? null,
+      stage,
+      news,
       stimDay: c.rows[0]?.stim_day ?? null,
       notes: n.rows.map(toNote),
     };

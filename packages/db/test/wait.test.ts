@@ -37,6 +37,10 @@ describe("recording the transfer", () => {
     expect((await patientSchedule(db, maya, IDS.maya, NOW)).upcoming).toEqual([]);
   });
 
+  it("refuses a transfer date before the cycle started", async () => {
+    await expect(recordTransfer(db, maria, { patientId: IDS.maya, transferOn: daysAgo(30), testAt: inDays(4) })).rejects.toThrow(/before the cycle started/);
+  });
+
   it("is for nurses and physicians only", async () => {
     await expect(recordTransfer(db, kara, { patientId: IDS.maya, transferOn: daysAgo(5), testAt: inDays(4) })).rejects.toThrow();
     await expect(recordTransfer(db, { ...maya, name: "Maya" } as never, { patientId: IDS.maya, transferOn: daysAgo(5), testAt: inDays(4) })).rejects.toThrow();

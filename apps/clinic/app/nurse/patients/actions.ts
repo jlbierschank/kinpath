@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { isHandoffError } from "@kinpath/core";
-import { completeTask, enterPregnancyResult, recordTransfer, releasePregnancyResult } from "@kinpath/db";
+import { completeTask, enterPregnancyResult, graduatePatient, recordTransfer, releasePregnancyResult } from "@kinpath/db";
 import { getDb } from "@/lib/db";
 import { requireSession } from "@/lib/session";
 
@@ -43,4 +43,11 @@ export async function releaseResultAction(f: FormData) {
 export async function completeTaskAction(f: FormData) {
   const s = await requireSession(["nurse", "physician"]);
   await run("/nurse", async () => completeTask(await getDb(), s, str(f, "taskId"), str(f, "note")), "Marked done.");
+}
+
+export async function graduateAction(f: FormData) {
+  const s = await requireSession(["nurse", "physician"]);
+  const id = str(f, "patientId");
+  await run(`/nurse/patients/${id}`, async () => graduatePatient(await getDb(), s, { patientId: id, obName: str(f, "obName") }),
+    "Graduated. Her app now shows her graduation, her keepsake and a way to share her summary with her OB-GYN.");
 }

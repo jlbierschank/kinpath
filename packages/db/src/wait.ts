@@ -41,9 +41,10 @@ export async function recordTransfer(db: Db, nurse: Staff, input: { patientId: s
   if (Number.isNaN(testAt.getTime())) throw new HandoffError("Enter the blood test date and time.");
   if (testAt.getTime() <= localMidnight(input.transferOn).getTime()) throw new HandoffError("The blood test has to be after the transfer.");
   return asActor(db, nurse, async (tx) => {
-    const c = await tx.query<{ id: string }>(`SELECT id FROM cycles WHERE patient_id = $1 ORDER BY started_on DESC LIMIT 1`, [input.patientId]);
+    const c = await tx.query<{ id: string; started_on: string }>(`SELECT id, started_on::text FROM cycles WHERE patient_id = $1 ORDER BY started_on DESC LIMIT 1`, [input.patientId]);
     const cycleId = c.rows[0]?.id;
     if (!cycleId) throw new HandoffError("No active cycle for this patient.");
+    if (input.transferOn < c.rows[0]!.started_on) throw new HandoffError("The transfer date can't be before the cycle started.");
     await tx.query(`UPDATE cycles SET stage = 'wait', transfer_on = $2, stim_day = NULL WHERE id = $1`, [cycleId, input.transferOn]);
     const canceled = await tx.query(
       `UPDATE dose_logs SET canceled_at = now() WHERE patient_id = $1 AND taken_at IS NULL AND reported_missed_at IS NULL AND canceled_at IS NULL AND scheduled_for > now() RETURNING id`,
@@ -169,7 +170,7 @@ export interface WaitView {
   stage: string | null;
   dayOfWait: number | null;
   testAt: string | null;
-  prefs: { resultHow: ResultHow | null; hideDayCount: boolean; quietOff: boolean };
+  prefs: { resultHow: ResultHow | null; hideDayCount: boolean; quietOff: boolean; toldSupport: boolean };
   checkedInToday: Feeling | null;
   result: null | { outcome: Outcome; hcg: number | null; note: string; by: string; releasedAt: string };
   quietUntil: string | null;
@@ -183,12 +184,12 @@ export async function patientWait(db: Db, actor: Actor, patientId: string, now =
     const c = await tx.query<{ stage: string; transfer_on: string | null }>(`SELECT stage, transfer_on::text FROM cycles WHERE patient_id = $1 ORDER BY started_on DESC LIMIT 1`, [patientId]);
     const t = await tx.query<{ scheduled_at: Date; released: boolean; outcome: Outcome | null; hcg: string | null; nurse_note: string | null; released_by_name: string | null; released_at: Date | null }>(
       `SELECT * FROM kp_pregnancy_test_view($1)`, [patientId]);
-    const w = await tx.query<{ result_how: ResultHow | null; hide_day_count: boolean; quiet_off: boolean }>(`SELECT result_how, hide_day_count, quiet_off FROM wait_prefs WHERE patient_id = $1`, [patientId]);
+    const w = await tx.query<{ result_how: ResultHow | null; hide_day_count: boolean; quiet_off: boolean; told_support: boolean }>(`SELECT result_how, hide_day_count, quiet_off, told_support FROM wait_prefs WHERE patient_id = $1`, [patientId]);
     const k = await tx.query<{ feeling: Feeling }>(`SELECT feeling FROM wellbeing_checkins WHERE patient_id = $1 AND created_at > $2 ORDER BY created_at DESC LIMIT 1`, [patientId, localMidnight(ymd(now)).toISOString()]);
     const a = await tx.query<{ id: string; title: string; body_en: string; body_es: string }>(`SELECT id, title, body_en, body_es FROM protocol_sections WHERE id LIKE 'wait.%' ORDER BY id`);
     const cycle = c.rows[0];
     const test = t.rows[0];
-    const prefs = { resultHow: w.rows[0]?.result_how ?? null, hideDayCount: w.rows[0]?.hide_day_count ?? false, quietOff: w.rows[0]?.quiet_off ?? false };
+    const prefs = { resultHow: w.rows[0]?.result_how ?? null, hideDayCount: w.rows[0]?.hide_day_count ?? false, quietOff: w.rows[0]?.quiet_off ?? false, toldSupport: w.rows[0]?.told_support ?? false };
     const result = test?.released && test.outcome && test.nurse_note && test.released_at
       ? { outcome: test.outcome, hcg: test.hcg === null ? null : Number(test.hcg), note: test.nurse_note, by: test.released_by_name ?? "", releasedAt: new Date(test.released_at).toISOString() }
       : null;

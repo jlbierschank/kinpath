@@ -9,6 +9,7 @@ A clinic-branded patient app and nurse workspace for fertility clinics ("Bayside
 - **The missed-dose loop:** the patient reports a missed dose. It lands in the nurse's queue with her dose log attached. The nurse gets a reply drafted from the clinic's approved protocol, edits it if needed, and sends it. The patient sees "Drafted with Kinpath, reviewed by Maria."
 - **Urgent symptoms skip the AI:** messages that mention things like breathing trouble or heavy bleeding (English or Spanish) jump to the top of the queue, and the app never drafts a reply to them. A nurse calls the patient instead.
 - **Results against the clinic's own ranges:** in-range results show the clinic's nurse-approved explanation. Anything else shows "your nurse will review this with you" and opens a nurse task.
+- **Graduation:** after a positive result, a nurse graduates the patient to her OB-GYN. She gets a keepsake of her journey, can send her team a thank-you, and can share an IVF pregnancy summary with her OB-GYN through a secure link that expires in 7 days and that she can stop at any time. Her support people hear the news only when she shares it.
 - **Two-week wait and result day:** a nurse records the transfer, and the patient's app becomes the wait: the blood test date, how she wants to hear her result, a daily check-in, the clinic's answers, and a "Rough day?" option. The nurse decides the outcome and releases it; if the patient asked for a call, the app won't release it until the nurse confirms she called. Support people never see the result. After a negative result the app goes quiet for 14 days and a follow-up call lands on the nurse's list.
 - **Support people:** in Settings, the patient invites a partner, family member or friend, picks what they'll see, and texts them a one-time code. She can change each person's access or remove them at any time.
 - **Partner sharing:** the patient's partner signs in to the same phone app and sees only the sections she shares: her cycle, tonight's injections (with the walkthroughs, so he can help), and results if she turns them on. He can send her private notes the clinic never sees; a note that mentions an urgent symptom tells him to call the nurse line and shows her a call-the-nurse card. Patient-nurse messages are never shared.
@@ -24,7 +25,7 @@ You'll need Node 22 or newer and pnpm.
 
 ```bash
 pnpm install
-pnpm test                 # 106 safety, settings, sharing, result and access tests
+pnpm test                 # 116 safety, settings, sharing, result and access tests
 pnpm dev:clinic           # http://localhost:3000
 ```
 

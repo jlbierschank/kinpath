@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { nursePatientCycle, waitDay } from "@kinpath/db";
 import { getDb } from "@/lib/db";
 import { requireSession } from "@/lib/session";
-import { enterResultAction, recordTransferAction, releaseResultAction } from "../actions";
+import { enterResultAction, graduateAction, recordTransferAction, releaseResultAction } from "../actions";
 
 const fmt = (iso: string) => new Date(iso).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -33,7 +33,7 @@ export default async function PatientCycle({ params, searchParams }: { params: P
       <p><Link href="/nurse">← Queue</Link></p>
       <h1>{c.name}</h1>
       <p className="muted">
-        {c.stage === "stimulation" ? `Stimulation day ${c.stimDay ?? ""}` : c.stage === "wait" ? `Two-week wait${c.transferOn ? `, day ${waitDay(c.transferOn, now)}` : ""}` : c.stage === "result" ? "Result released" : c.stage ?? "No cycle"}
+        {c.stage === "stimulation" ? `Stimulation day ${c.stimDay ?? ""}` : c.stage === "wait" ? `Two-week wait${c.transferOn ? `, day ${waitDay(c.transferOn, now)}` : ""}` : c.stage === "result" ? "Result released" : c.stage === "graduated" ? "Graduated to her OB-GYN" : c.stage ?? "No cycle"}
         {" · "}prefers {c.lang === "es" ? "Spanish" : "English"}
       </p>
       {sp.error && <div className="card urgent" role="alert"><b>Not saved.</b> {sp.error}</div>}
@@ -106,6 +106,17 @@ export default async function PatientCycle({ params, searchParams }: { params: P
               <p style={{ margin: "8px 0 4px" }}>Released {fmt(t.releasedAt)} by {t.releasedBy} · {t.toldBy === "phone" ? "told by phone first" : "in the app"}</p>
               {t.outcome === "negative" && <p className="muted" style={{ fontSize: 13.5 }}>Her app is quiet for 14 days: no cheerful messages or follow-up nudges. A follow-up call is on your list.</p>}
             </div>
+          )}
+
+          {t?.releasedAt && t.outcome === "positive" && c.stage !== "graduated" && (
+            <form className="card" action={graduateAction}>
+              <h2 style={{ marginTop: 0 }}>Graduate to her OB-GYN</h2>
+              <p className="muted" style={{ fontSize: 13.5 }}>When she&apos;s ready to leave Bayside&apos;s care. Her app shows her graduation, a keepsake of her journey, and a secure way to share her IVF pregnancy summary with her OB-GYN.</p>
+              <input type="hidden" name="patientId" value={id} />
+              <label htmlFor="obName">Her OB-GYN</label>
+              <input id="obName" name="obName" placeholder="Dr. Ana Reyes, Tampa Women's Health" required />
+              <div style={{ marginTop: 12 }}><button className="btn btn-main" type="submit">Graduate {c.firstName}</button></div>
+            </form>
           )}
         </div>
         <div>

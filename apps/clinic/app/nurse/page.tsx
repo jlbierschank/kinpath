@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { clinicPatients, nurseQueue, nurseTasks, IDS } from "@kinpath/db";
+import { clinicPatients, nurseQueue, nurseTasks, thankYouNotes, IDS } from "@kinpath/db";
 import { getDb } from "@/lib/db";
 import { requireSession } from "@/lib/session";
 import { enterResult } from "../actions";
@@ -18,13 +18,13 @@ const TASK: Record<string, [string, string]> = {
   negative_followup: ["Follow-up after negative", "p-clay"],
   result_call: ["Result call", "p-lav"],
 };
-const STAGE: Record<string, string> = { stimulation: "Stimulation", wait: "Two-week wait", result: "Result released" };
+const STAGE: Record<string, string> = { stimulation: "Stimulation", wait: "Two-week wait", result: "Result released", graduated: "Graduated" };
 
 export default async function NurseHome({ searchParams }: { searchParams: Promise<{ error?: string; saved?: string }> }) {
   const sp = await searchParams;
   const s = await requireSession(["nurse", "physician"]);
   const db = await getDb();
-  const [queue, tasks, patients] = await Promise.all([nurseQueue(db, s), nurseTasks(db, s), clinicPatients(db, s)]);
+  const [queue, tasks, patients, thanks] = await Promise.all([nurseQueue(db, s), nurseTasks(db, s), clinicPatients(db, s), thankYouNotes(db, s)]);
   return (
     <>
       <p style={{ display: "flex", justifyContent: "flex-end", margin: 0 }}><Link href="/settings">Clinic settings →</Link></p>
@@ -72,6 +72,17 @@ export default async function NurseHome({ searchParams }: { searchParams: Promis
           </div>
         </div>
         <div>
+          {thanks.length > 0 && (
+            <>
+              <h2>Thank-you notes</h2>
+              {thanks.map((n) => (
+                <div className="card" key={n.id} style={{ background: "var(--lav)", borderColor: "var(--lav)" }}>
+                  <p style={{ margin: 0, fontStyle: "italic" }}>&ldquo;{n.body}&rdquo;</p>
+                  <p className="muted" style={{ margin: "6px 0 0", fontSize: 13 }}>{n.from} · {new Date(n.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</p>
+                </div>
+              ))}
+            </>
+          )}
           <h2>Patients</h2>
           <div className="card">
             {patients.map((p) => (

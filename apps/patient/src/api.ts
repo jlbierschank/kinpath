@@ -26,7 +26,7 @@ export type ResultHow = "call" | "app" | "together";
 export type Feeling = "okay" | "anxious" | "struggling";
 export interface Wait {
   stage: string | null; dayOfWait: number | null; testAt: string | null;
-  prefs: { resultHow: ResultHow | null; hideDayCount: boolean; quietOff: boolean };
+  prefs: { resultHow: ResultHow | null; hideDayCount: boolean; quietOff: boolean; toldSupport: boolean };
   checkedInToday: Feeling | null;
   result: null | { outcome: "positive" | "negative" | "repeat"; hcg: number | null; note: string; by: string; releasedAt: string };
   quietUntil: string | null;
@@ -45,7 +45,15 @@ export type PartnerHome =
       results: { id: string; analyte: string; value: number; unit: string; status: string; text: string }[] | null;
       notes: Note[];
       wait: { dayOfWait: number | null; testAt: string | null; resultIsIn: boolean } | null;
+      news: "positive" | "negative" | "repeat" | "graduated" | null;
     };
+export type KeepsakeId = "start" | "injections" | "transfer" | "wait" | "positive" | "graduated";
+export interface Graduation {
+  graduatedOn: string | null; ob: string | null; days: number | null;
+  keepsake: { saved: boolean; hidden: KeepsakeId[]; items: { id: KeepsakeId; date: string | null; injections: number | null; hcg: number | null }[] };
+  shares: { id: string; recipient: string; includeResults: boolean; includeMeds: boolean; createdAt: string; expiresAt: string; active: boolean; views: number; lastViewedAt: string | null }[];
+  toldSupport: boolean;
+}
 export interface Guide { medication: string; steps: Record<Lang, string>[]; videoUrl: string | null; approvedBy: string }
 export interface SendResult { handoffId: string; kind: "missed_dose" | "question" | "urgent_symptom" | "crisis" | "result_review" }
 
@@ -76,6 +84,13 @@ export class Api {
   setWaitPrefs = (change: { resultHow?: ResultHow; hideDayCount?: boolean; quietOff?: boolean }) => this.call<{ ok: boolean }>("/api/patient/wait/prefs", { method: "POST", body: change });
   checkIn = (feeling: Feeling) => this.call<{ nurseWillCall: boolean }>("/api/patient/wait/checkin", { method: "POST", body: { feeling } });
   askForCall = (why: "rough_day" | "counselor") => this.call<{ ok: boolean }>("/api/patient/wait/call", { method: "POST", body: { why } });
+  graduation = () => this.call<Graduation>("/api/patient/graduation");
+  saveKeepsake = (hidden: KeepsakeId[]) => this.call<{ ok: boolean }>("/api/patient/graduation/keepsake", { method: "POST", body: { hidden } });
+  createSummaryShare = (input: { recipient: string; includeResults: boolean; includeMeds: boolean }) =>
+    this.call<{ id: string; url: string; expiresAt: string }>("/api/patient/summary-shares", { method: "POST", body: input });
+  stopSummaryShare = (id: string) => this.call<{ ok: boolean }>(`/api/patient/summary-shares/${id}/stop`, { method: "POST", body: {} });
+  shareNews = () => this.call<{ ok: boolean }>("/api/patient/share-news", { method: "POST", body: {} });
+  sendThanks = (text: string) => this.call<{ sent: "thanks" } | { sent: "urgent"; kind: SendResult["kind"]; handoffId: string }>("/api/patient/thanks", { method: "POST", body: { text } });
   noteSeen = (id: string) => this.call<{ ok: boolean }>(`/api/patient/notes/${id}/seen`, { method: "POST", body: {} });
   // Partner side
   partnerHome = () => this.call<PartnerHome>("/api/partner/home");
