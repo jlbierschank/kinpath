@@ -9,3 +9,4 @@
 # but its package.json is, so pnpm's lockfile still matches the workspace.
 apps/patient/*
 !apps/patient/package.json
+!apps/clinic/public/phone/**
