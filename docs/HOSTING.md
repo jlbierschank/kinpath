@@ -1,6 +1,6 @@
-# Hosting The Pumpkin for real patients
+# Hosting Pumpkin for real patients
 
-This is the plan for moving The Pumpkin from a laptop demo to HIPAA-covered hosting. The code is ready for it; the accounts, signed agreements and reviews below are not something code can do.
+This is the plan for moving Pumpkin from a laptop demo to HIPAA-covered hosting. The code is ready for it; the accounts, signed agreements and reviews below are not something code can do.
 
 **Nothing here is legal advice.** A healthcare attorney and the clinic's privacy officer should review the vendor agreements and the HIPAA risk assessment.
 
@@ -30,7 +30,7 @@ A clinic that wants its own address (e.g. `app.baysidefertility.com`) can point 
 
 ### Option A: Aptible (simplest)
 
-Aptible is a hosting platform built for regulated health apps. Its BAA page says a signed BAA is "included with every plan," with "no separate process, no sales call," covering "your entire Aptible environment" ([Aptible](https://www.aptible.com/hipaa/baa)). It runs containers and managed databases, which is what The Pumpkin needs. Check current pricing on their site.
+Aptible is a hosting platform built for regulated health apps. Its BAA page says a signed BAA is "included with every plan," with "no separate process, no sales call," covering "your entire Aptible environment" ([Aptible](https://www.aptible.com/hipaa/baa)). It runs containers and managed databases, which is what Pumpkin needs. Check current pricing on their site.
 
 ### Option B: AWS
 
@@ -53,7 +53,7 @@ Each claim below was checked on the vendor's own site. Re-check before signing; 
 | AI drafting (if on AWS) | Amazon Bedrock | Covered under the AWS BAA | [AWS services in scope](https://aws.amazon.com/compliance/services-in-scope/HIPAA_BAA/) |
 | Push | Expo / Apple / Google | **No BAA.** Expo: "Expo is not HIPAA-certified and does not sign BAAs," and push payloads must never contain PHI | [expo.dev/solutions/expo-healthcare](https://expo.dev/solutions/expo-healthcare) |
 
-The Pumpkin already sends no health details in push, text or email (tested in `packages/core/test/notifications.test.ts`), which is what makes the no-BAA push path workable.
+Pumpkin already sends no health details in push, text or email (tested in `packages/core/test/notifications.test.ts`), which is what makes the no-BAA push path workable.
 
 **Not to use for health information:** Twilio SendGrid (not on Twilio's HIPAA eligible list), any analytics or error-tracking service without a BAA, and Anthropic API features its BAA excludes (for example Batch and Files).
 
@@ -77,7 +77,7 @@ The Pumpkin already sends no health details in push, text or email (tested in `p
 
 ## How the code maps to HIPAA's technical safeguards
 
-| Safeguard (45 CFR 164.312) | In The Pumpkin |
+| Safeguard (45 CFR 164.312) | In Pumpkin |
 | --- | --- |
 | Access control: unique user IDs | Every person has their own account; no shared logins |
 | Access control: emergency access | To be written as a procedure (break-glass account held by the medical director) |

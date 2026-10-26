@@ -30,7 +30,7 @@ async function staffFullySignedIn() {
   const s = await staffSignIn(db, "maria@bayside.example", DEMO_STAFF_PASSWORD);
   expect(s.next).toBe("two_step_setup");
   const setup = await startTwoStepSetup(db, s.token);
-  expect(setup.uri).toMatch(/^otpauth:\/\/totp\/The%20Pumpkin:maria%40bayside.example\?secret=/);
+  expect(setup.uri).toMatch(/^otpauth:\/\/totp\/Pumpkin:maria%40bayside.example\?secret=/);
   await confirmTwoStepSetup(db, s.token, totpAt(setup.secret, Date.now()));
   return { token: s.token, secret: setup.secret };
 }
@@ -72,7 +72,7 @@ describe("staff sign-in", () => {
     await changePassword(db, a.token, DEMO_STAFF_PASSWORD, "violet harbor lantern");
     expect(await sessionFromToken(db, b.token)).toBeNull();
     expect(await sessionFromToken(db, a.token)).not.toBeNull();
-    expect((await devOutbox(db, 5))[0]!.subject).toBe("Your password for The Pumpkin was changed");
+    expect((await devOutbox(db, 5))[0]!.subject).toBe("Your password for Pumpkin was changed");
   });
 });
 

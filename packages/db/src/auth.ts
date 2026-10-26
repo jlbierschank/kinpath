@@ -121,7 +121,7 @@ export async function changePassword(db: Db, token: string, current: string, nex
   if (why) throw new HandoffError(why);
   await db.query(`UPDATE user_credentials SET password_hash = $2, password_changed_at = now() WHERE user_id = $1`, [s.user_id, hashPassword(next)]);
   await db.query(`UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND id <> $2 AND revoked_at IS NULL`, [s.user_id, s.id]);
-  await sendDirect(db, { clinicId: user.clinic_id, userId: s.user_id, channel: "email", to: user.email, subject: "Your password for The Pumpkin was changed", body: "Your password for The Pumpkin was just changed, and other devices were signed out. If this wasn't you, contact your clinic admin right away." });
+  await sendDirect(db, { clinicId: user.clinic_id, userId: s.user_id, channel: "email", to: user.email, subject: "Your password for Pumpkin was changed", body: "Your password for Pumpkin was just changed, and other devices were signed out. If this wasn't you, contact your clinic admin right away." });
   await signInAudit(db, s.user_id, "auth.password_changed");
   return true;
 }
@@ -147,8 +147,8 @@ export async function createStaffSetupLink(db: Db, userId: string, baseUrl: stri
   await db.query(`INSERT INTO sign_in_codes (purpose, user_id, code_hash, expires_at) VALUES ('setup',$1,$2, now() + interval '72 hours')`, [userId, sha256(t)]);
   const u = (await db.query<{ email: string; clinic_id: string; display_name: string }>(`SELECT email, clinic_id, display_name FROM app_users WHERE id = $1`, [userId])).rows[0]!;
   const link = `${baseUrl.replace(/\/$/, "")}/login/setup?t=${t}`;
-  await sendDirect(db, { clinicId: u.clinic_id, userId, channel: "email", to: u.email, subject: "Set up your account on The Pumpkin",
-    body: `Hi ${u.display_name.split(" ")[0]}, your clinic added you to The Pumpkin. Set your password here (the link works for 72 hours): ${link}` });
+  await sendDirect(db, { clinicId: u.clinic_id, userId, channel: "email", to: u.email, subject: "Set up your account on Pumpkin",
+    body: `Hi ${u.display_name.split(" ")[0]}, your clinic added you to Pumpkin. Set your password here (the link works for 72 hours): ${link}` });
   return link;
 }
 

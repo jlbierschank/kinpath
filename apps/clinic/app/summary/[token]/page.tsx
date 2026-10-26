@@ -58,7 +58,7 @@ export default async function Summary({ params }: { params: Promise<{ token: str
         </div>
       )}
       {!s.tests && !s.meds && <p className="muted">The patient chose to share her cycle dates only.</p>}
-      <p className="muted" style={{ fontSize: 13 }}>Shared by the patient through The Pumpkin. This link expires {d(s.expiresAt)}. Each view is recorded. This summary does not replace the clinic&apos;s full records; contact {s.clinic} for them.</p>
+      <p className="muted" style={{ fontSize: 13 }}>Shared by the patient through Pumpkin. This link expires {d(s.expiresAt)}. Each view is recorded. This summary does not replace the clinic&apos;s full records; contact {s.clinic} for them.</p>
       <PrintButton />
     </div>
   );

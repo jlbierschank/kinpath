@@ -12,7 +12,7 @@ export default async function Team({ searchParams }: { searchParams: Promise<{ e
   return (
     <>
       <h1>Team</h1>
-      <p className="muted">Everyone at Bayside who can sign in to The Pumpkin. Every change here is recorded in the audit log.</p>
+      <p className="muted">Everyone at Bayside who can sign in to Pumpkin. Every change here is recorded in the audit log.</p>
       {sp.error && <div className="card urgent" role="alert"><b>Not saved.</b> {sp.error}</div>}
       {sp.saved && <div className="note" role="status" style={{ marginBottom: 12, background: "var(--sage)", borderColor: "var(--sage)", color: "var(--sage-ink)" }}>{sp.saved}</div>}
       <div>

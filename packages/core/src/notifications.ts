@@ -165,9 +165,9 @@ export function planDelivery(kind: NotificationKind, prefs: DeliveryPrefs, now: 
 /** The only text that ever leaves the app. No names, no medications, no results. */
 export function outsideText(kind: NotificationKind, clinicName: string, lang: "en" | "es"): { subject: string; body: string } {
   if (KINDS[kind].urgent) {
-    return { subject: "The Pumpkin: urgent", body: "URGENT: a patient needs a call now. Open The Pumpkin to see who." };
+    return { subject: "Pumpkin: urgent", body: "URGENT: a patient needs a call now. Open Pumpkin to see who." };
   }
-  if (KINDS[kind].audience === "staff") return { subject: "The Pumpkin", body: "You have a new update in The Pumpkin." };
+  if (KINDS[kind].audience === "staff") return { subject: "Pumpkin", body: "You have a new update in Pumpkin." };
   return lang === "es"
     ? { subject: clinicName, body: `Tienes una novedad de ${clinicName}. Ábrela en la app.` }
     : { subject: clinicName, body: `You have a new update from ${clinicName}. Open the app to see it.` };

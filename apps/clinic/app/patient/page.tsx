@@ -19,7 +19,7 @@ export default async function PatientHome() {
 
   return (
     <>
-      <p className="muted" style={{ margin: 0 }}>Bayside Fertility · powered by The Pumpkin</p>
+      <p className="muted" style={{ margin: 0 }}>Bayside Fertility · powered by Pumpkin</p>
       <h1>{t("Today", "Hoy")}</h1>
       <p className="muted">
         {today.stimDay ? t(`Stimulation, day ${today.stimDay}.`, `Estimulación, día ${today.stimDay}.`) : ""}{" "}

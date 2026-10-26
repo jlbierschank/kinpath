@@ -108,7 +108,7 @@ describe("the missed-dose loop, end to end", () => {
 
     await sendReply(db, maria, r.handoffId, draft.draft);
     const inbox = await patientInbox(db, maya, IDS.maya);
-    expect(inbox[0]!.sentText).toContain("Drafted with The Pumpkin, reviewed by Maria.");
+    expect(inbox[0]!.sentText).toContain("Drafted with Pumpkin, reviewed by Maria.");
     expect(await markReplyRead(db, maya, r.handoffId)).toBe(true);
     expect((await nurseQueue(db, maria)).map((q) => q.id)).not.toContain(r.handoffId);
   });

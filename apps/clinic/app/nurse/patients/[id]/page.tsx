@@ -60,14 +60,14 @@ export default async function PatientCycle({ params, searchParams }: { params: P
             <div className="card">
               <h2 style={{ marginTop: 0 }}>Pregnancy blood test</h2>
               <p style={{ margin: "4px 0" }}><b>{fmt(t.scheduledAt)}</b></p>
-              <p style={{ margin: "4px 0" }}>She wants to hear: <b data-testid="result-how">{c.resultHow ? HOW[c.resultHow] : "Not chosen yet (The Pumpkin will ask you to call first)"}</b></p>
+              <p style={{ margin: "4px 0" }}>She wants to hear: <b data-testid="result-how">{c.resultHow ? HOW[c.resultHow] : "Not chosen yet (Pumpkin will ask you to call first)"}</b></p>
             </div>
           )}
 
           {t && !t.releasedAt && !t.outcome && (
             <form className="card" action={enterResultAction}>
               <h2 style={{ marginTop: 0 }}>Enter the result</h2>
-              <p className="muted" style={{ fontSize: 13.5 }}>You decide the outcome. The Pumpkin never reads it from the number, and {c.firstName} sees nothing until you release it.</p>
+              <p className="muted" style={{ fontSize: 13.5 }}>You decide the outcome. Pumpkin never reads it from the number, and {c.firstName} sees nothing until you release it.</p>
               <input type="hidden" name="patientId" value={id} />
               <label htmlFor="hcg">hCG (mIU/mL)</label>
               <input id="hcg" name="hcg" type="number" step="0.1" min="0" required />

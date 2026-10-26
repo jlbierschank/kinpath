@@ -1,14 +1,14 @@
-# The Pumpkin
+# Pumpkin
 
-The code project is called **Kinpath**; the product is **The Pumpkin** (thepumpkin.ai).
+The code project is called **Kinpath**; the company is **The Pumpkin** (thepumpkin.ai) and the product is called **Pumpkin**.
 
-A clinic-branded patient app and nurse workspace for fertility clinics ("Bayside Fertility, powered by The Pumpkin").
+A clinic-branded patient app and nurse workspace for fertility clinics ("Bayside Fertility, powered by Pumpkin").
 
 > **Synthetic data only.** This build has development sign-in and an embedded database. No real patient information may be entered until the items in [docs/ROADMAP.md](docs/ROADMAP.md) under "Before any real patient" are done.
 
 ## What works today
 
-- **The missed-dose loop:** the patient reports a missed dose. It lands in the nurse's queue with her dose log attached. The nurse gets a reply drafted from the clinic's approved protocol, edits it if needed, and sends it. The patient sees "Drafted with The Pumpkin, reviewed by Maria."
+- **The missed-dose loop:** the patient reports a missed dose. It lands in the nurse's queue with her dose log attached. The nurse gets a reply drafted from the clinic's approved protocol, edits it if needed, and sends it. The patient sees "Drafted with Pumpkin, reviewed by Maria."
 - **Urgent symptoms skip the AI:** messages that mention things like breathing trouble or heavy bleeding (English or Spanish) jump to the top of the queue, and the app never drafts a reply to them. A nurse calls the patient instead.
 - **Results against the clinic's own ranges:** in-range results show the clinic's nurse-approved explanation. Anything else shows "your nurse will review this with you" and opens a nurse task.
 - **Graduation:** after a positive result, a nurse graduates the patient to her OB-GYN. She gets a keepsake of her journey, can send her team a thank-you, and can share an IVF pregnancy summary with her OB-GYN through a secure link that expires in 7 days and that she can stop at any time. Her support people hear the news only when she shares it.

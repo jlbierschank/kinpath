@@ -37,7 +37,7 @@ export default async function Account({ searchParams }: { searchParams: Promise<
             <input id="title" name="title" defaultValue={p.title} maxLength={80} placeholder="IVF nurse" />
             <label htmlFor="signature">Reply signature</label>
             <input id="signature" name="signature" defaultValue={p.signature} maxLength={200} placeholder="— Maria, Bayside nursing team" />
-            <p className="muted" style={{ fontSize: 12.5, margin: "4px 0 0" }}>Shown under replies you send. The Pumpkin still adds &ldquo;Drafted with The Pumpkin, reviewed by you&rdquo; when a draft helped.</p>
+            <p className="muted" style={{ fontSize: 12.5, margin: "4px 0 0" }}>Shown under replies you send. Pumpkin still adds &ldquo;Drafted with Pumpkin, reviewed by you&rdquo; when a draft helped.</p>
           </>}
           <label htmlFor="lang">Language</label>
           <select id="lang" name="lang" defaultValue={p.lang}><option value="en">English</option><option value="es">Español</option></select>

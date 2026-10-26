@@ -116,7 +116,7 @@ describe("the missed-dose loop", () => {
     expect(() => approveAndSend(drafted, { userId: "x", name: "Front desk", role: "scheduler" }, d.draft, "en")).toThrow(HandoffError);
     const sent = approveAndSend(drafted, { userId: "u-maria", name: "Maria", role: "nurse" }, d.draft, "en");
     expect(sent.status).toBe("sent");
-    expect(sent.sentText).toContain("Drafted with The Pumpkin, reviewed by Maria.");
+    expect(sent.sentText).toContain("Drafted with Pumpkin, reviewed by Maria.");
     expect(markRead(sent).status).toBe("read");
   });
 

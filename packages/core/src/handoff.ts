@@ -80,8 +80,8 @@ export function draftFromProtocol(handoff: Handoff, protocol: ProtocolSection | 
 
 export function disclosureLine(lang: Lang, reviewerName: string): string {
   return lang === "es"
-    ? `Redactado con The Pumpkin, revisado por ${reviewerName}.`
-    : `Drafted with The Pumpkin, reviewed by ${reviewerName}.`;
+    ? `Redactado con Pumpkin, revisado por ${reviewerName}.`
+    : `Drafted with Pumpkin, reviewed by ${reviewerName}.`;
 }
 
 export function approveAndSend(handoff: Handoff, sender: { userId: string; name: string; role: StaffRole }, finalText: string, lang: Lang): Handoff {

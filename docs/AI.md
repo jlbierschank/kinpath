@@ -1,6 +1,6 @@
 # AI reply drafting
 
-The Pumpkin can use an AI model to turn the clinic's approved protocol text into a warm, plain-language reply draft. **It is off until it's turned on**, and a nurse reviews and sends every reply either way.
+Pumpkin can use an AI model to turn the clinic's approved protocol text into a warm, plain-language reply draft. **It is off until it's turned on**, and a nurse reviews and sends every reply either way.
 
 ## The safety layers
 
@@ -37,7 +37,7 @@ KINPATH_AI_MODEL=claude-sonnet-5-5   # optional
 KINPATH_AI_BAA_SIGNED=1              # the production server refuses to start with AI on without this
 ```
 
-Do not use API features the BAA excludes (for example Batch and Files). The Pumpkin only uses the plain Messages API.
+Do not use API features the BAA excludes (for example Batch and Files). Pumpkin only uses the plain Messages API.
 
 ## Before turning it on for real patients
 

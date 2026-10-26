@@ -24,7 +24,7 @@ export default async function HandoffPage({ params }: { params: Promise<{ id: st
       <div className="grid">
         <div>
           <div className={`card ${isUrgent ? "urgent" : ""}`}>
-            {isUrgent && <span className="pill p-red">{h.kind === "crisis" ? "Crisis: call now, share 988" : "Urgent: The Pumpkin did not answer this"}</span>}
+            {isUrgent && <span className="pill p-red">{h.kind === "crisis" ? "Crisis: call now, share 988" : "Urgent: Pumpkin did not answer this"}</span>}
             <p style={{ fontSize: 17 }}>&ldquo;{h.patientMessage}&rdquo;</p>
             {h.triage.ruleIds.length > 0 && <p className="muted" style={{ fontSize: 13 }}>Safety rules matched: {h.triage.ruleIds.join(", ")}</p>}
           </div>
@@ -45,7 +45,7 @@ export default async function HandoffPage({ params }: { params: Promise<{ id: st
           {!done && !isUrgent && h.status === "open" && (
             <form className="card" action={draft}>
               <input type="hidden" name="handoffId" value={h.id} />
-              <p style={{ marginTop: 0 }}>The Pumpkin can draft a reply from Bayside&apos;s approved protocol. Every draft is checked against that protocol, and you review and send it.</p>
+              <p style={{ marginTop: 0 }}>Pumpkin can draft a reply from Bayside&apos;s approved protocol. Every draft is checked against that protocol, and you review and send it.</p>
               <p className="muted" style={{ fontSize: 13 }} data-testid="ai-status">{aiDraftingStatus().on ? "AI drafting is on: the AI rewrites the matching protocol text in plain language, then it's checked." : "AI drafting is off: drafts are the protocol text itself."}</p>
               <button className="btn btn-main" type="submit">Draft a reply</button>
             </form>
@@ -60,7 +60,7 @@ export default async function HandoffPage({ params }: { params: Promise<{ id: st
                 {d.draftEngine === "ai" && <><span className="pill p-lav" data-testid="draft-engine">AI draft · passed every check</span>{" "}</>}
                 {d.draftEngine === "ai_held_back" && <><span className="pill p-clay" data-testid="draft-engine">AI draft held back: {d.draftProblems.join("; ")}. Showing the approved protocol text instead.</span>{" "}</>}
                 {d.draftEngine === "ai_error" && <><span className="pill p-clay" data-testid="draft-engine">AI draft unavailable: {d.draftProblems.join("; ")}. Showing the approved protocol text instead.</span>{" "}</>}
-                {h.draftSource ? `Drafted from protocol: ${h.draftSource}.` : "No matching protocol section. Write your own reply."} {d.firstName} will see &ldquo;Drafted with The Pumpkin, reviewed by {s.name}.&rdquo;
+                {h.draftSource ? `Drafted from protocol: ${h.draftSource}.` : "No matching protocol section. Write your own reply."} {d.firstName} will see &ldquo;Drafted with Pumpkin, reviewed by {s.name}.&rdquo;
               </p>
               <button className="btn btn-main" type="submit">Approve and send</button>
             </form>

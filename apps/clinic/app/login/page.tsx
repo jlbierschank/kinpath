@@ -10,7 +10,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
   const code = sp.tab === "code";
   return (
     <div className="auth">
-      <p className="muted" style={{ margin: 0 }}>Bayside Fertility · powered by The Pumpkin</p>
+      <p className="muted" style={{ margin: 0 }}>Bayside Fertility · powered by Pumpkin</p>
       <h1>Sign in</h1>
       <div className="seg" role="tablist">
         <Link href="/login" role="tab" aria-selected={!code} className={!code ? "on" : ""}>Clinic staff</Link>

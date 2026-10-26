@@ -5,11 +5,11 @@ cd "$(dirname "$0")" || exit 1
 ENV_FILE="apps/clinic/.env.local"
 MODEL="claude-sonnet-5-5"
 
-say() { osascript -e "display dialog \"$1\" buttons {\"OK\"} default button \"OK\" with title \"The Pumpkin\"" >/dev/null 2>&1; }
+say() { osascript -e "display dialog \"$1\" buttons {\"OK\"} default button \"OK\" with title \"Pumpkin\"" >/dev/null 2>&1; }
 
 CHOICE=$(osascript -e 'button returned of (display dialog "AI reply drafting for the demo (synthetic data only).
 
-Turning it on needs an Anthropic API key from the Claude Console." buttons {"Cancel", "Turn off", "Turn on"} default button "Turn on" with title "The Pumpkin")' 2>/dev/null) || exit 0
+Turning it on needs an Anthropic API key from the Claude Console." buttons {"Cancel", "Turn off", "Turn on"} default button "Turn on" with title "Pumpkin")' 2>/dev/null) || exit 0
 
 # Removes any earlier AI settings and keeps everything else.
 clear_ai() {
@@ -23,7 +23,7 @@ if [ "$CHOICE" = "Turn off" ]; then
   exit 0
 fi
 
-KEY=$(osascript -e 'text returned of (display dialog "Paste your Anthropic API key (it starts with sk-ant-):" default answer "" with hidden answer with title "The Pumpkin")' 2>/dev/null) || exit 0
+KEY=$(osascript -e 'text returned of (display dialog "Paste your Anthropic API key (it starts with sk-ant-):" default answer "" with hidden answer with title "Pumpkin")' 2>/dev/null) || exit 0
 KEY=$(echo "$KEY" | tr -d '[:space:]')
 if [ -z "$KEY" ]; then say "No key was pasted. Nothing changed."; exit 0; fi
 
@@ -48,4 +48,4 @@ clear_ai
 printf 'KINPATH_AI_PROVIDER=anthropic\nANTHROPIC_API_KEY=%s\nKINPATH_AI_MODEL=%s\n' "$KEY" "$MODEL" >> "$ENV_FILE"
 say "AI drafting is on. The key worked and is saved only on this Mac.
 
-If The Pumpkin is already running, close the clinic Terminal window and double-click Start Kinpath again."
+If Pumpkin is already running, close the clinic Terminal window and double-click Start Kinpath again."
