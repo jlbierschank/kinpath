@@ -1,6 +1,6 @@
 // Web check of the partner side. Start the server (pnpm dev:clinic) and the app on web (pnpm dev:patient, press w), then run with Playwright installed.
 const { chromium } = require('playwright');
-const APP = process.env.APP_URL ?? 'http://localhost:8081/';
+const APP = process.env.APP_URL ?? (process.env.APP ? process.env.APP + '/' : 'http://localhost:8081/');
 const SERVER = process.env.SERVER_URL ?? 'http://localhost:3000/';
 (async () => {
   const b = await chromium.launch();

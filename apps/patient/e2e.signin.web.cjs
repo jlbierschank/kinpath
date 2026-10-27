@@ -1,7 +1,7 @@
 // Phone app: sign in with a one-time code, notification settings, sign out.
 // Start the server (KINPATH_DEV_LOGIN=1) and the app on web, then run with Playwright installed.
 const { chromium } = require('playwright');
-const APP = process.env.APP_URL ?? 'http://localhost:8081/';
+const APP = process.env.APP_URL ?? (process.env.APP ? process.env.APP + '/' : 'http://localhost:8081/');
 const SERVER = (process.env.SERVER_URL ?? 'http://localhost:3000').replace(/\/$/, '');
 (async () => {
   const b = await chromium.launch();

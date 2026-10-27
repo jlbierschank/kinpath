@@ -17,7 +17,7 @@ let db: Db;
 beforeEach(async () => {
   db = await openDb();
   await migrate(db);
-  await seed(db);
+  await seed(db, NOW);
   await recordTransfer(db, maria, { patientId: IDS.maya, transferOn: ago(2), testAt: soon() });
 });
 
@@ -36,7 +36,8 @@ describe("graduation", () => {
     await graduatePatient(db, maria, { patientId: IDS.maya, obName: "Dr. Ana Reyes" });
     const g = await patientGraduation(db, maya, IDS.maya);
     expect(g.ob).toBe("Dr. Ana Reyes");
-    expect(g.days).toBe(6); // seed cycle started 5 days ago; graduation today is day 6
+    const started = (await db.query<{ n: number }>(`SELECT (current_date - started_on)::int + 1 AS n FROM cycles WHERE id = $1`, [IDS.mayaCycle])).rows[0]!.n;
+    expect(g.days).toBe(started); // counted from the cycle's start through graduation day
     expect(g.keepsake.items.find((i) => i.id === "injections")!.injections).toBe(9);
   });
 

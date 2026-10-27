@@ -5,7 +5,7 @@
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 
-export interface Stored { token: string; userId: string; name: string; role: "patient" | "partner" }
+export interface Stored { token: string; userId: string; name: string; role: "patient" | "partner"; space?: "personal" | "clinic" }
 const KEY = "kinpath.session";
 
 export async function loadSession(): Promise<Stored | null> {

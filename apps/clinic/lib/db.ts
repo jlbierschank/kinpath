@@ -20,7 +20,7 @@ async function boot(): Promise<Db> {
   const db = await openConfiguredDb(dir);
   await migrate(db);
   if (!managed() || process.env.KINPATH_SEED_DEMO === "1") {
-    const r = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM clinics`);
+    const r = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM clinics WHERE kind <> 'system'`);
     if (r.rows[0]!.n === 0) await seed(db, new Date());
   }
   return db;

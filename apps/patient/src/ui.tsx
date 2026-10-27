@@ -1,34 +1,43 @@
 /**
- * Kinpath design system for the phone app, matched to the clickable demo:
- * Newsreader italic for headlines, Instrument Sans for everything else, oat background,
- * paper cards with a solid 3px bottom edge (no blur), one marigold action per screen.
+ * Pumpkin design system for the phone app (tokens from Pumpkin-Design-System/Tokens):
+ * Bricolage Grotesque for headlines, Instrument Sans for everything else, oat background,
+ * paper cards with a hairline, solid pressed edges only on buttons, one marigold action per screen.
  */
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, Switch, Text, TextInput, View, type SwitchProps, type TextStyle, type ViewStyle } from "react-native";
 import Svg, { Circle, Path, Text as SvgText } from "react-native-svg";
+import { ICONS, type IconName } from "./icons";
 
 export const C = {
   espresso: "#2E211C", espressoEdge: "#1A120E", ink: "#231A16", oat: "#F6F1E8", paper: "#FFFCF7",
-  marigold: "#F0A83A", marigoldEdge: "#B9781C", lav: "#D8CFF0", lavInk: "#5A4A8C", lavDeep: "#3F3466",
+  marigold: "#F0A83A", marigoldEdge: "#B9781C", lav: "#D8CFF0", lavInk: "#3F3466", lavDeep: "#3F3466",
   sage: "#DDE7D5", sageInk: "#3E5A33", clay: "#F5DDD0", clayInk: "#9A4A2A", red: "#B42318",
-  stone: "#6B5F57", line: "#E6DED2", lineSoft: "#EFE8DC", tan: "#D9CBBE", well: "#45352E", softLav: "#F1ECFA",
+  stone: "#5C4F47", alertSoft: "#FBE5E2", line: "#E6DED2", lineSoft: "#EFE8DC", tan: "#D9CBBE", well: "#45352E", softLav: "#F1ECFA",
 };
 
 export const F = {
-  serif: "Newsreader_500Medium", serifItalic: "Newsreader_400Regular_Italic",
+  serif: "BricolageGrotesque_600SemiBold", serifItalic: "BricolageGrotesque_600SemiBold", display: "BricolageGrotesque_600SemiBold", display700: "BricolageGrotesque_700Bold",
   sans: "InstrumentSans_400Regular", sans500: "InstrumentSans_500Medium", sans600: "InstrumentSans_600SemiBold", sans700: "InstrumentSans_700Bold",
 };
 
 export function T({ children, style, testID, numberOfLines }: { children: ReactNode; style?: TextStyle | TextStyle[]; testID?: string; numberOfLines?: number }) {
   return <Text testID={testID} numberOfLines={numberOfLines} style={[{ fontFamily: F.sans, color: C.ink, fontSize: 14, lineHeight: 20 }, style]}>{children}</Text>;
 }
-/** The big italic "Today" headline. */
+/** The big screen headline ("Today"): Bricolage Grotesque 600, tight tracking. */
 export function Today({ children, size = 40 }: { children: ReactNode; size?: number }) {
-  return <Text accessibilityRole="header" style={{ fontFamily: F.serifItalic, fontSize: size, lineHeight: size * 1.05, letterSpacing: -0.8, color: C.espresso }}>{children}</Text>;
+  return <Text accessibilityRole="header" style={{ fontFamily: F.display, fontSize: size, lineHeight: size * 1.05, letterSpacing: -size * 0.03, color: C.espresso }}>{children}</Text>;
 }
-/** Section headline (h1 in the demo): Newsreader 500, upright. */
+/** Section headline (h3 in the design system). */
 export function H1({ children, testID }: { children: ReactNode; testID?: string }) {
-  return <Text testID={testID} accessibilityRole="header" style={{ fontFamily: F.serif, fontSize: 30, lineHeight: 33, letterSpacing: -0.6, color: C.espresso }}>{children}</Text>;
+  return <Text testID={testID} accessibilityRole="header" style={{ fontFamily: F.display, fontSize: 28, lineHeight: 32, letterSpacing: -0.6, color: C.espresso }}>{children}</Text>;
+}
+/** A brush-line icon from the design system. Decorative: put words beside it. */
+export function Icon({ name, size = 24, color = C.espresso }: { name: IconName; size?: number; color?: string }) {
+  return (
+    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <Svg width={size} height={size} viewBox="0 0 32 32">{ICONS[name].map((d, i) => <Path key={i} d={d} fill={color} />)}</Svg>
+    </View>
+  );
 }
 export function Muted({ children, style }: { children: ReactNode; style?: TextStyle }) {
   return <T style={[{ color: C.stone, fontSize: 13.5 }, style ?? {}]}>{children}</T>;
@@ -153,7 +162,7 @@ export function TimelineItem({ when, what, action, onAction, tone = "lav", icon 
 }
 
 export const st = StyleSheet.create({
-  card: { backgroundColor: C.paper, borderRadius: 18, borderWidth: 1, borderColor: C.line, borderBottomWidth: 4 },
+  card: { backgroundColor: C.paper, borderRadius: 22, borderWidth: 1, borderColor: C.line },
   dark: { backgroundColor: C.espresso, borderRadius: 20, padding: 18, gap: 10, borderBottomWidth: 4, borderBottomColor: C.espressoEdge },
   btn: { borderRadius: 999, paddingVertical: 13, alignItems: "center", width: "100%" },
   chip: { borderWidth: 1, borderColor: C.line, backgroundColor: C.paper, borderRadius: 999, paddingVertical: 9, paddingHorizontal: 13 },

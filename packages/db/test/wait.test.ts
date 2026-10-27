@@ -13,16 +13,18 @@ const lee = { userId: IDS.harborNurse, clinicId: IDS.harbor, role: "nurse" as co
 
 const NOW = new Date();
 const daysAgo = (n: number) => { const d = new Date(NOW); d.setDate(d.getDate() - n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+// After 8 pm the seed moves "tonight" to tomorrow (so the cycle starts a day later); the transfer follows it.
+const T = NOW.getHours() >= 20 ? 4 : 5;
 const inDays = (n: number) => { const d = new Date(NOW); d.setDate(d.getDate() + n); d.setHours(8, 0, 0, 0); return d.toISOString(); };
 
 let db: Db;
 beforeEach(async () => {
   db = await openDb();
   await migrate(db);
-  await seed(db);
+  await seed(db, NOW);
 });
 
-const transfer = () => recordTransfer(db, maria, { patientId: IDS.maya, transferOn: daysAgo(5), testAt: inDays(4) });
+const transfer = () => recordTransfer(db, maria, { patientId: IDS.maya, transferOn: daysAgo(T), testAt: inDays(4) });
 const result = (outcome: string, note = "Maria's note") => enterPregnancyResult(db, maria, { patientId: IDS.maya, hcg: 142, outcome, note });
 
 describe("recording the transfer", () => {
@@ -31,7 +33,7 @@ describe("recording the transfer", () => {
     expect(r.canceledDoses).toBe(3); // tonight's Gonal-f, Menopur, Cetrotide
     const w = await patientWait(db, maya, IDS.maya, NOW);
     expect(w.stage).toBe("wait");
-    expect(w.dayOfWait).toBe(5);
+    expect(w.dayOfWait).toBe(T);
     expect(w.testAt).toBe(inDays(4));
     expect(w.result).toBeNull();
     expect((await patientSchedule(db, maya, IDS.maya, NOW)).upcoming).toEqual([]);
@@ -42,9 +44,9 @@ describe("recording the transfer", () => {
   });
 
   it("is for nurses and physicians only", async () => {
-    await expect(recordTransfer(db, kara, { patientId: IDS.maya, transferOn: daysAgo(5), testAt: inDays(4) })).rejects.toThrow();
-    await expect(recordTransfer(db, { ...maya, name: "Maya" } as never, { patientId: IDS.maya, transferOn: daysAgo(5), testAt: inDays(4) })).rejects.toThrow();
-    await expect(recordTransfer(db, lee, { patientId: IDS.maya, transferOn: daysAgo(5), testAt: inDays(4) })).rejects.toThrow(/No active cycle/);
+    await expect(recordTransfer(db, kara, { patientId: IDS.maya, transferOn: daysAgo(T), testAt: inDays(4) })).rejects.toThrow();
+    await expect(recordTransfer(db, { ...maya, name: "Maya" } as never, { patientId: IDS.maya, transferOn: daysAgo(T), testAt: inDays(4) })).rejects.toThrow();
+    await expect(recordTransfer(db, lee, { patientId: IDS.maya, transferOn: daysAgo(T), testAt: inDays(4) })).rejects.toThrow(/No active cycle/);
   });
 
   it("counts the day after transfer as day 1", () => {
@@ -162,7 +164,7 @@ describe("the wait, for Maya", () => {
   });
 
   it("Jordan sees the day and test date only while Maya shares her cycle, and not the day if she hid it", async () => {
-    expect((await partnerWait(db, jordan, IDS.maya, NOW)).dayOfWait).toBe(5);
+    expect((await partnerWait(db, jordan, IDS.maya, NOW)).dayOfWait).toBe(T);
     await setWaitPrefs(db, maya, IDS.maya, { hideDayCount: true });
     expect((await partnerWait(db, jordan, IDS.maya, NOW)).dayOfWait).toBeNull();
     await setPartnerSharing(db, maya, IDS.maya, IDS.jordan, ["meds"]);
@@ -178,7 +180,7 @@ describe("the wait, for Maya", () => {
 
 describe("when you're ready: next-cycle planning", () => {
   beforeEach(async () => {
-    await recordTransfer(db, maria, { patientId: IDS.maya, transferOn: daysAgo(5), testAt: inDays(4), embryosFrozen: 2 });
+    await recordTransfer(db, maria, { patientId: IDS.maya, transferOn: daysAgo(T), testAt: inDays(4), embryosFrozen: 2 });
     await enterPregnancyResult(db, maria, { patientId: IDS.maya, hcg: 2, outcome: "negative", note: "I'm so sorry." });
     await releasePregnancyResult(db, maria, { patientId: IDS.maya, toldByPhone: true });
   });

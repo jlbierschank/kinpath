@@ -63,7 +63,7 @@ export async function handle(req: Request, roles: Role[], fn: (s: Session) => Pr
   const s = await apiSession(req, roles);
   if (!s) return json(req, { error: "Please sign in again." }, 401);
   try {
-    return json(req, await fn(s));
+    return json(req, (await fn(s)) ?? { ok: true });
   } catch (e) {
     if (!isHandoffError(e)) logError(new URL(req.url).pathname, e);
     return json(req, { error: isHandoffError(e) ? e.message : "Something went wrong." }, isHandoffError(e) ? 400 : 500);
@@ -73,7 +73,7 @@ export async function handle(req: Request, roles: Role[], fn: (s: Session) => Pr
 /** For sign-in endpoints, which run before there's a session. */
 export async function open(req: Request, fn: () => Promise<unknown>) {
   try {
-    return json(req, await fn());
+    return json(req, (await fn()) ?? { ok: true });
   } catch (e) {
     if (!isHandoffError(e)) logError(new URL(req.url).pathname, e);
     return json(req, { error: isHandoffError(e) ? e.message : "Something went wrong." }, isHandoffError(e) ? 400 : 500);

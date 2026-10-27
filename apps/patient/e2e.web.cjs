@@ -11,7 +11,7 @@ const { chromium } = require('playwright');
   const text = s => p.getByText(s, { exact: false });
 
   { const w = await b.newPage(); await w.goto('http://localhost:3000/'); await w.click('button:has-text("Reset demo data")'); await w.waitForTimeout(1500); await w.close(); }
-  await p.goto('http://localhost:8081/');
+  await p.goto((process.env.APP ? process.env.APP + '/' : 'http://localhost:8081/'));
   await byId('pick-Maya Torres').click();
   await text('Up next').waitFor({ timeout: 15000 });
   await p.waitForTimeout(500);
@@ -59,7 +59,7 @@ const { chromium } = require('playwright');
   await byId('avatar').click(); await p.getByText('Settings', { exact: true }).waitFor(); await shot('8-settings');
   ok(true, 'Record and Settings open');
 
-  await p.goto('http://localhost:8081/');
+  await p.goto((process.env.APP ? process.env.APP + '/' : 'http://localhost:8081/'));
   await byId('pick-Priya Shah').click();
   await text('Hoy').first().waitFor({ timeout: 15000 });
   ok(await text('Otras personas preguntan esto').count() >= 1, 'Priya sees Spanish');

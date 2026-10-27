@@ -29,6 +29,13 @@ export const IDS = {
   cetrotide: "00000000-0000-4000-8000-000000000302",
   harborCycle: "00000000-0000-4000-8000-000000000201",
   harborMed: "00000000-0000-4000-8000-000000000303",
+  // On her own: a patient whose clinic isn't on Pumpkin yet, in her own private space.
+  alexSpace: "me-demo-alex",
+  alexUser: "00000000-0000-4000-8000-000000000030",
+  alex: "00000000-0000-4000-8000-000000000130",
+  alexCycle: "00000000-0000-4000-8000-000000000230",
+  alexMed: "00000000-0000-4000-8000-000000000330",
+  alexCapture: "00000000-0000-4000-8000-000000000430",
 } as const;
 
 /** Runs as the database owner, before the app ever connects. */
@@ -189,5 +196,37 @@ export async function seed(db: Db, now = new Date("2026-10-26T09:00:00-04:00")):
         'Maria Lopez, RN')`,
       [i.bayside],
     );
+
+    // ---------- Alex, on her own (no clinic on Pumpkin) ----------
+    const ymdLocal = (offset: number) => day(offset, "12:00").slice(0, 10);
+    await tx.query(`INSERT INTO clinics (id, name, timezone, kind) VALUES ($1,'Pumpkin','America/New_York','personal')`, [i.alexSpace]);
+    await tx.query(`INSERT INTO app_users (id, clinic_id, role, display_name, email) VALUES ($1,$2,'patient','Alex Rivera','alex@example.com')`, [i.alexUser, i.alexSpace]);
+    await tx.query(`INSERT INTO patients (id, clinic_id, user_id, first_name, last_name) VALUES ($1,$2,$3,'Alex','Rivera')`, [i.alex, i.alexSpace, i.alexUser]);
+    await tx.query(`INSERT INTO patient_prefs (patient_id, clinic_id) VALUES ($1,$2)`, [i.alex, i.alexSpace]);
+    await tx.query(`INSERT INTO personal_profiles (patient_id, clinic_id, stage, clinic_name, after_hours_phone, inbox_token) VALUES ($1,$2,'in_cycle','Coastal Fertility','(813) 555-0199','alexdemo01')`, [i.alex, i.alexSpace]);
+    await tx.query(`INSERT INTO cycles (id, clinic_id, patient_id, kind, stage, started_on) VALUES ($1,$2,$3,'ivf','stimulation',$4)`, [i.alexCycle, i.alexSpace, i.alex, ymdLocal(-4)]);
+    await tx.query(`INSERT INTO med_orders (id, clinic_id, patient_id, cycle_id, medication, dose, time_of_day, starts_on, ends_on, status, source, instructions) VALUES ($1,$2,$3,$4,'Follistim','200 IU','20:00',$5,$6,'active','patient','Pen injector. Rotate sides of your belly.')`,
+      [i.alexMed, i.alexSpace, i.alex, i.alexCycle, ymdLocal(-3), ymdLocal(4)]);
+    for (let d = -3; d <= 4; d++) {
+      await tx.query(`INSERT INTO dose_logs (clinic_id, patient_id, med_order_id, scheduled_for, taken_at) VALUES ($1,$2,$3,$4,$5)`, [i.alexSpace, i.alex, i.alexMed, day(d, "20:00"), d < 0 ? day(d, "20:04") : null]);
+    }
+    await tx.query(`INSERT INTO lab_results (clinic_id, patient_id, analyte, unit, value, collected_at, status, entered_by, source, ref_low, ref_high, ref_text, test_name) VALUES
+      ($1,$2,'estradiol','pg/mL',148,$4,'no_range',$3,'patient_upload',27,433,'Follicular phase 27-433 pg/mL','Estradiol'),
+      ($1,$2,'estradiol','pg/mL',391,$5,'no_range',$3,'patient_upload',27,433,'Follicular phase 27-433 pg/mL','Estradiol'),
+      ($1,$2,'amh','ng/mL',2.4,$6,'no_range',$3,'patient_upload',NULL,NULL,NULL,'AMH')`,
+      [i.alexSpace, i.alex, i.alexUser, day(-3, "08:00"), day(-1, "08:00"), day(-40, "08:00")]);
+    await tx.query(`INSERT INTO appointments (clinic_id, patient_id, starts_at, kind, title, location, source, created_by_name) VALUES ($1,$2,$3,'monitoring','Monitoring visit: ultrasound and blood work','Coastal Fertility','patient','You')`,
+      [i.alexSpace, i.alex, day(1, "07:30")]);
+    await tx.query(`INSERT INTO finance_ledger (clinic_id, patient_id, kind, description, amount_cents, occurred_on, due_on, method, source, created_by_name) VALUES
+      ($1,$2,'payment','IVF cycle, payment 1 of 3',613400,$3,NULL,'card','patient','You'),
+      ($1,$2,'charge','IVF cycle, payment 2 of 3',613300,$4,$5,NULL,'patient','You')`,
+      [i.alexSpace, i.alex, ymdLocal(-24), ymdLocal(-24), ymdLocal(6)]);
+    await tx.query(`INSERT INTO visit_questions (clinic_id, patient_id, question) VALUES ($1,$2,'Can I keep running during stims?')`, [i.alexSpace, i.alex]);
+    // Something she sent that's waiting for her to check.
+    await tx.query(`INSERT INTO captures (id, clinic_id, patient_id, kind, filename, text_input, status, engine, created_at) VALUES ($1,$2,$3,'text',NULL,'Cetrotide 0.25 mg at 8 am starting Friday. Blood work Thursday at 7:30 am.','ready','pumpkin-basic',$4)`,
+      [i.alexCapture, i.alexSpace, i.alex, day(0, "09:00")]);
+    await tx.query(`INSERT INTO capture_items (capture_id, clinic_id, patient_id, kind, data, unsure) VALUES
+      ($1,$2,$3,'medication',$4,ARRAY['name','endsOn']), ($1,$2,$3,'appointment',$5,ARRAY[]::text[])`,
+      [i.alexCapture, i.alexSpace, i.alex, JSON.stringify({ name: "Cetrotide", dose: "0.25 mg", times: ["08:00"], startsOn: ymdLocal(3) }), JSON.stringify({ title: "Blood work", startsAt: `${ymdLocal(2)}T07:30` })]);
   });
 }

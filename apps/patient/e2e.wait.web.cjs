@@ -1,7 +1,7 @@
 // Web check of the two-week wait and result day, across the clinic web app and the phone app.
 // Start the server (pnpm dev:clinic) and the app on web (pnpm dev:patient, press w), then run with Playwright installed.
 const { chromium } = require('playwright');
-const APP = process.env.APP_URL ?? 'http://localhost:8081/';
+const APP = process.env.APP_URL ?? (process.env.APP ? process.env.APP + '/' : 'http://localhost:8081/');
 const SERVER = (process.env.SERVER_URL ?? 'http://localhost:3000/').replace(/\/$/, '');
 (async () => {
   const b = await chromium.launch();
@@ -24,12 +24,14 @@ const SERVER = (process.env.SERVER_URL ?? 'http://localhost:3000/').replace(/\/$
     await web.reload(); await web.waitForLoadState('networkidle'); // always a fresh copy of the page
   };
   const submit = async (loc) => { const prev = web.url(); await loc.click(); await web.waitForURL(u => u.toString() !== prev, { timeout: 10000 }); await web.waitForLoadState('networkidle'); };
-  const daysAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
+  const daysAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  // After 8 pm the demo seed moves "tonight" (and the cycle start) a day later; the transfer follows it.
+  const T = new Date().getHours() >= 20 ? 4 : 5;
   const reset = async () => { await web.goto(SERVER + '/'); await web.click('button:has-text("Reset demo data")'); await web.waitForTimeout(1500); };
   const recordTransfer = async () => {
     await webAs('Maria Lopez, RN');
     await web.click('a:has-text("Maya Torres")'); await web.waitForURL('**/nurse/patients/*'); await web.waitForLoadState('networkidle');
-    await web.fill('input[name=transferOn]', daysAgo(5));
+    await web.fill('input[name=transferOn]', daysAgo(T));
     await web.fill('input[name=embryosFrozen]', '2');
     await submit(web.locator('button:has-text("Record transfer")'));
   };
@@ -41,7 +43,7 @@ const SERVER = (process.env.SERVER_URL ?? 'http://localhost:3000/').replace(/\/$
   await wshot('w1-nurse-transfer');
 
   await as('Maya Torres');
-  ok(await sees('Day 5 of the wait'), 'Maya’s home becomes "Day 5 of the wait"');
+  ok(await sees(`Day ${T} of the wait`), `Maya’s home becomes "Day ${T} of the wait"`);
   ok(await byId('test-date').count() === 1, 'Her blood test date is shown');
   ok(await p.getByText('Walk me through tonight').count() === 0, 'Stimulation injections are gone');
   await byId('how-together').click();
@@ -60,7 +62,7 @@ const SERVER = (process.env.SERVER_URL ?? 'http://localhost:3000/').replace(/\/$
   await byId('breathe-done').click();
   ok(await sees('a few minutes just for you'), 'Comes back with a kind note');
   await byId('toggle-count').click(); await p.waitForTimeout(800);
-  ok(await sees('The wait') && await p.getByText('Day 5 of the wait').count() === 0, 'She can hide the day count');
+  ok(await sees('The wait') && await p.getByText(`Day ${T} of the wait`).count() === 0, 'She can hide the day count');
 
   await as('Jordan Torres');
   const status = await byId('partner-status').innerText();

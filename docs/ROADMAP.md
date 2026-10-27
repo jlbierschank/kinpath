@@ -23,7 +23,13 @@
 
 - Costs and coverage (see MONEY.md): estimates, insurance and benefits, charges, payments and receipts, financing and grant options, questions to billing; billing data from the records system (FHIR Coverage and Invoice, HL7 DFT and IN1, CSV)
 
+- Pumpkin on your own (see ON-YOUR-OWN.md): waitlist sign-up, private space, "Add anything" (photo, PDF, voice, typed, forwarded email) with a confirm step, self-entered meds with reminders, results with the lab's own range and test explainers (draft until clinically reviewed), calendar feed, costs with receipts, download and delete. App updated to the Pumpkin design system (Bricolage headlines, brush-line icons).
+
 ## Next (stage 1, continued)
+
+- [ ] On your own, next: community (moderated), connect her clinic and move her space into it, patient-portal results sync (SMART on FHIR patient access), bank link (Plaid, optional and read-only), support-person invites from the on-your-own app, Spanish
+- [ ] Decide free vs. premium for AI reading (financial model: free tier has no AI)
+- [ ] Clinical advisor review of the test explainers before real patients
 
 - [ ] Paying in the app: card, bank and payment plans through a payment company, with the clinic as merchant (plan in PAYMENTS.md; confirm BAA terms and ask healthcare counsel first)
 

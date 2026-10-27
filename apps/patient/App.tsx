@@ -4,12 +4,13 @@ import * as Clipboard from "expo-clipboard";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useFonts } from "expo-font";
-import { Newsreader_400Regular_Italic, Newsreader_500Medium } from "@expo-google-fonts/newsreader";
+import { BricolageGrotesque_600SemiBold, BricolageGrotesque_700Bold } from "@expo-google-fonts/bricolage-grotesque";
 import { InstrumentSans_400Regular, InstrumentSans_500Medium, InstrumentSans_600SemiBold, InstrumentSans_700Bold } from "@expo-google-fonts/instrument-sans";
 import Svg, { Path } from "react-native-svg";
 import { Api, auth, type Auth, type SignedInUser, type NextCycle, type Dose, type Feeling, type Graduation, type KeepsakeId, type ResultHow, type Guide, type Invite, type PartnerHome, type Relationship, type SendResult, type Shareable, type SupportPerson, type Today as TodayData } from "./src/api";
 import { askPermission, remindersSupported, syncReminders } from "./src/reminders";
 import { CostsCard, CostsScreen, PartnerCostsCard, ReceiptScreen } from "./src/money";
+import { SignupFlow, SoloApp } from "./src/solo";
 import { clearSession, deviceName, loadSession, saveSession } from "./src/session";
 import { Bell, InboxScreen, NotificationSettingsScreen, SignInSection } from "./src/account";
 import { AskBox, Avatar, Button, C, Cap, Card, Chip, Chips, F, H1, JourneyPath, Moment, Muted, Pill, Row, st, T, TimelineItem, Today, Toggle } from "./src/ui";
@@ -19,6 +20,7 @@ const DEV_PEOPLE = [
   { id: "00000000-0000-4000-8000-000000000010", name: "Maya Torres", initials: "MT", note: "Patient · stimulation day 6", partner: false },
   { id: "00000000-0000-4000-8000-000000000012", name: "Priya Shah", initials: "PS", note: "Patient · prefers Spanish", partner: false },
   { id: "00000000-0000-4000-8000-000000000011", name: "Jordan Torres", initials: "JT", note: "Maya's partner · sees what she shares", partner: true },
+  { id: "00000000-0000-4000-8000-000000000030", name: "Alex Rivera", initials: "AR", note: "On her own · clinic not on Pumpkin yet", partner: false, solo: true },
 ];
 type DevPerson = (typeof DEV_PEOPLE)[number];
 const initialsOf = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?";
@@ -38,24 +40,31 @@ export default function App() {
   return <SafeAreaProvider><AppInner /></SafeAreaProvider>;
 }
 
-type Who = { auth: Auth; name: string; initials: string; partner: boolean; demo: boolean };
+type Who = { auth: Auth; name: string; initials: string; partner: boolean; demo: boolean; space?: "personal" | "clinic" };
 
 function AppInner() {
-  const [fontsLoaded] = useFonts({ Newsreader_400Regular_Italic, Newsreader_500Medium, InstrumentSans_400Regular, InstrumentSans_500Medium, InstrumentSans_600SemiBold, InstrumentSans_700Bold });
+  const [fontsLoaded] = useFonts({ BricolageGrotesque_600SemiBold, BricolageGrotesque_700Bold, InstrumentSans_400Regular, InstrumentSans_500Medium, InstrumentSans_600SemiBold, InstrumentSans_700Bold });
   const [who, setWho] = useState<Who | null>(null);
   const [booting, setBooting] = useState(true);
   useEffect(() => {
-    loadSession().then((x) => { if (x) setWho({ auth: { token: x.token }, name: x.name, initials: initialsOf(x.name), partner: x.role === "partner", demo: false }); }).finally(() => setBooting(false));
+    loadSession().then(async (x) => {
+      if (!x) return;
+      let space = x.space;
+      // Sessions saved before "on your own" existed: ask the server which space this is.
+      if (!space && x.role === "patient") { space = (await new Api({ token: x.token }).me().catch(() => null))?.space; if (space) await saveSession({ ...x, space }); }
+      setWho({ auth: { token: x.token }, name: x.name, initials: initialsOf(x.name), partner: x.role === "partner", demo: false, space });
+    }).finally(() => setBooting(false));
   }, []);
   const signOut = useCallback(async () => { await clearSession(); setWho(null); }, []);
   const api = useMemo(() => (who ? new Api(who.auth, () => void signOut()) : null), [who, signOut]);
   if (!fontsLoaded || booting) return <View style={{ flex: 1, backgroundColor: C.oat, alignItems: "center", justifyContent: "center" }}><ActivityIndicator color={C.espresso} /></View>;
   if (!who || !api) {
     return <SignIn
-      onSignedIn={async (u) => { await saveSession(u); setWho({ auth: { token: u.token }, name: u.name, initials: initialsOf(u.name), partner: u.role === "partner", demo: false }); }}
-      onDemo={(p) => setWho({ auth: { devUserId: p.id }, name: p.name, initials: p.initials, partner: p.partner, demo: true })} />;
+      onSignedIn={async (u) => { await saveSession(u); setWho({ auth: { token: u.token }, name: u.name, initials: initialsOf(u.name), partner: u.role === "partner", demo: false, space: u.space }); }}
+      onDemo={(p) => setWho({ auth: { devUserId: p.id }, name: p.name, initials: p.initials, partner: p.partner, demo: true, space: "solo" in p && p.solo ? "personal" : "clinic" })} />;
   }
   const out = async () => { if (!who.demo) await api.signOut(); await signOut(); };
+  if (who.space === "personal" && !who.partner) return <SoloApp api={api} onSignOut={out} />;
   if (who.partner) return <PartnerApp api={api} initials={who.initials} onSignOut={out} demo={who.demo} />;
   return <Signed api={api} initials={who.initials} onSignOut={out} demo={who.demo} />;
 }
@@ -74,7 +83,7 @@ function Frame({ children, tabs, top }: { children: ReactNode; tabs?: ReactNode;
 }
 
 // ---------- Sign in: a one-time code, no password. Demo builds can also pick a test person. ----------
-type SignInStep = { name: "start" } | { name: "code"; identifier: string; sentTo: string } | { name: "join" } | { name: "join-confirm"; code: string; sentTo: string; patient: string };
+type SignInStep = { name: "start" } | { name: "code"; identifier: string; sentTo: string } | { name: "join" } | { name: "join-confirm"; code: string; sentTo: string; patient: string } | { name: "signup" };
 function SignIn({ onSignedIn, onDemo }: { onSignedIn: (u: SignedInUser) => void; onDemo: (p: DevPerson) => void }) {
   const [step, setStep] = useState<SignInStep>({ name: "start" });
   const [identifier, setIdentifier] = useState("");
@@ -88,6 +97,7 @@ function SignIn({ onSignedIn, onDemo }: { onSignedIn: (u: SignedInUser) => void;
   const codeInput = <TextInput testID="signin-code" style={[st.input, { fontFamily: F.sans600, fontSize: 24, letterSpacing: 6 }]} value={code} onChangeText={setCode} keyboardType="number-pad" textContentType="oneTimeCode" autoComplete="one-time-code" maxLength={7} placeholder="123456" placeholderTextColor={C.stone} />;
   const err = error && <T testID="signin-error" style={{ color: C.red }}>{error}</T>;
 
+  if (step.name === "signup") return <SignupFlow onSignedIn={onSignedIn} onBack={() => setStep({ name: "start" })} />;
   if (step.name === "code") return (
     <Frame top={back}>
       <Today size={34}>Enter your code</Today>
@@ -131,6 +141,11 @@ function SignIn({ onSignedIn, onDemo }: { onSignedIn: (u: SignedInUser) => void;
         <Button testID="signin-send" label={busy ? "Sending…" : "Send me a code"} disabled={busy || !identifier.trim()} onPress={() => run(async () => { const r = await auth.requestCode(identifier); setCode(""); setStep({ name: "code", identifier, sentTo: r.sentTo }); })} />
       </Card>
       <Button testID="have-code" kind="line" label="I have an invite code" onPress={() => { setError(null); setStep({ name: "join" }); }} />
+      <Card style={{ gap: 8, backgroundColor: C.lav, borderColor: C.lav }}>
+        <T style={{ fontFamily: F.serif, fontSize: 20, lineHeight: 24 }}>Clinic not on Pumpkin yet?</T>
+        <T style={{ fontSize: 14.5 }}>Keep your meds, numbers and costs in one place on your own, and bring your clinic in later.</T>
+        <Button testID="start-on-my-own" kind="esp" label="Start on my own" onPress={() => { setError(null); setStep({ name: "signup" }); }} />
+      </Card>
       {(__DEV__ || process.env.EXPO_PUBLIC_DEMO === "1") && (
         <>
           <View style={{ height: 1, backgroundColor: C.line, marginVertical: 6 }} />

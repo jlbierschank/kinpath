@@ -7,3 +7,4 @@ export * from "./content";
 export * from "./notifications";
 export * from "./ai";
 export * from "./records";
+export * from "./solo";

@@ -82,6 +82,27 @@ export interface NotificationSettings {
 export interface Guide { medication: string; steps: Record<Lang, string>[]; videoUrl: string | null; approvedBy: string }
 export interface SendResult { handoffId: string; kind: "missed_dose" | "question" | "urgent_symptom" | "crisis" | "result_review" }
 
+// ---------- Pumpkin on your own ----------
+export type SoloStage = "just_starting" | "in_cycle" | "two_week_wait" | "after_hard_result" | "freezing_eggs" | "between_cycles";
+export interface SoloProfile { firstName: string; stage: SoloStage; stageLabel: string; clinicName: string | null; afterHoursPhone: string | null; askedClinicAt: string | null; calendarOn: boolean; calendarDetail: boolean; forwardAddress: string; timeZone: string }
+export interface SoloToday {
+  profile: SoloProfile;
+  schedule: { upcoming: Dose[]; missed: Dose[]; recent: Dose[] };
+  toCheck: number; reading: number;
+  appointments: { id: string; startsAt: string; title: string; location: string | null; mine: boolean }[];
+  latestResults: { key: string; name: string; value: number; unit: string; on: string }[];
+  nextDue: { dueOn: string; amountCents: number; description: string } | null; balanceCents: number;
+  openQuestions: number;
+  reminders: PlannedReminder[]; prefs: ReminderPrefs;
+}
+export interface SoloMed { id: string; medication: string; dose: string; time: string; startsOn: string; endsOn: string | null; instructions: string | null; mine: boolean; nextAt: string | null }
+export interface ResultGroup { key: string; name: string; unit: string; measures: string | null; inTreatment: string | null; reviewed: boolean; points: { id: string; value: number; unit: string; on: string; refLow: number | null; refHigh: number | null; refText: string | null; mine: boolean }[] }
+export interface SoloCosts { entries: { id: string; kind: "charge" | "payment" | "adjustment" | "refund"; description: string; amountCents: number; occurredOn: string; dueOn: string | null; method: string | null; captureId: string | null; mine: boolean }[]; balanceCents: number; paidCents: number; paidThisYearCents: number; year: string; nextDue: { dueOn: string; amountCents: number; description: string } | null }
+export type ItemKind = "medication" | "result" | "appointment" | "cost" | "question";
+export interface PendingItem { id: string; captureId: string; kind: ItemKind; data: Record<string, unknown>; unsure: string[]; source: { kind: string; filename: string | null; at: string; hasFile: boolean; engine: string | null } }
+export interface CaptureResult { captureId: string; status: "ready" | "failed" | "urgent"; urgent: "urgent" | "crisis" | null; items: number; problem: string | null; engine: string }
+export interface CaptureInput { kind: "photo" | "pdf" | "text" | "voice" | "sample"; mime?: string; filename?: string; base64?: string; text?: string; sampleId?: string }
+
 export type Auth = { token: string } | { devUserId: string };
 export class SignedOutError extends Error {}
 
@@ -139,6 +160,29 @@ export class Api {
   askCost = (question: string, estimateId?: string) => this.call<{ ok: boolean }>("/api/patient/money/questions", { method: "POST", body: { question, estimateId } });
   markCostRead = () => this.call<{ ok: boolean }>("/api/patient/money/read", { method: "POST", body: {} });
   receipt = (id: string) => this.call<Receipt>(`/api/patient/money/receipt/${id}`);
+  // On your own
+  me = () => this.call<{ name: string; role: "patient" | "partner"; space: "personal" | "clinic" }>("/api/me");
+  soloToday = () => this.call<SoloToday>("/api/solo/today");
+  soloProfile = () => this.call<SoloProfile>("/api/solo/profile");
+  saveSoloProfile = (change: { stage?: SoloStage; clinicName?: string; afterHoursPhone?: string }) => this.call<unknown>("/api/solo/profile", { method: "POST", body: change });
+  askMyClinic = (clinicName: string) => this.call<{ ok: boolean }>("/api/solo/ask-clinic", { method: "POST", body: { clinicName } });
+  soloMeds = () => this.call<SoloMed[]>("/api/solo/meds");
+  soloResults = () => this.call<ResultGroup[]>("/api/solo/results");
+  soloCosts = () => this.call<SoloCosts>("/api/solo/costs");
+  questions = () => this.call<{ id: string; question: string; asked: boolean }[]>("/api/solo/questions");
+  itemsToCheck = () => this.call<PendingItem[]>("/api/solo/items");
+  samples = () => this.call<{ id: string; label: string; description: string }[]>("/api/solo/samples");
+  captureOriginal = (id: string) => this.call<{ mime: string; filename: string; base64: string }>(`/api/solo/file?id=${encodeURIComponent(id)}`);
+  capture = (input: CaptureInput) => this.call<CaptureResult>("/api/solo/capture", { method: "POST", body: input });
+  saveItem = (id: string, data: Record<string, unknown> | null, checked = false) => this.call<{ savedId: string }>("/api/solo/save-item", { method: "POST", body: { id, data, checked } });
+  dismissItem = (id: string) => this.call<unknown>("/api/solo/dismiss-item", { method: "POST", body: { id } });
+  addByHand = (kind: ItemKind, data: Record<string, unknown>) => this.call<{ id: string }>(`/api/solo/${{ medication: "add-med", result: "add-result", appointment: "add-appointment", cost: "add-cost", question: "add-question" }[kind]}`, { method: "POST", body: kind === "question" ? { text: data.text } : { data } });
+  removeMine = (kind: "stop-med" | "delete-result" | "delete-appointment" | "delete-cost" | "delete-question", id: string) => this.call<unknown>(`/api/solo/${kind}`, { method: "POST", body: { id } });
+  setQuestionAsked = (id: string, asked: boolean) => this.call<unknown>("/api/solo/question-asked", { method: "POST", body: { id, asked } });
+  calendarLink = (detail: boolean) => this.call<{ url: string; webcal: string }>("/api/solo/calendar", { method: "POST", body: { detail } });
+  calendarOff = () => this.call<unknown>("/api/solo/calendar-off", { method: "POST", body: {} });
+  exportData = () => this.call<Record<string, unknown>>("/api/solo/export");
+  deleteAccount = (confirm: string) => this.call<{ deleted: boolean }>("/api/solo/delete-account", { method: "POST", body: { confirm } });
   sendNote = (text: string) => this.call<{ id: string; level: "routine" | "urgent" | "crisis" }>("/api/partner/notes", { method: "POST", body: { text } });
 }
 
@@ -148,11 +192,14 @@ async function openCall<T>(path: string, body: unknown): Promise<T> {
   if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
   return data;
 }
-export interface SignedInUser { token: string; userId: string; name: string; role: "patient" | "partner" }
+export interface SignedInUser { token: string; userId: string; name: string; role: "patient" | "partner"; space?: "personal" | "clinic" }
 /** Sign-in, before there's a session. */
 export const auth = {
   requestCode: (identifier: string) => openCall<{ sentTo: string }>("/api/auth/code", { identifier }),
   verifyCode: (identifier: string, code: string, device: string) => openCall<SignedInUser>("/api/auth/verify", { identifier, code, device }),
   startJoin: (code: string, name: string) => openCall<{ sentTo: string; patientFirstName: string }>("/api/auth/join/start", { code, name }),
+  signupStart: (identifier: string) => openCall<{ sentTo: string }>("/api/auth/signup/start", { identifier }),
+  signupVerify: (identifier: string, code: string) => openCall<{ ticket: string }>("/api/auth/signup/verify", { identifier, code }),
+  signupFinish: (input: { ticket: string; firstName: string; stage: SoloStage; clinicName?: string; afterHoursPhone?: string; timeZone?: string; device: string }) => openCall<SignedInUser>("/api/auth/signup/finish", input),
   finishJoin: (code: string, confirm: string, device: string) => openCall<SignedInUser & { patientFirstName: string }>("/api/auth/join/finish", { code, confirm, device }),
 };

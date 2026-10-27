@@ -37,7 +37,7 @@ async function tooManyFailures(db: Db, who: string): Promise<boolean> {
 const fail = (db: Db, who: string) => db.query(`INSERT INTO auth_failures (identifier) VALUES ($1)`, [who]);
 const LOCKED = `Too many tries. For your security, wait ${LOCK_MINUTES} minutes and try again.`;
 
-async function createSession(db: Db, userId: string, kind: "staff" | "patient", mfaPassed: boolean, device: string | null) {
+export async function createSession(db: Db, userId: string, kind: "staff" | "patient", mfaPassed: boolean, device: string | null) {
   const token = newToken();
   const hours = kind === "staff" ? STAFF_MAX_HOURS : PATIENT_DAYS * 24;
   await db.query(

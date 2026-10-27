@@ -13,3 +13,5 @@ export * from "./records";
 export * from "./patients";
 export * from "./fhir-pull";
 export * from "./money";
+export * from "./solo";
+export * from "./capture";
