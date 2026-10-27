@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { isHandoffError } from "@kinpath/core";
 import { ensureFhirSource, importRecords, pullFromFhir, saveFhirSource, createIntegrationKey, revokeIntegrationKey, sendSampleRecords } from "@kinpath/db";
-import { parseFhirBundle, parseHl7, parseResultsCsv } from "@kinpath/core";
+import { isFinanceCsv, parseFhirBundle, parseFinanceCsv, parseHl7, parseResultsCsv } from "@kinpath/core";
 import { getDb } from "@/lib/db";
 import { devLoginEnabled, requireSession } from "@/lib/session";
 
@@ -49,12 +49,14 @@ export async function uploadRecordsAction(_prev: { summary?: string; error?: str
   try {
     const parsed = head.startsWith("MSH") || head.startsWith("FHS") || head.startsWith("BHS") ? parseHl7(text)
       : head.startsWith("{") ? parseFhirBundle(JSON.parse(text))
-      : parseResultsCsv(text);
+      : isFinanceCsv(text) ? parseFinanceCsv(text) : parseResultsCsv(text);
     const r = await importRecords(await getDb(), { clinicId: s.clinicId, keyId: null, format: "upload", uploadedBy: s.name }, parsed);
     const parts = [
       `${r.resultsAdded} result${r.resultsAdded === 1 ? "" : "s"} added${r.resultsToNurse ? ` (${r.resultsToNurse} to a nurse first)` : ""}`,
       r.hcgAdded && `${r.hcgAdded} hCG`, r.corrected && `${r.corrected} corrected`, r.ordersWaiting && `${r.ordersWaiting} order${r.ordersWaiting === 1 ? "" : "s"} waiting for a nurse`,
-      r.appointments && `${r.appointments} appointment${r.appointments === 1 ? "" : "s"}`, r.toReview && `${r.toReview} to review`,
+      r.appointments && `${r.appointments} appointment${r.appointments === 1 ? "" : "s"}`,
+      r.billing && `${r.billing} billing line${r.billing === 1 ? "" : "s"}`, r.estimatesWaiting && `${r.estimatesWaiting} estimate${r.estimatesWaiting === 1 ? "" : "s"} for the financial counselor`,
+      r.toReview && `${r.toReview} to review`,
       r.duplicates && `${r.duplicates} already here`, r.skipped && `${r.skipped} skipped`,
     ].filter(Boolean);
     return { summary: `${file.name}: ${parts.join(", ")}.` };

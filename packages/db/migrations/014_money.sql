@@ -162,3 +162,6 @@ CREATE POLICY reviewer_items ON record_items FOR SELECT USING (clinic_id = kp_cl
 CREATE POLICY reviewer_update ON record_items FOR UPDATE
   USING (clinic_id = kp_clinic() AND ((kp_is_clinician() AND kind NOT IN ('coverage','ledger','estimate')) OR (kp_is_counselor() AND kind IN ('coverage','ledger','estimate'))))
   WITH CHECK (clinic_id = kp_clinic() AND ((kp_is_clinician() AND kind NOT IN ('coverage','ledger','estimate')) OR (kp_is_counselor() AND kind IN ('coverage','ledger','estimate'))));
+
+-- Reading billing from the records system's FHIR API needs two more read scopes.
+ALTER TABLE fhir_sources ALTER COLUMN scope SET DEFAULT 'system/Patient.rs system/Observation.rs system/MedicationRequest.rs system/Appointment.rs system/Coverage.rs system/Invoice.rs';

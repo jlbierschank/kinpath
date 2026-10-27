@@ -36,7 +36,8 @@ export async function seed(db: Db, now = new Date("2026-10-26T09:00:00-04:00")):
   const i = IDS;
   // Anchor the story so "tonight's 8 pm injections" are always still ahead, even when seeding late in the evening.
   const anchor = new Date(now);
-  if (anchor.getHours() >= 19) anchor.setDate(anchor.getDate() + 1);
+  // After the 8 pm doses, "tonight" means tomorrow night (and last night's missed dose is tonight's).
+  if (anchor.getHours() >= 20) anchor.setDate(anchor.getDate() + 1);
   const day = (offsetDays: number, hhmm: string) => {
     const d = new Date(anchor);
     d.setDate(d.getDate() + offsetDays);
@@ -122,7 +123,7 @@ export async function seed(db: Db, now = new Date("2026-10-26T09:00:00-04:00")):
     await tx.query(
       `INSERT INTO finance_coverage (clinic_id, patient_id, kind, payer_name, plan_name, member_last4, fertility_benefit, lifetime_max_cents, lifetime_used_cents,
          cycles_max, cycles_used, deductible_cents, deductible_met_cents, oop_max_cents, oop_met_cents, prior_auth, updated_by_name)
-       VALUES ($1,$2,'insurance','Example Health Plan','Gold PPO through her employer','4417',
+       VALUES ($1,$2,'insurance','Example Health Plan','Gold PPO (employer plan)','4417',
          'Covers IVF: monitoring, retrieval, lab and transfer. Medications covered through the specialty pharmacy. Lifetime maximum of $25,000 or 2 egg retrievals, whichever comes first.',
          2500000, 840000, 2, 0, 150000, 150000, 400000, 212000, 'approved', 'Sam Kim')`, [i.bayside, i.maya]);
     const est = await tx.query<{ id: string }>(

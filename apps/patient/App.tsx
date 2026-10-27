@@ -9,6 +9,7 @@ import { InstrumentSans_400Regular, InstrumentSans_500Medium, InstrumentSans_600
 import Svg, { Path } from "react-native-svg";
 import { Api, auth, type Auth, type SignedInUser, type NextCycle, type Dose, type Feeling, type Graduation, type KeepsakeId, type ResultHow, type Guide, type Invite, type PartnerHome, type Relationship, type SendResult, type Shareable, type SupportPerson, type Today as TodayData } from "./src/api";
 import { askPermission, remindersSupported, syncReminders } from "./src/reminders";
+import { CostsCard, CostsScreen, PartnerCostsCard, ReceiptScreen } from "./src/money";
 import { clearSession, deviceName, loadSession, saveSession } from "./src/session";
 import { Bell, InboxScreen, NotificationSettingsScreen, SignInSection } from "./src/account";
 import { AskBox, Avatar, Button, C, Cap, Card, Chip, Chips, F, H1, JourneyPath, Moment, Muted, Pill, Row, st, T, TimelineItem, Today, Toggle } from "./src/ui";
@@ -24,7 +25,7 @@ const initialsOf = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 
 const NURSE_LINE = "tel:+18135550100"; // placeholder
 
 type Tab = "home" | "community" | "record" | "team";
-type Screen = { name: Tab } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; kind: SendResult["kind"] } | { name: "missed"; dose: Dose } | { name: "invite" } | { name: "rough" } | { name: "breathe" } | { name: "keepsake" } | { name: "share-summary"; ob: string | null } | { name: "next-cycle" } | { name: "inbox" } | { name: "notif-settings" };
+type Screen = { name: Tab } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; kind: SendResult["kind"] } | { name: "missed"; dose: Dose } | { name: "invite" } | { name: "rough" } | { name: "breathe" } | { name: "keepsake" } | { name: "share-summary"; ob: string | null } | { name: "next-cycle" } | { name: "inbox" } | { name: "notif-settings" } | { name: "costs" } | { name: "receipt"; id: string };
 type Tx = (en: string, es: string) => string;
 
 const STAGES = ["Consult", "Testing", "Stims", "Retrieval", "Transfer", "Wait", "Result", "OB-GYN"];
@@ -230,7 +231,9 @@ function Signed({ api, initials, onSignOut, demo }: { api: Api; initials: string
       {screen.name === "walk" && <Walk doses={screen.doses} focus={screen.focus} api={api} lang={data.lang} t={t} done={home} quiet={data.wait.quietUntil !== null} somethingWrong={() => go({ name: "team" })} />}
       {screen.name === "missed" && <Missed dose={screen.dose} api={api} t={t} reload={load} afterSend={afterSend} done={home} />}
       {screen.name === "team" && <CareTeam data={data} api={api} t={t} reload={load} afterSend={afterSend} />}
-      {screen.name === "record" && <Record data={data} t={t} />}
+      {screen.name === "record" && <Record data={data} t={t} go={go} />}
+      {screen.name === "costs" && <CostsScreen api={api} t={t} lang={data.lang} openReceipt={(id) => go({ name: "receipt", id })} />}
+      {screen.name === "receipt" && <ReceiptScreen api={api} t={t} id={screen.id} />}
       {screen.name === "community" && <Community t={t} />}
       {screen.name === "settings" && <Settings data={data} api={api} t={t} reload={load} scheduled={scheduled} onSignOut={onSignOut} go={go} demo={demo} />}
       {screen.name === "inbox" && <InboxScreen api={api} t={t} open={(n) => { void load(); openAlert(n); }} changed={refreshAlerts} />}
@@ -348,6 +351,8 @@ function Home({ data, api, t, go, afterSend, reload }: { data: TodayData; api: A
           </Card>
         </View>
       )}
+
+      <CostsCard api={api} t={t} open={() => go({ name: "costs" })} />
 
       <Card style={{ paddingHorizontal: 16, paddingVertical: 4 }} pad={false}>
         {missed.map((d, i) => (
@@ -887,11 +892,14 @@ function CareTeam({ data, api, t, reload, afterSend }: { data: TodayData; api: A
 }
 
 // ---------- Record ----------
-function Record({ data, t }: { data: TodayData; t: Tx }) {
+function Record({ data, t, go }: { data: TodayData; t: Tx; go: (s: Screen) => void }) {
   return (
     <>
       <Today size={34}>{t("Your record", "Tu expediente")}</Today>
       <Muted>{t("Yours to keep, and to share as you choose.", "Tuyo para guardar y compartir como quieras.")}</Muted>
+      <Card pad={false}>
+        <Row testID="open-costs" title={t("Costs, coverage and payments", "Costos, cobertura y pagos")} sub={t("Your estimate, what's due, and receipts", "Tu presupuesto, lo que vence y recibos")} onPress={() => go({ name: "costs" })} right={<T style={{ color: C.lavInk }}>›</T>} />
+      </Card>
       <Cap>{t("Results", "Resultados")}</Cap>
       <Card pad={false}>
         {data.results.length === 0 && <Row title={t("No results yet", "Aún no hay resultados")} />}
@@ -965,6 +973,7 @@ const SHARE_OPTIONS: [Shareable, string, string, string, string][] = [
   ["schedule", "Where you are in your cycle", "Stage and day", "Dónde estás en tu ciclo", "Etapa y día"],
   ["meds", "Injections and walkthroughs", "So they can help with tonight's doses", "Inyecciones y guías", "Para que te ayude con las dosis"],
   ["results", "Your results", "With your nurse's labels", "Tus resultados", "Con las indicaciones de tu enfermera"],
+  ["money", "Costs and payments", "Your estimate, coverage and what's due. Never your questions to billing", "Costos y pagos", "Tu presupuesto, cobertura y lo pendiente. Nunca tus preguntas a facturación"],
 ];
 const REL: Record<Relationship, [string, string]> = { partner: ["Partner", "Pareja"], family: ["Family", "Familia"], friend: ["Friend", "Amistad"], other: ["Support person", "Apoyo"] };
 function PendingInvite({ invite, api, t, reload }: { invite: Invite; api: Api; t: Tx; reload: () => Promise<void> }) {
@@ -1119,7 +1128,7 @@ function Urgent({ kind, t, back }: { kind: SendResult["kind"]; t: Tx; back: () =
 
 // ---------- Partner side ----------
 // English only for now; partner Spanish follows once the medical translator has reviewed the patient text.
-type PScreen = { name: "home" } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; level: "urgent" | "crisis" } | { name: "inbox" } | { name: "notif-settings" };
+type PScreen = { name: "home" } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; level: "urgent" | "crisis" } | { name: "inbox" } | { name: "notif-settings" } | { name: "costs" };
 // Injection offers only appear when injections are shared with this person.
 const quickNotes = (meds: boolean, waiting: boolean, news: string | null) => news === "negative"
   ? ["I love you", "I'm here, whatever you need", "Dinner's on me tonight", "No need to reply"]
@@ -1165,6 +1174,7 @@ function PartnerApp({ api, initials, onSignOut, demo }: { api: Api; initials: st
         ))}
       {screen.name === "walk" && <Walk doses={screen.doses} focus={screen.focus} api={api} lang="en" t={t} done={home} helper={her} somethingWrong={() => Linking.openURL(NURSE_LINE)} />}
       {screen.name === "urgent" && <PartnerUrgent level={screen.level} her={her} back={home} />}
+      {screen.name === "costs" && <CostsScreen api={api} t={t} lang="en" partner herName={data.shared ? data.firstName ?? undefined : undefined} />}
       {screen.name === "inbox" && <InboxScreen api={api} t={t} open={() => home()} changed={refreshAlerts} />}
       {screen.name === "notif-settings" && <NotificationSettingsScreen api={api} t={t} lang="en" />}
       {screen.name === "settings" && (
@@ -1175,7 +1185,7 @@ function PartnerApp({ api, initials, onSignOut, demo }: { api: Api; initials: st
           </Card>
           <Cap>Your access</Cap>
           <Card style={{ gap: 8 }}>
-            <T style={{ fontSize: 15, lineHeight: 22 }}>{data.shared ? `You see what ${her} chooses to share: ${data.sections.map((s) => ({ schedule: "her cycle", meds: "injections", results: "results" })[s]).join(", ")}.` : "Nothing is shared with you right now."}</T>
+            <T style={{ fontSize: 15, lineHeight: 22 }}>{data.shared ? `You see what ${her} chooses to share: ${data.sections.map((s) => ({ schedule: "her cycle", meds: "injections", results: "results", money: "costs" })[s]).join(", ")}.` : "Nothing is shared with you right now."}</T>
             <Muted>{`${her === "your partner" ? "Her" : `${her}'s`} messages with the care team are always private. She can change what you see at any time, and Bayside keeps a record each time you look.`}</Muted>
           </Card>
           <SignInSection api={api} t={t} onSignOut={onSignOut} demo={demo} />
@@ -1236,6 +1246,7 @@ function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHom
       )}
 
       {data.sections.includes("schedule") && <JourneyPath current={stageIndex(data.stage)} labels={STAGES} />}
+      {data.sections.includes("money") && <PartnerCostsCard api={api} open={() => go({ name: "costs" })} />}
       {(data.appointments?.length ?? 0) > 0 && (
         <View style={{ gap: 8 }} testID="partner-visits">
           <Cap>{her === "your partner" ? "Coming up" : `${her}'s visits`}</Cap>
@@ -1307,7 +1318,7 @@ function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHom
 
       <View style={{ backgroundColor: C.lav, borderRadius: 18, padding: 16, gap: 6 }}>
         <T style={{ fontFamily: F.sans700, fontSize: 15, color: C.lavDeep }}>{`What ${her} shares with you`}</T>
-        <T testID="shared-list" style={{ color: C.lavDeep }}>{data.sections.map((s) => ({ schedule: "Her cycle", meds: "Injections", results: "Results" })[s]).join(" · ")}</T>
+        <T testID="shared-list" style={{ color: C.lavDeep }}>{data.sections.map((s) => ({ schedule: "Her cycle", meds: "Injections", results: "Results", money: "Costs" })[s]).join(" · ")}</T>
         <T style={{ color: C.lavDeep, fontSize: 13 }}>Her messages with the care team are always private. She can change this anytime.</T>
       </View>
     </>

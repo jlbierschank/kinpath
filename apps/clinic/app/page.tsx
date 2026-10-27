@@ -10,6 +10,7 @@ const PEOPLE = [
   { id: IDS.jordan, name: "Jordan Torres", what: "Maya's partner. Sees only schedule and medications." },
   { id: IDS.priyaUser, name: "Priya Shah", what: "Bayside patient who prefers Spanish." },
   { id: IDS.kara, name: "Kara Diaz", what: "Bayside clinic admin. Reads the audit log, not clinical records." },
+  { id: IDS.sam, name: "Sam Kim", what: "Bayside financial counselor. Estimates, coverage and payments. No clinical records." },
   { id: IDS.harborNurse, name: "Lee Grant, RN", what: "Nurse at a different clinic. Sees none of Bayside's patients." },
 ];
 

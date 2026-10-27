@@ -37,8 +37,8 @@ export function Cap({ children }: { children: ReactNode }) {
   return <T style={{ fontFamily: F.sans600, fontSize: 12, color: C.stone }}>{children}</T>;
 }
 
-export function Card({ children, style, pad = true }: { children: ReactNode; style?: ViewStyle; pad?: boolean }) {
-  return <View style={[st.card, pad && { padding: 16 }, style]}>{children}</View>;
+export function Card({ children, style, pad = true, testID }: { children: ReactNode; style?: ViewStyle; pad?: boolean; testID?: string }) {
+  return <View testID={testID} style={[st.card, pad && { padding: 16 }, style]}>{children}</View>;
 }
 export function Row({ title, sub, right, onPress, testID }: { title: string; sub?: string; right?: ReactNode; onPress?: () => void; testID?: string }) {
   const body = (

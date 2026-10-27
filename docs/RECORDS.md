@@ -19,6 +19,8 @@ A one-page guide for the clinic's IT team, with that clinic's addresses filled i
 | **Corrected result** | Replaces the number, labels it again, and puts a "corrected" item in the nurse's queue. |
 | **Withdrawn result** (entered in error) | Goes to the nurse to decide whether the patient needs to hear about it. |
 | **Appointment** | Added to the patient's app right away (booked, rescheduled or canceled), and she's told her appointments changed. One for an unknown MRN goes to the nurse. |
+| **Insurance coverage, charges and payments** | Applied to her Costs page right away, and she's told her account was updated. Ones that don't match one patient go to the financial counselor, never the nurses. See MONEY.md for the fields. |
+| **Cost estimate** | Arrives as a draft for the financial counselor to check and share. |
 | **Anything else** | Skipped and counted (for example tests Pumpkin doesn't track, or results that aren't final). |
 
 **Matching is never guessed.** A record belongs to a patient only if its medical record number (MRN) matches one patient at that clinic and, when the record carries a last name, the name matches too. Otherwise it waits for a nurse, who picks the patient or dismisses it.
@@ -27,7 +29,7 @@ A one-page guide for the clinic's IT team, with that clinic's addresses filled i
 
 **Clinics stay separate.** Each key belongs to one clinic and can only reach that clinic's patients.
 
-**Who sees what:** nurses and physicians see the records. Clinic admins see the keys and an import log with counts only. Patients see results only after they've been labeled, and orders only after a nurse confirms them.
+**Who sees what:** nurses and physicians see the clinical records; financial counselors see the billing ones. Clinic admins see the keys and an import log with counts only. Patients see results only after they've been labeled, and orders only after a nurse confirms them.
 
 ## Setting it up for a clinic
 

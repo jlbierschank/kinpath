@@ -79,7 +79,26 @@ export interface AppointmentRecord {
   location: string | null;
   cancelled: boolean;
 }
-export type IncomingRecord = ResultRecord | MedRecord | AppointmentRecord;
+/** Insurance or benefit on file at the billing system. Benefit details stay with the counselor. */
+export interface CoverageRecord {
+  kind: "coverage"; externalId: string; mrn: string | null; lastName: string | null;
+  payerName: string | null; planName: string | null; memberLast4: string | null; endsOn: string | null; active: boolean;
+}
+/** A charge, payment, adjustment or refund from the billing system. Amounts in cents, always positive. */
+export interface LedgerRecord {
+  kind: "ledger"; externalId: string; mrn: string | null; lastName: string | null;
+  entryKind: "charge" | "payment" | "adjustment" | "refund"; description: string; amountCents: number;
+  occurredOn: string; dueOn: string | null; method: string | null; voided: boolean;
+}
+/** A cost estimate from the billing system. Arrives as a draft for the counselor to share. */
+export interface EstimateRecord {
+  kind: "estimate"; externalId: string; mrn: string | null; lastName: string | null; title: string;
+  lines: { label: string; category: string; amountCents: number; insuranceCents: number }[];
+}
+export type IncomingRecord = ResultRecord | MedRecord | AppointmentRecord | CoverageRecord | LedgerRecord | EstimateRecord;
+export const FINANCE_KINDS = ["coverage", "ledger", "estimate"] as const;
+const money = (v: unknown): number | null => { const n = typeof v === "number" ? v : Number(String(v ?? "").replace(/[$,\s]/g, "")); return Number.isFinite(n) && String(v ?? "").trim() !== "" ? Math.round(Math.abs(n) * 100) : null; };
+const last4 = (v: string | null | undefined) => { const t = (v ?? "").replace(/[^A-Za-z0-9]/g, ""); return t ? t.slice(-4) : null; };
 
 const APPT_TITLES: Record<AppointmentRecord["apptKind"], string> = {
   monitoring: "Monitoring visit", blood_test: "Blood test", consult: "Consultation", retrieval: "Egg retrieval",
@@ -191,6 +210,29 @@ export function parseFhirBundle(input: unknown): ParsedRecords {
       });
       continue;
     }
+    if (r.resourceType === "Coverage") {
+      if (!externalId) { skipped.push("insurance without an id"); continue; }
+      const status = str(r.status) ?? "";
+      if (status === "draft") { skipped.push("insurance that's still a draft"); continue; }
+      const plan = ((r.class as J[] | undefined) ?? []).find((c) => c?.type?.coding?.some?.((x: J) => x?.code === "plan")) ?? (r.class as J[] | undefined)?.[0];
+      records.push({ kind: "coverage", externalId, ...subjectOf(r.beneficiary), payerName: str(r.payor?.[0]?.display),
+        planName: str(plan?.name) ?? str(plan?.value) ?? str(r.type?.text), memberLast4: last4(str(r.subscriberId)),
+        endsOn: dateOnly(r.period?.end), active: status === "active" });
+      continue;
+    }
+    if (r.resourceType === "Invoice") {
+      if (!externalId) { skipped.push("a bill without an id"); continue; }
+      const status = str(r.status) ?? "";
+      if (status === "draft") { skipped.push("a bill that's still a draft"); continue; }
+      const amount = money(r.totalGross?.value ?? r.totalNet?.value);
+      if (amount == null || amount === 0) { skipped.push("a bill without an amount"); continue; }
+      const line = (r.lineItem as J[] | undefined)?.[0];
+      records.push({ kind: "ledger", externalId, ...subjectOf(r.subject), entryKind: "charge",
+        description: (str(line?.chargeItemCodeableConcept?.text) ?? str(line?.chargeItemCodeableConcept?.coding?.[0]?.display) ?? str(r.note?.[0]?.text) ?? "Statement").slice(0, 160),
+        amountCents: amount, occurredOn: dateOnly(r.date) ?? new Date().toISOString().slice(0, 10), dueOn: null, method: null,
+        voided: status === "cancelled" || status === "entered-in-error" });
+      continue;
+    }
     if (r.resourceType === "Appointment") {
       if (!externalId) { skipped.push("an appointment without an id"); continue; }
       const status = str(r.status) ?? "";
@@ -255,6 +297,49 @@ export function parseResultsCsv(text: string): ParsedRecords {
   return { records, skipped };
 }
 
+export const FINANCE_CSV_COLUMNS = ["entry_id", "mrn", "last_name", "type", "description", "amount", "date"] as const;
+
+/** Reads a billing CSV: entry_id, mrn, last_name, type, description, amount, date, plus optional due_date,
+ *  method, insurance_amount, category, estimate_id, estimate_title. type is charge, payment,
+ *  adjustment, refund or estimate (estimate rows with the same estimate_id make one estimate). */
+export function parseFinanceCsv(text: string): ParsedRecords {
+  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length < 2) throw new RecordsError("The file needs a header row and at least one line.");
+  if (lines.length > 2001) throw new RecordsError("Send at most 2,000 lines at a time.");
+  const head = csvLine(lines[0]!).map((h) => h.toLowerCase().replace(/\s+/g, "_"));
+  const missing = FINANCE_CSV_COLUMNS.filter((c) => !head.includes(c));
+  if (missing.length) throw new RecordsError(`The header row is missing: ${missing.join(", ")}.`);
+  const at = (row: string[], c: string) => (head.includes(c) ? row[head.indexOf(c)] ?? "" : "").trim();
+  const records: IncomingRecord[] = []; const skipped: string[] = [];
+  const estimates = new Map<string, EstimateRecord>();
+  for (const line of lines.slice(1)) {
+    const row = csvLine(line);
+    const id = at(row, "entry_id"), type = at(row, "type").toLowerCase(), amount = money(at(row, "amount"));
+    const who = { mrn: at(row, "mrn") || null, lastName: at(row, "last_name") || null };
+    if (!id) { skipped.push("a row without an entry_id"); continue; }
+    if (amount == null) { skipped.push("a row without an amount"); continue; }
+    const description = at(row, "description").slice(0, 160) || "Charge";
+    if (type === "estimate") {
+      const eid = at(row, "estimate_id") || id;
+      const e = estimates.get(eid) ?? { kind: "estimate" as const, externalId: eid, ...who, title: (at(row, "estimate_title") || "Cost estimate").slice(0, 120), lines: [] };
+      const ins = money(at(row, "insurance_amount")) ?? 0;
+      e.lines.push({ label: description, category: at(row, "category").toLowerCase() || "other", amountCents: amount, insuranceCents: Math.min(ins, amount) });
+      estimates.set(eid, e);
+      continue;
+    }
+    if (!["charge", "payment", "adjustment", "refund"].includes(type)) { skipped.push(`a row with an unknown type (${type || "blank"})`); continue; }
+    const date = dateOnly(at(row, "date"));
+    if (!date) { skipped.push("a row without a date"); continue; }
+    records.push({ kind: "ledger", externalId: id, ...who, entryKind: type as LedgerRecord["entryKind"], description, amountCents: amount, occurredOn: date,
+      dueOn: type === "charge" ? dateOnly(at(row, "due_date")) : null, method: at(row, "method").toLowerCase() || null, voided: false });
+  }
+  records.push(...estimates.values());
+  return { records, skipped };
+}
+
+/** True when a CSV header looks like a billing file rather than a results file. */
+export const isFinanceCsv = (text: string) => { const h = (text.replace(/^\uFEFF/, "").split(/\r?\n/)[0] ?? "").toLowerCase(); return h.includes("entry_id") && h.includes("amount"); };
+
 /** Compares names loosely: case, accents, spaces and hyphens don't matter. */
 export const sameName = (a: string, b: string) => {
   const n = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z]/g, "");
@@ -317,7 +402,8 @@ function hl7Patient(m: Hl7Message): { mrn: string | null; lastName: string | nul
   return { mrn: mrn || null, lastName: fld(pid, 5) || null };
 }
 
-/** Reads HL7 v2 lab results (ORU^R01), pharmacy orders (RDE^O11, OMP^O09) and scheduling (SIU^S12–S17). */
+/** Reads HL7 v2 lab results (ORU^R01), pharmacy orders (RDE^O11, OMP^O09), scheduling (SIU^S12–S17),
+ *  billing transactions (DFT^P03) and insurance (IN1 in DFT and ADT messages). */
 export function parseHl7(text: string): ParsedRecords & { messages: { controlId: string; type: string }[] } {
   const msgs = splitHl7(text);
   if (msgs.length > 2000) throw new RecordsError("Send at most 2,000 messages at a time.");
@@ -377,6 +463,34 @@ export function parseHl7(text: string): ParsedRecords & { messages: { controlId:
       const text = fld(ais, 3, 2) || fld(sch, 7, 2) || fld(sch, 7, 1) || null;
       const kind = apptKindOf(text ?? "");
       records.push({ kind: "appointment", externalId, ...who, startsAt: start, apptKind: kind, title: apptTitle(text, kind), location: fld(ail, 3, 1) || null, cancelled });
+      continue;
+    }
+    if (m.type === "DFT") {
+      // FT1-2 transaction id, FT1-4 date, FT1-6 type (CG charge, PY payment, CD credit, CO co-payment, AJ adjustment),
+      // FT1-7 code^text, FT1-8 description, FT1-11 amount (first component).
+      const kinds: Record<string, LedgerRecord["entryKind"]> = { CG: "charge", PY: "payment", CO: "payment", CD: "adjustment", AJ: "adjustment" };
+      for (const ft1 of segsOf(m, "FT1")) {
+        const type = fld(ft1, 6).toUpperCase();
+        const entryKind = kinds[type];
+        if (!entryKind) { skipped.push(`a financial transaction Pumpkin doesn't use (${type || "no type"})`); continue; }
+        const amount = money(fld(ft1, 11));
+        if (amount == null || amount === 0) { skipped.push("a financial transaction without an amount"); continue; }
+        const externalId = fld(ft1, 2) || `${m.controlId}:${fld(ft1, 1) || "1"}`;
+        records.push({ kind: "ledger", externalId, ...who, entryKind, description: (fld(ft1, 8) || fld(ft1, 7, 2) || fld(ft1, 7, 1) || (entryKind === "payment" ? "Payment" : "Charge")).slice(0, 160),
+          amountCents: amount, occurredOn: hl7Time(fld(ft1, 4))?.slice(0, 10) ?? new Date().toISOString().slice(0, 10), dueOn: null, method: entryKind === "payment" ? (type === "CO" ? "other" : null) : null, voided: false });
+      }
+    }
+    if (m.type === "DFT" || m.type === "ADT") {
+      // IN1-2 health plan id, IN1-3 insurance company id, IN1-4 company name, IN1-9 group name, IN1-13 plan expiration,
+      // IN1-15 plan type, IN1-36 policy number (only the last 4 are kept).
+      for (const in1 of segsOf(m, "IN1")) {
+        const policy = fld(in1, 36);
+        const externalId = `${fld(in1, 3) || fld(in1, 2) || fld(in1, 4)}:${policy || fld(in1, 8) || fld(in1, 1)}`;
+        if (externalId === ":") { skipped.push("insurance without an id"); continue; }
+        const ends = hl7Time(fld(in1, 13))?.slice(0, 10) ?? null;
+        records.push({ kind: "coverage", externalId, ...who, payerName: fld(in1, 4) || null, planName: fld(in1, 15, 2) || fld(in1, 15) || fld(in1, 9) || null,
+          memberLast4: last4(policy), endsOn: ends, active: !ends || ends >= new Date().toISOString().slice(0, 10) });
+      }
       continue;
     }
     skipped.push(`an HL7 ${m.type}^${m.event} message Pumpkin doesn't use`);

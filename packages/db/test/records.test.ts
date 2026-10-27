@@ -188,7 +188,7 @@ describe("demo sample and the import log", () => {
 
   it("the admin sees the log but not the records themselves", async () => {
     await sendSampleRecords(db, kara);
-    await expect(recordsToReview(db, kara)).rejects.toThrow(/nurses and physicians/);
+    await expect(recordsToReview(db, kara)).rejects.toThrow(/Only nurses, physicians and financial counselors/);
     expect(await asActor(db, kara, async (tx) => (await tx.query(`SELECT * FROM record_items`)).rows.length)).toBe(0);
     expect(sampleBundle("2026-10-26").entry).toHaveLength(7);
   });

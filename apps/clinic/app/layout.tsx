@@ -38,6 +38,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <Link className="brand" href="/">Bayside Fertility</Link>
             {clinician && <Link href="/nurse">Queue</Link>}
             {(clinician || s.role === "scheduler") && <Link href="/patients">Patients</Link>}
+            {s.role === "financial_counselor" && <Link href="/money">Costs</Link>}
+            {s.role === "clinic_admin" && <Link href="/money/partners">Financing options</Link>}
             {s.role === "clinic_admin" && <Link href="/admin">Audit log</Link>}
             {s.role === "clinic_admin" && <Link href="/admin/team">Team</Link>}
             {s.role === "clinic_admin" && <Link href="/admin/records">Records connection</Link>}

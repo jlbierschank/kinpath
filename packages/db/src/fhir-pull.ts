@@ -20,7 +20,7 @@ import { asActor, audit, type Actor, type Db } from "./client";
 import { importRecords, type ImportCounts } from "./records";
 
 type Fetch = typeof fetch;
-const DEFAULT_SCOPE = "system/Patient.rs system/Observation.rs system/MedicationRequest.rs system/Appointment.rs";
+const DEFAULT_SCOPE = "system/Patient.rs system/Observation.rs system/MedicationRequest.rs system/Appointment.rs system/Coverage.rs system/Invoice.rs";
 
 // ---------- secrets ----------
 
@@ -197,10 +197,14 @@ export async function pullFromFhir(db: Db, clinicId: string, opts: { fetch?: Fet
         ...await searchAll(f, token, `${src.base_url}/Observation?patient=${pid}&category=laboratory&_lastUpdated=${s}&_count=100`),
         ...await searchAll(f, token, `${src.base_url}/MedicationRequest?patient=${pid}&_lastUpdated=${s}&_count=100`),
         ...await searchAll(f, token, `${src.base_url}/Appointment?patient=${pid}&date=ge${today}&_count=100`),
+        // Billing: many servers don't offer these, or Pumpkin may not be allowed to read them. Skip quietly if so.
+        ...await searchAll(f, token, `${src.base_url}/Coverage?beneficiary=${pid}&_count=100`).catch(() => []),
+        ...await searchAll(f, token, `${src.base_url}/Invoice?subject=${pid}&_lastUpdated=${s}&_count=100`).catch(() => []),
       ];
       for (const r of found_) {
         // Point every record at the Patient entry above, whatever form the server used.
         if (r.subject) r.subject = { reference: `Patient/${fhirId}` };
+        if (r.resourceType === "Coverage") r.beneficiary = { reference: `Patient/${fhirId}` };
         if (r.resourceType === "Appointment") r.participant = [...((r.participant as J[]) ?? []).filter((x) => !/Patient\//.test(x?.actor?.reference ?? "")), { actor: { reference: `Patient/${fhirId}` } }];
         entries.push({ resource: r });
       }

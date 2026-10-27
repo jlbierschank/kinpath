@@ -51,6 +51,8 @@ function fakeEhr(getJwks: () => Promise<{ keys: Record<string, unknown>[] } | nu
       medicationCodeableConcept: { text: "Ovidrel" }, dosageInstruction: [{ timing: { repeat: { timeOfDay: ["21:30:00"], boundsPeriod: { start: tomorrow.toISOString().slice(0, 10), end: tomorrow.toISOString().slice(0, 10) } } }, doseAndRate: [{ doseQuantity: { value: 250, unit: "mcg" } }] }] }]);
     if (url.pathname === "/fhir/Appointment") return bundle([{ resourceType: "Appointment", id: "ap-9", status: "booked", start: tomorrow.toISOString(), serviceType: [{ text: "Egg retrieval" }],
       participant: [{ actor: { reference: "Patient/ehr-maya" } }] }]);
+    if (url.pathname === "/fhir/Coverage") return bundle([{ resourceType: "Coverage", id: "cov-9", status: "active", beneficiary: { reference: "Patient/ehr-maya" }, payor: [{ display: "Example Health Plan" }], subscriberId: "ZZ123499" }]);
+    if (url.pathname === "/fhir/Invoice") return bundle([{ resourceType: "Invoice", id: "inv-9", status: "issued", subject: { reference: "Patient/ehr-maya" }, date: "2026-10-25", totalGross: { value: 250, currency: "USD" }, lineItem: [{ chargeItemCodeableConcept: { text: "Embryo storage" } }] }]);
     send(404, {});
   });
   return {
@@ -85,11 +87,11 @@ describe("pulling from the records system's FHIR API", () => {
     expect((await fhirSource(db, kara))!.tokenUrl).toBe(`${base}/auth/token`);
     const r = await pullFromFhir(db, IDS.bayside);
     expect(r).toMatchObject({ patients: 1, ambiguous: 1, notFound: 0 });
-    expect(r.counts).toMatchObject({ resultsAdded: 2, ordersWaiting: 1, appointments: 1 });
+    expect(r.counts).toMatchObject({ resultsAdded: 2, ordersWaiting: 1, appointments: 1, billing: 2 });
     expect((await patientResults(db, maya, IDS.maya)).some((x) => x.value === 412)).toBe(true);
     expect((await recordsToReview(db, maria)).map((x) => x.kind)).toEqual(["med_order"]);
     expect((await upcomingAppointments(db, maya, IDS.maya))[0]).toMatchObject({ title: "Egg retrieval", kind: "retrieval", source: "records" });
-    expect((await fhirSource(db, kara))!.lastStatus).toMatch(/Checked 1 patient, 4 new or changed records\. 1 matched more than one patient there and were skipped\./);
+    expect((await fhirSource(db, kara))!.lastStatus).toMatch(/Checked 1 patient, 6 new or changed records\. 1 matched more than one patient there and were skipped\./);
   });
 
   it("a second pull changes nothing and doesn't search for the patient again", async () => {

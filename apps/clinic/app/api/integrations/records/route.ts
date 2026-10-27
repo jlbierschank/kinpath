@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { hl7Ack, parseFhirBundle, parseHl7, parseResultsCsv, RecordsError } from "@kinpath/core";
+import { hl7Ack, isFinanceCsv, parseFhirBundle, parseFinanceCsv, parseHl7, parseResultsCsv, RecordsError } from "@kinpath/core";
 import { importRecords, keyFromToken } from "@kinpath/db";
 import { getDb } from "@/lib/db";
 import { logError } from "@/lib/config";
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
       return new NextResponse(hl7Ack(h.messages, true), { headers: { "Content-Type": "x-application/hl7-v2+er7", "Cache-Control": "no-store" } });
     }
     let format: "fhir" | "csv";
-    if (type.includes("text/csv")) { parsed = parseResultsCsv(text); format = "csv"; }
+    if (type.includes("text/csv")) { parsed = isFinanceCsv(text) ? parseFinanceCsv(text) : parseResultsCsv(text); format = "csv"; }
     else if (type.includes("json")) {
       let body: unknown;
       try { body = JSON.parse(text); } catch { return fail(400, "The body isn't valid JSON."); }

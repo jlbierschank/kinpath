@@ -59,6 +59,7 @@ export default async function PatientHome() {
           ))}
         </div>
         <div>
+          <p style={{ margin: "0 0 12px" }}><a href="/patient/costs" data-testid="costs-link">{t("Your costs, coverage and payments →", "Tus costos, cobertura y pagos →")}</a></p>
           {visits.length > 0 && (
             <>
               <h2>{t("Coming up", "Próximas citas")}</h2>

@@ -74,7 +74,8 @@ export function homeFor(role: Role): string {
   if (role === "clinic_admin") return "/admin";
   if (role === "nurse" || role === "physician") return "/nurse";
   if (role === "scheduler") return "/patients";
-  return "/account"; // financial counselors: their screens come later
+  if (role === "financial_counselor") return "/money";
+  return "/account";
 }
 
 export async function deviceLabel(): Promise<string> {

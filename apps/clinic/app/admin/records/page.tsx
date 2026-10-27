@@ -56,7 +56,8 @@ export default async function RecordsConnection({ searchParams }: { searchParams
             <ul style={{ paddingLeft: 18 }}>
               <li><b>FHIR R4</b> (<code>Content-Type: application/fhir+json</code>): a Bundle with Patient (MRN identifier, name), Observation (LOINC 2243-4 estradiol, 2839-9 progesterone, 10501-5 LH, 15067-2 FSH, 21198-7 or 19080-1 hCG) and MedicationRequest resources.</li>
               <li><b>HL7 v2</b> (<code>Content-Type: x-application/hl7-v2+er7</code>): ORU^R01 lab results, RDE^O11 pharmacy orders, SIU^S12–S17 appointments. The reply is an HL7 acknowledgment.</li>
-              <li><b>CSV</b> (<code>Content-Type: text/csv</code>): columns <code>result_id, mrn, last_name, test, value, unit, collected_at</code>.</li>
+              <li><b>CSV</b> (<code>Content-Type: text/csv</code>): results with columns <code>result_id, mrn, last_name, test, value, unit, collected_at</code>; or billing with <code>entry_id, mrn, last_name, type, description, amount, date</code> (plus optional <code>due_date, method, insurance_amount, category, estimate_id, estimate_title</code>).</li>
+              <li><b>Billing</b> also arrives as FHIR Coverage and Invoice, or HL7 DFT^P03 (FT1) with IN1 insurance.</li>
             </ul>
             <p style={{ marginBottom: 0 }} className="muted">The reply lists counts only. Sending the same record again (same id) changes nothing, so it&apos;s safe to retry.</p>
           </div>
@@ -80,6 +81,8 @@ export default async function RecordsConnection({ searchParams }: { searchParams
                       {l.counts.corrected ? `, ${l.counts.corrected} corrected` : ""}
                       {l.counts.ordersWaiting ? `, ${l.counts.ordersWaiting} order${l.counts.ordersWaiting === 1 ? "" : "s"} waiting` : ""}
                       {l.counts.appointments ? `, ${l.counts.appointments} appointment${l.counts.appointments === 1 ? "" : "s"}` : ""}
+                      {l.counts.billing ? `, ${l.counts.billing} billing line${l.counts.billing === 1 ? "" : "s"}` : ""}
+                      {l.counts.estimatesWaiting ? `, ${l.counts.estimatesWaiting} estimate${l.counts.estimatesWaiting === 1 ? "" : "s"}` : ""}
                       {l.counts.toReview ? `, ${l.counts.toReview} to review` : ""}
                       {l.counts.duplicates ? `, ${l.counts.duplicates} already here` : ""}
                       {l.counts.skipped ? `, ${l.counts.skipped} skipped` : ""}

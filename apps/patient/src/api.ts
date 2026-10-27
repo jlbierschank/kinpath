@@ -25,8 +25,18 @@ export interface Today {
   wait: Wait;
   appointments?: Appointment[];
 }
+export interface Money {
+  estimates: { id: string; title: string; note: string | null; validUntil: string | null; items: { id: string; label: string; category: string; amountCents: number; insuranceCents: number }[]; totalCents: number; insuranceCents: number; youPayCents: number }[];
+  coverage: { id: string; payerName: string | null; planName: string | null; memberLast4: string | null; fertilityBenefit: string | null; lifetimeMaxCents: number | null; lifetimeUsedCents: number;
+    cyclesMax: number | null; cyclesUsed: number; deductibleCents: number | null; deductibleMetCents: number; oopMaxCents: number | null; oopMetCents: number; priorAuth: string; active: boolean }[];
+  ledger: { id: string; kind: "charge" | "payment" | "adjustment" | "refund"; description: string; amountCents: number; occurredOn: string; dueOn: string | null; receiptNumber: string | null }[];
+  balanceCents: number; paidCents: number; nextDue: { dueOn: string; amountCents: number } | null;
+  questions: { id: string; question: string; answer: string | null; answeredBy: string | null; createdAt: string; read: boolean }[];
+  partners: { id: string; kind: string; name: string; description: string; url: string | null; phone: string | null }[];
+}
+export interface Receipt { receiptNumber: string; date: string; description: string; amountCents: number; method: string | null; patientName: string; clinicName: string }
 export interface Appointment { id: string; startsAt: string; kind: string; title: string; location: string | null; status: string; source: string }
-export type Shareable = "schedule" | "meds" | "results";
+export type Shareable = "schedule" | "meds" | "results" | "money";
 export type ResultHow = "call" | "app" | "together";
 export type Feeling = "okay" | "anxious" | "struggling";
 export interface Wait {
@@ -124,6 +134,11 @@ export class Api {
   noteSeen = (id: string) => this.call<{ ok: boolean }>(`/api/patient/notes/${id}/seen`, { method: "POST", body: {} });
   // Partner side
   partnerHome = () => this.call<PartnerHome>("/api/partner/home");
+  money = () => this.call<Money>("/api/patient/money");
+  partnerMoney = () => this.call<Money>("/api/partner/money");
+  askCost = (question: string, estimateId?: string) => this.call<{ ok: boolean }>("/api/patient/money/questions", { method: "POST", body: { question, estimateId } });
+  markCostRead = () => this.call<{ ok: boolean }>("/api/patient/money/read", { method: "POST", body: {} });
+  receipt = (id: string) => this.call<Receipt>(`/api/patient/money/receipt/${id}`);
   sendNote = (text: string) => this.call<{ id: string; level: "routine" | "urgent" | "crisis" }>("/api/partner/notes", { method: "POST", body: { text } });
 }
 

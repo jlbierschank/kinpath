@@ -21,7 +21,11 @@
 - Partner side of the phone app: the partner sees only what the patient shares (cycle, injections, results), can open the injection walkthroughs to help without logging doses, and can send her private notes. Notes are triaged: an urgent symptom tells the partner to call and shows the patient a call-the-nurse card. Clinic staff never see notes. The patient switches each section on or off in Settings; care-team messages can never be shared.
 - Clinic settings: result ranges, protocol answers, injection walkthroughs (order, steps, video link) and clinic urgent words, each signed by the nurse or physician who approved it, with an append-only change history. Clinic admins can view but not edit. Clinic urgent words add to the built-in list and can never remove from it.
 
+- Costs and coverage (see MONEY.md): estimates, insurance and benefits, charges, payments and receipts, financing and grant options, questions to billing; billing data from the records system (FHIR Coverage and Invoice, HL7 DFT and IN1, CSV)
+
 ## Next (stage 1, continued)
+
+- [ ] Paying in the app: card, bank and payment plans through a payment company, with the clinic as merchant (plan in PAYMENTS.md; confirm BAA terms and ask healthcare counsel first)
 
 - [ ] OB-GYN summary links: add a short code sent separately, so a forwarded link alone isn't enough
 - [ ] A real counselor directory (today "A counselor who knows this" asks the nurse to call)
