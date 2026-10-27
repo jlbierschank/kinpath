@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   addCapture, addMedication, addResult, asActor, calendarFeed, deleteMyAccount, dismissItem, exportMyData, finishSignup, IDS, itemsToCheck, letIn, migrate,
   newCalendarLink, openDb, receiveForwardedEmail, requestSignInCode, requestSignup, saveItem, seed, sessionFromToken, soloCosts, soloMeds, soloResults, soloToday,
-  stopMedication, verifySignup, askMyClinic, type Db, type Extractor,
+  stopMedication, verifySignup, askMyClinic, AIServiceError, type Db, type Extractor,
 } from "../src";
 
 let db: Db;
@@ -144,6 +144,32 @@ describe("Add anything", () => {
     expect(seen).toEqual(["image/jpeg:12"]);
     const item = (await itemsToCheck(db, alex, IDS.alex)).find((i) => i.captureId === r.captureId)!;
     expect(item.source).toMatchObject({ kind: "photo", filename: "labs.jpg", hasFile: true });
+  });
+
+  it("gives a set number of free AI reads each month, then typed notes still work", async () => {
+    process.env.KINPATH_FREE_AI_READS = "2";
+    try {
+      const fake: Extractor = { name: "fake", read: async (x) => [{ kind: "result", data: { test: "AMH", value: 2.9, unit: "ng/mL", collectedOn: x.today }, unsure: [] }] };
+      const photo = { kind: "photo" as const, mime: "image/png", base64: "aGk=" };
+      expect((await soloToday(db, alex, IDS.alex)).profile.aiReads).toMatchObject({ plan: "free", used: 0, limit: 2, left: 2 });
+      expect((await addCapture(db, alex, IDS.alex, photo, { extractor: fake })).readsLeft).toBe(1);
+      expect((await addCapture(db, alex, IDS.alex, photo, { extractor: fake })).readsLeft).toBe(0);
+      const third = await addCapture(db, alex, IDS.alex, photo, { extractor: fake });
+      expect(third).toMatchObject({ status: "failed", items: 0, readsLeft: 0 });
+      expect(third.problem).toMatch(/used your 2 free reads/);
+      const typed = await addCapture(db, alex, IDS.alex, { kind: "text", text: "Estradiol 640 pg/mL today" }, { extractor: fake });
+      expect(typed).toMatchObject({ status: "ready", items: 1, engine: "pumpkin-basic" });
+      // Premium has no monthly limit.
+      await db.query(`UPDATE personal_profiles SET plan = 'premium' WHERE patient_id = $1`, [IDS.alex]);
+      expect((await addCapture(db, alex, IDS.alex, photo, { extractor: fake })).readsLeft).toBeNull();
+    } finally { delete process.env.KINPATH_FREE_AI_READS; }
+  });
+
+  it("if the AI service fails, a typed note still works and doesn't use a free read", async () => {
+    const broken: Extractor = { name: "broken", read: async () => { throw new AIServiceError("the AI key was rejected"); } };
+    const r = await addCapture(db, alex, IDS.alex, { kind: "text", text: "Estradiol 640 pg/mL today" }, { extractor: broken });
+    expect(r).toMatchObject({ status: "ready", items: 1, engine: "pumpkin-basic" });
+    expect((await soloToday(db, alex, IDS.alex)).profile.aiReads.used).toBe(0);
   });
 
   it("without AI reading, a photo waits for her to enter it by hand", async () => {

@@ -102,6 +102,8 @@ async function localToday(tx: Tx) {
 export interface CaptureResult {
   captureId: string; status: "ready" | "failed" | "urgent";
   urgent: "urgent" | "crisis" | null; items: number; problem: string | null; engine: string;
+  /** Free AI reads left this month after this one (null on premium, or when AI reading is off). */
+  readsLeft: number | null;
 }
 
 export async function addCapture(db: Db, actor: Actor, patientId: string, input: CaptureInput, opts: { extractor?: Extractor | null } = {}): Promise<CaptureResult> {
@@ -130,9 +132,12 @@ export async function addCapture(db: Db, actor: Actor, patientId: string, input:
       `INSERT INTO captures (clinic_id, patient_id, kind, filename, mime, bytes, text_input, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
       [actor.clinicId, patientId, kind, input.filename?.slice(0, 200) ?? (kind === "sample" ? SAMPLES[input.sampleId!]!.description : null), mime, bytes, text || null, t.level === "routine" ? "reading" : "urgent"]);
     await audit(tx, actor, "patient.added_capture", patientId, { kind, urgent: t.level !== "routine" });
-    return { id: r.rows[0]!.id, level: t.level, today: await localToday(tx) };
+    return { id: r.rows[0]!.id, level: t.level, today: await localToday(tx), reads: await solo.aiReads(tx, patientId) };
   });
-  if (first.level !== "routine") return { captureId: first.id, status: "urgent", urgent: first.level === "crisis" ? "crisis" : "urgent", items: 0, problem: null, engine: "triage" };
+  const readsLeft = (n: number) => (extractor && first.reads.left !== null ? Math.max(0, first.reads.left - n) : null);
+  if (first.level !== "routine") return { captureId: first.id, status: "urgent", urgent: first.level === "crisis" ? "crisis" : "urgent", items: 0, problem: null, engine: "triage", readsLeft: readsLeft(0) };
+  // The free allowance: once it's used up this month, typed and spoken notes use the basic reader.
+  const outOfReads = !!extractor && first.reads.left === 0;
 
   // 2. Read it.
   let items: CaptureItem[] = [];
@@ -140,12 +145,14 @@ export async function addCapture(db: Db, actor: Actor, patientId: string, input:
   let engine = "pumpkin-basic";
   try {
     if (kind === "sample") { items = SAMPLES[input.sampleId!]!.items(first.today); engine = "sample"; }
-    else if (extractor) { items = await extractor.read({ mime: mime ?? undefined, base64: input.base64, text: text || undefined, today: first.today }); engine = extractor.name; }
+    else if (extractor && !outOfReads) { items = await extractor.read({ mime: mime ?? undefined, base64: input.base64, text: text || undefined, today: first.today }); engine = extractor.name; }
     else if (text) items = readPlainText(text, first.today);
+    else if (outOfReads) problem = `You've used your ${first.reads.limit} free reads for this month. You can add it by hand, and typed or spoken notes still work. Your free reads start again on the 1st.`;
     else problem = "Reading photos and files isn't turned on here yet. You can add it by hand.";
   } catch (e) {
     problem = e instanceof AIServiceError ? `We couldn't read it right now (${e.message}). Try again in a minute, or add it by hand.` : "We couldn't read that. Try again, or add it by hand.";
-    if (text && !(e instanceof AIServiceError && /rejected/.test(e.message))) { items = readPlainText(text, first.today); engine = "pumpkin-basic"; }
+    // Typed and spoken notes always fall back to the basic reader.
+    if (text) { items = readPlainText(text, first.today); engine = "pumpkin-basic"; }
   }
   if (!problem && !items.length) problem = kind === "photo" || kind === "pdf" ? "We didn't find meds, results, visits or costs in that. You can add it by hand." : "We didn't find anything to add. Try saying the medication, test, visit or amount.";
 
@@ -154,9 +161,10 @@ export async function addCapture(db: Db, actor: Actor, patientId: string, input:
       await tx.query(`INSERT INTO capture_items (capture_id, clinic_id, patient_id, kind, data, unsure) VALUES ($1,$2,$3,$4,$5,$6)`,
         [first.id, actor.clinicId, patientId, it.kind, JSON.stringify(it.data), it.unsure]);
     }
-    await tx.query(`UPDATE captures SET status = $2, problem = $3, engine = $4 WHERE id = $1`, [first.id, items.length ? "ready" : "failed", problem, engine]);
+    await tx.query(`UPDATE captures SET status = $2, problem = $3, engine = $4, ai_read = $5 WHERE id = $1`, [first.id, items.length ? "ready" : "failed", problem, engine, !!extractor && engine === extractor.name]);
   });
-  return { captureId: first.id, status: items.length ? "ready" : "failed", urgent: null, items: items.length, problem: items.length ? null : problem, engine };
+  const usedOne = !!extractor && engine === extractor.name ? 1 : 0;
+  return { captureId: first.id, status: items.length ? "ready" : "failed", urgent: null, items: items.length, problem: items.length ? null : problem, engine, readsLeft: readsLeft(usedOne) };
 }
 
 export interface PendingItem { id: string; captureId: string; kind: CaptureItem["kind"]; data: Record<string, unknown>; unsure: string[]; source: { kind: CaptureInputKind; filename: string | null; at: string; hasFile: boolean; engine: string | null } }

@@ -391,6 +391,14 @@ function AddScreen({ api, profile, go, done }: { api: Api; profile: SoloProfile;
     <>
       <Today size={34}>Add something</Today>
       <Muted style={{ fontSize: 15 }}>Pumpkin reads it and sorts it into meds, results, visits and costs. Nothing goes in your record until you check it.</Muted>
+      {profile.aiReads.on && profile.aiReads.limit !== null ? (
+        <View testID="ai-reads" style={{ backgroundColor: profile.aiReads.left === 0 ? C.clay : C.oat, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: C.line }}>
+          <T style={{ fontFamily: F.sans600, fontSize: 14.5, color: profile.aiReads.left === 0 ? C.clayInk : C.espresso }}>{profile.aiReads.left === 0
+            ? `You've used your ${profile.aiReads.limit} free reads this month. They start again on the 1st.`
+            : `${profile.aiReads.left} of ${profile.aiReads.limit} free reads left this month.`}</T>
+          <Muted style={{ fontSize: 13 }}>{profile.aiReads.left === 0 ? "Typed and spoken notes still work, and you can always add things by hand." : "Each thing Pumpkin reads for you uses one. Samples don't."}</Muted>
+        </View>
+      ) : null}
       {busy ? <View style={{ backgroundColor: C.lav, borderRadius: 16, padding: 14, flexDirection: "row", gap: 10, alignItems: "center" }}><ActivityIndicator color={C.lavInk} /><T style={{ color: C.lavInk, fontFamily: F.sans600 }}>Reading it now. This can take a few seconds.</T></View> : null}
       {error ? <T testID="add-error" style={{ color: C.red, fontSize: 15 }}>{error}</T> : null}
       {Platform.OS !== "web" ? <Option id="camera" icon="doc" title="Take a photo" sub="Instruction sheets, lab reports, receipts" onPress={() => photo(true)} /> : null}

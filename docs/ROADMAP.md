@@ -28,7 +28,8 @@
 ## Next (stage 1, continued)
 
 - [ ] On your own, next: community (moderated), connect her clinic and move her space into it, patient-portal results sync (SMART on FHIR patient access), bank link (Plaid, optional and read-only), support-person invites from the on-your-own app, Spanish
-- [ ] Decide free vs. premium for AI reading (financial model: free tier has no AI)
+- [x] Free AI reads: a set number each month (default 10), then typed notes and adding by hand; premium has no limit
+- [ ] Premium purchase in the app (App Store and Google Play subscriptions)
 - [ ] Clinical advisor review of the test explainers before real patients
 
 - [ ] Paying in the app: card, bank and payment plans through a payment company, with the clinic as merchant (plan in PAYMENTS.md; confirm BAA terms and ask healthcare counsel first)

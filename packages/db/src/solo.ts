@@ -170,7 +170,22 @@ async function localToday(tx: Tx): Promise<string> {
   return (await tx.query<{ d: string }>(`SELECT to_char(now() AT TIME ZONE (SELECT timezone FROM clinics WHERE id = kp_clinic()), 'YYYY-MM-DD') AS d`)).rows[0]!.d;
 }
 
-export interface SoloProfile { firstName: string; stage: SoloStage; stageLabel: string; clinicName: string | null; afterHoursPhone: string | null; askedClinicAt: string | null; calendarOn: boolean; calendarDetail: boolean; forwardAddress: string; timeZone: string }
+/** Free AI reads per calendar month (KINPATH_FREE_AI_READS, default 10). Premium has no monthly limit. */
+export const freeAiReads = () => { const n = Number(process.env.KINPATH_FREE_AI_READS ?? 10); return Number.isInteger(n) && n >= 0 ? n : 10; };
+export interface AiReads { on: boolean; plan: "free" | "premium"; used: number; limit: number | null; left: number | null }
+/** How many AI reads she's used this month (in her time zone), and how many are left. */
+export async function aiReads(tx: Tx, patientId: string): Promise<AiReads> {
+  const r = await tx.query<{ plan: "free" | "premium"; used: number }>(
+    `SELECT f.plan, (SELECT count(*)::int FROM captures c WHERE c.patient_id = f.patient_id AND c.ai_read
+        AND date_trunc('month', c.created_at AT TIME ZONE cl.timezone) = date_trunc('month', now() AT TIME ZONE cl.timezone)) AS used
+       FROM personal_profiles f JOIN clinics cl ON cl.id = f.clinic_id WHERE f.patient_id = $1`, [patientId]);
+  const plan = r.rows[0]?.plan ?? "free", used = r.rows[0]?.used ?? 0;
+  const limit = plan === "premium" ? null : freeAiReads();
+  const on = process.env.KINPATH_AI_PROVIDER === "anthropic" && !!process.env.ANTHROPIC_API_KEY;
+  return { on, plan, used, limit, left: limit === null ? null : Math.max(0, limit - used) };
+}
+
+export interface SoloProfile { aiReads: AiReads; firstName: string; stage: SoloStage; stageLabel: string; clinicName: string | null; afterHoursPhone: string | null; askedClinicAt: string | null; calendarOn: boolean; calendarDetail: boolean; forwardAddress: string; timeZone: string }
 
 export async function soloProfile(db: Db, actor: Actor, patientId: string): Promise<SoloProfile> {
   return asActor(db, actor, async (tx) => {
@@ -181,6 +196,7 @@ export async function soloProfile(db: Db, actor: Actor, patientId: string): Prom
     const x = r.rows[0];
     if (!x) throw new HandoffError("We couldn't find your space. Sign in again.");
     return {
+      aiReads: await aiReads(tx, patientId),
       firstName: x.first_name, stage: x.stage, stageLabel: SOLO_STAGES[x.stage].en, clinicName: x.clinic_name, afterHoursPhone: x.after_hours_phone,
       askedClinicAt: x.asked_clinic_at ? new Date(x.asked_clinic_at).toISOString() : null, calendarOn: !!x.calendar_token_hash, calendarDetail: x.calendar_detail,
       forwardAddress: `add+${x.inbox_token}@${process.env.KINPATH_INBOUND_DOMAIN ?? "in.thepumpkin.ai"}`, timeZone: await spaceZone(tx),

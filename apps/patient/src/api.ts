@@ -84,7 +84,7 @@ export interface SendResult { handoffId: string; kind: "missed_dose" | "question
 
 // ---------- Pumpkin on your own ----------
 export type SoloStage = "just_starting" | "in_cycle" | "two_week_wait" | "after_hard_result" | "freezing_eggs" | "between_cycles";
-export interface SoloProfile { firstName: string; stage: SoloStage; stageLabel: string; clinicName: string | null; afterHoursPhone: string | null; askedClinicAt: string | null; calendarOn: boolean; calendarDetail: boolean; forwardAddress: string; timeZone: string }
+export interface SoloProfile { aiReads: { on: boolean; plan: "free" | "premium"; used: number; limit: number | null; left: number | null }; firstName: string; stage: SoloStage; stageLabel: string; clinicName: string | null; afterHoursPhone: string | null; askedClinicAt: string | null; calendarOn: boolean; calendarDetail: boolean; forwardAddress: string; timeZone: string }
 export interface SoloToday {
   profile: SoloProfile;
   schedule: { upcoming: Dose[]; missed: Dose[]; recent: Dose[] };
@@ -100,7 +100,7 @@ export interface ResultGroup { key: string; name: string; unit: string; measures
 export interface SoloCosts { entries: { id: string; kind: "charge" | "payment" | "adjustment" | "refund"; description: string; amountCents: number; occurredOn: string; dueOn: string | null; method: string | null; captureId: string | null; mine: boolean }[]; balanceCents: number; paidCents: number; paidThisYearCents: number; year: string; nextDue: { dueOn: string; amountCents: number; description: string } | null }
 export type ItemKind = "medication" | "result" | "appointment" | "cost" | "question";
 export interface PendingItem { id: string; captureId: string; kind: ItemKind; data: Record<string, unknown>; unsure: string[]; source: { kind: string; filename: string | null; at: string; hasFile: boolean; engine: string | null } }
-export interface CaptureResult { captureId: string; status: "ready" | "failed" | "urgent"; urgent: "urgent" | "crisis" | null; items: number; problem: string | null; engine: string }
+export interface CaptureResult { captureId: string; status: "ready" | "failed" | "urgent"; urgent: "urgent" | "crisis" | null; items: number; problem: string | null; engine: string; readsLeft: number | null }
 export interface CaptureInput { kind: "photo" | "pdf" | "text" | "voice" | "sample"; mime?: string; filename?: string; base64?: string; text?: string; sampleId?: string }
 
 export type Auth = { token: string } | { devUserId: string };

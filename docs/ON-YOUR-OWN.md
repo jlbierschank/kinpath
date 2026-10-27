@@ -38,6 +38,7 @@ For patients whose clinic isn't on Pumpkin (yet). She signs up herself, gets a p
 | Variable | What it does |
 | --- | --- |
 | `KINPATH_OPEN_SIGNUP` | `1` lets anyone sign up. Unset: only people let in from the waitlist. Demo builds (`KINPATH_DEV_LOGIN=1`) are open unless this is `0`. |
+| `KINPATH_FREE_AI_READS` | Free AI reads per month on the free plan (default 10). |
 | `KINPATH_INBOUND_SECRET` | Turns on forwarded email. |
 | `KINPATH_INBOUND_DOMAIN` | The forwarding domain shown to patients (default `in.thepumpkin.ai`). |
 
@@ -55,9 +56,9 @@ People who join from the app are added automatically. Everyone hears the same th
 
 A patient's own entries outside a clinic relationship aren't covered by HIPAA through a clinic. The FTC's Health Breach Notification Rule (expanded to health apps in 2024) and state laws such as Washington's My Health My Data Act apply instead. Counsel should review consent wording, the sign-up flow and the breach plan before real patients use it.
 
-## Open decisions
+## Decisions and what's next
 
-- **Free vs. premium.** The financial model's free direct tier is prep content and community with no AI, and AI costs sit with paying users. "Add anything" reads with AI. Options: AI reading in the $4.99 premium tier, or a small monthly free allowance. Download and delete stay free (the model already says not to paywall the record).
+- **Free AI reads (decided):** everyone on their own gets a set number of AI reads each calendar month (default 10, `KINPATH_FREE_AI_READS`) so they feel the benefit. The Add screen shows how many are left. When they're used up, typed and spoken notes still work through the basic reader, and anything can be added by hand. Samples and failed reads don't count. Premium (`plan = 'premium'`, the $4.99 tier in the financial model) has no monthly limit; buying it in the app isn't built yet. Download and delete are never limited.
 - **Community** is next to build, with moderation designed in (adults only, handles not names, no private messages at first, 988 crisis path, medical advice flagged back to the care team).
 
 ## Not built yet
