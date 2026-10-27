@@ -30,6 +30,7 @@
 - [ ] On your own, next: community (moderated), connect her clinic and move her space into it, patient-portal results sync (SMART on FHIR patient access), bank link (Plaid, optional and read-only), support-person invites from the on-your-own app, Spanish
 - [x] Free AI reads: a set number each month (default 10), then typed notes and adding by hand; premium has no limit
 - [ ] Premium purchase in the app (App Store and Google Play subscriptions)
+- [ ] Sync health data from wearables and trackers (Oura, Apple Health, others), with her choosing what to share; check each company's data access terms first
 - [ ] Clinical advisor review of the test explainers before real patients
 
 - [ ] Paying in the app: card, bank and payment plans through a payment company, with the clinic as merchant (plan in PAYMENTS.md; confirm BAA terms and ask healthcare counsel first)
