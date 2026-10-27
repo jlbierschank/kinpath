@@ -85,7 +85,19 @@ export interface SendResult { handoffId: string; kind: "missed_dose" | "question
 // ---------- Pumpkin on your own ----------
 export type SoloStage = "just_starting" | "in_cycle" | "two_week_wait" | "after_hard_result" | "freezing_eggs" | "between_cycles";
 export interface SoloProfile { aiReads: { on: boolean; plan: "free" | "premium"; used: number; limit: number | null; left: number | null }; firstName: string; stage: SoloStage; stageLabel: string; clinicName: string | null; afterHoursPhone: string | null; askedClinicAt: string | null; calendarOn: boolean; calendarDetail: boolean; forwardAddress: string; timeZone: string }
+export interface About {
+  firstName: string; displayName: string; preferredName: string | null; pronunciation: string | null; pronouns: string | null; consented: boolean;
+  gender: string | null; familyPath: string[]; partnerName: string | null; partnerPronouns: string | null; partnerTitle: string | null;
+  conditions: string[]; conditionsOther: string | null; pastCycles: number | null; pastLoss: "yes" | "no" | "skip" | null; allergies: string | null;
+  tone: "facts" | "reassure"; revealResults: boolean; costCheckins: "always" | "when_due"; pauseUntil: string | null; onBreak: boolean;
+  alias: string | null; aliasIcon: string | null; aliasTint: string | null; aliasShows: ("stage" | "path")[];
+  stepsLeft: ("name" | "path" | "person" | "background" | "talk")[];
+  tenderDates: { id: string; month: number; day: number; year: number | null; label: string | null; mode: "quiet" | "gentle" }[];
+}
+export interface VisitSummary { name: string; pronouns: string | null; path: string[]; person: string | null; background: string[]; pastCycles: number | null; pastLoss: boolean; allergies: string | null; meds: string[]; results: string[]; questions: string[] }
 export interface SoloToday {
+  feel: { tender: { mode: "quiet" | "gentle"; label: string | null } | null; paused: boolean; pauseUntil: string | null; onBreak: boolean; quiet: boolean };
+  about: { displayName: string; pronouns: string | null; tone: "facts" | "reassure"; revealResults: boolean; costCheckins: "always" | "when_due"; stepsLeft: About["stepsLeft"]; partnerTitle: string | null };
   profile: SoloProfile;
   schedule: { upcoming: Dose[]; missed: Dose[]; recent: Dose[] };
   toCheck: number; reading: number;
@@ -181,6 +193,15 @@ export class Api {
   setQuestionAsked = (id: string, asked: boolean) => this.call<unknown>("/api/solo/question-asked", { method: "POST", body: { id, asked } });
   calendarLink = (detail: boolean) => this.call<{ url: string; webcal: string }>("/api/solo/calendar", { method: "POST", body: { detail } });
   calendarOff = () => this.call<unknown>("/api/solo/calendar-off", { method: "POST", body: {} });
+  about = () => this.call<About>("/api/solo/about");
+  saveAbout = (patch: Partial<About>, opts: { consent?: boolean; step?: string } = {}) => this.call<About>("/api/solo/about", { method: "POST", body: { patch, consent: opts.consent, step: opts.step } });
+  withdrawAbout = () => this.call<About>("/api/solo/about-withdraw", { method: "POST", body: {} });
+  addTenderDate = (date: { month: number; day: number; year: number | null; label: string; mode: "quiet" | "gentle" }) => this.call<About>("/api/solo/tender-add", { method: "POST", body: { date } });
+  deleteTenderDate = (id: string) => this.call<About>("/api/solo/tender-delete", { method: "POST", body: { id } });
+  setQuiet = (q: { pauseDays?: number | null; onBreak?: boolean }) => this.call<About>("/api/solo/quiet", { method: "POST", body: q });
+  setAlias = (a: { alias: string; icon: string; tint: string; shows: string[] }) => this.call<About>("/api/solo/alias", { method: "POST", body: a });
+  questionIdeas = () => this.call<string[]>("/api/solo/question-ideas");
+  visitSummary = () => this.call<VisitSummary>("/api/solo/visit-summary");
   exportData = () => this.call<Record<string, unknown>>("/api/solo/export");
   deleteAccount = (confirm: string) => this.call<{ deleted: boolean }>("/api/solo/delete-account", { method: "POST", body: { confirm } });
   sendNote = (text: string) => this.call<{ id: string; level: "routine" | "urgent" | "crisis" }>("/api/partner/notes", { method: "POST", body: { text } });
@@ -200,6 +221,6 @@ export const auth = {
   startJoin: (code: string, name: string) => openCall<{ sentTo: string; patientFirstName: string }>("/api/auth/join/start", { code, name }),
   signupStart: (identifier: string) => openCall<{ sentTo: string }>("/api/auth/signup/start", { identifier }),
   signupVerify: (identifier: string, code: string) => openCall<{ ticket: string }>("/api/auth/signup/verify", { identifier, code }),
-  signupFinish: (input: { ticket: string; firstName: string; stage: SoloStage; clinicName?: string; afterHoursPhone?: string; timeZone?: string; device: string }) => openCall<SignedInUser>("/api/auth/signup/finish", input),
+  signupFinish: (input: { ticket: string; firstName: string; preferredName?: string; pronouns?: string; stage: SoloStage; clinicName?: string; afterHoursPhone?: string; timeZone?: string; device: string }) => openCall<SignedInUser>("/api/auth/signup/finish", input),
   finishJoin: (code: string, confirm: string, device: string) => openCall<SignedInUser & { patientFirstName: string }>("/api/auth/join/finish", { code, confirm, device }),
 };

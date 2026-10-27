@@ -3,6 +3,7 @@ import {
   addAppointment, addCapture, addCost, addMedication, addQuestion, addResult, askMyClinic, captureFile, deleteAppointment, deleteCost, deleteMyAccount, deleteQuestion,
   deleteResult, dismissItem, exportMyData, getReminderPrefs, itemsToCheck, newCalendarLink, SAMPLES, saveItem, setQuestionAsked, soloCosts, soloMeds, soloProfile,
   soloResults, soloToday, stopCalendarLink, stopMedication, updateSoloProfile, visitQuestions, financePartners,
+  aboutMe, addTenderDate, deleteTenderDate, questionIdeas, saveAbout, setAlias, setQuiet, visitSummary, withdrawAboutConsent,
 } from "@kinpath/db";
 import { getDb } from "@/lib/db";
 import { handle, preflight } from "@/lib/api";
@@ -41,6 +42,9 @@ export async function GET(req: Request, ctx: Ctx) {
         return { mime: f.mime, filename: f.filename, base64: f.bytes.toString("base64") };
       }
       case "export": return exportMyData(db, s);
+      case "about": return aboutMe(db, s, pid);
+      case "question-ideas": return questionIdeas(db, s, pid);
+      case "visit-summary": return visitSummary(db, s, pid);
       default: throw new HandoffError("Not found.");
     }
   });
@@ -80,6 +84,12 @@ export async function POST(req: Request, ctx: Ctx) {
       }
       case "calendar-off": return stopCalendarLink(db, s, pid);
       case "delete-account": return deleteMyAccount(db, s, str("confirm"));
+      case "about": return saveAbout(db, s, pid, obj("patch") as never, { consent: b.consent === true, step: (str("step") || undefined) as never });
+      case "about-withdraw": return withdrawAboutConsent(db, s, pid);
+      case "tender-add": return addTenderDate(db, s, pid, obj("date") as never);
+      case "tender-delete": return deleteTenderDate(db, s, pid, str("id"));
+      case "quiet": return setQuiet(db, s, pid, { pauseDays: b.pauseDays === undefined ? undefined : (b.pauseDays as number | null), onBreak: typeof b.onBreak === "boolean" ? b.onBreak : undefined });
+      case "alias": return setAlias(db, s, pid, { alias: str("alias"), icon: str("icon"), tint: str("tint"), shows: Array.isArray(b.shows) ? (b.shows as string[]) : [] });
       default: throw new HandoffError("Not found.");
     }
   });

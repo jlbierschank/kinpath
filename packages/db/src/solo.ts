@@ -6,7 +6,7 @@
  */
 import { randomUUID } from "node:crypto";
 import {
-  analyteKey, apptKindOf, cleanItem, cycleForStage, HandoffError, isSoloStage, SOLO_STAGES, testInfo,
+  analyteKey, apptKindOf, cleanItem, cleanPronouns, cycleForStage, HandoffError, isSoloStage, SOLO_STAGES, testInfo,
   type AppointmentItem, type CostItem, type MedicationItem, type ResultItem, type SoloStage,
 } from "@kinpath/core";
 import { newSignInCode, newToken, sha256 } from "@kinpath/core/server";
@@ -15,6 +15,7 @@ import { createSession } from "./auth";
 import { sendDirect } from "./notify";
 import { contactOf } from "./patients";
 import { patientSchedule } from "./loop";
+import { aboutMe, todayFeel } from "./about";
 
 const CODE_MINUTES = 10;
 const TICKET_MINUTES = 30;
@@ -118,6 +119,7 @@ const PHONE = /^\+?[\d\s().-]{7,20}$/;
 /** Step 3: create her private space and sign her in. */
 export async function finishSignup(db: Db, ticket: string, input: {
   firstName: string; lastName?: string; stage: string; clinicName?: string; afterHoursPhone?: string; timeZone?: string;
+  preferredName?: string; pronouns?: string;
 }, device: string | null = null) {
   const first = (input.firstName ?? "").trim(), last = (input.lastName ?? "").trim();
   if (!first || first.length > 60 || last.length > 60) throw new HandoffError("Add your first name.");
@@ -145,6 +147,11 @@ export async function finishSignup(db: Db, ticket: string, input: {
       [patientId, space, input.stage, clinicName, phone, newToken().slice(0, 12).toLowerCase().replace(/[^a-z0-9]/g, "x")]);
     const cyc = cycleForStage(input.stage as SoloStage);
     await tx.query(`INSERT INTO cycles (clinic_id, patient_id, kind, stage, started_on) VALUES ($1,$2,$3,$4, (now() AT TIME ZONE $5)::date)`, [space, patientId, cyc.kind, cyc.stage, tz]);
+    const preferred = (input.preferredName ?? "").trim().slice(0, 60) || null;
+    const pronouns = cleanPronouns(input.pronouns);
+    if (preferred || pronouns) {
+      await tx.query(`INSERT INTO patient_about (patient_id, clinic_id, preferred_name, pronouns, steps_done) VALUES ($1,$2,$3,$4,ARRAY['name'])`, [patientId, space, preferred, pronouns]);
+    }
     await tx.query(`UPDATE early_access SET status = 'joined', joined_at = now() WHERE identifier = $1`, [contact.value]);
     await tx.query(`DELETE FROM signup_codes WHERE identifier = $1`, [contact.value]);
     await tx.query(`INSERT INTO audit_events (clinic_id, actor_user_id, action, patient_id, detail) VALUES ($1,$2,'patient.signed_up',$3,$4)`, [space, userId, patientId, JSON.stringify({ stage: input.stage })]);
@@ -437,16 +444,19 @@ export async function deleteQuestion(db: Db, actor: Actor, patientId: string, id
 // ---------- Today ----------
 
 export async function soloToday(db: Db, actor: Actor, patientId: string, now = new Date()) {
-  const [profile, schedule, results, costs, questions] = await Promise.all([
+  const [profile, schedule, results, costs, questions, about] = await Promise.all([
     soloProfile(db, actor, patientId), patientSchedule(db, actor, patientId, now), soloResults(db, actor, patientId), soloCosts(db, actor, patientId), visitQuestions(db, actor, patientId),
+    aboutMe(db, actor, patientId),
   ]);
   return asActor(db, actor, async (tx) => {
     const pend = await tx.query<{ n: number }>(`SELECT count(*)::int AS n FROM capture_items WHERE patient_id = $1 AND status = 'pending'`, [patientId]);
     const reading = await tx.query<{ n: number }>(`SELECT count(*)::int AS n FROM captures WHERE patient_id = $1 AND status = 'reading' AND created_at > now() - interval '10 minutes'`, [patientId]);
     const appts = await tx.query<{ id: string; starts_at: Date; title: string; location: string | null; source: string }>(
       `SELECT id, starts_at, title, location, source FROM appointments WHERE patient_id = $1 AND status = 'booked' AND starts_at > now() - interval '2 hours' ORDER BY starts_at LIMIT 5`, [patientId]);
+    const feel = await todayFeel(tx, patientId);
     return {
-      profile, schedule,
+      profile, schedule, feel,
+      about: { displayName: about.displayName, pronouns: about.pronouns, tone: about.tone, revealResults: about.revealResults, costCheckins: about.costCheckins, stepsLeft: about.stepsLeft, partnerTitle: about.partnerTitle },
       toCheck: pend.rows[0]!.n, reading: reading.rows[0]!.n,
       appointments: appts.rows.map((a) => ({ id: a.id, startsAt: new Date(a.starts_at).toISOString(), title: a.title, location: a.location, mine: a.source === "patient" })),
       latestResults: results.slice(0, 3).map((g) => ({ key: g.key, name: g.name, value: g.points[0]!.value, unit: g.points[0]!.unit, on: g.points[0]!.on })),

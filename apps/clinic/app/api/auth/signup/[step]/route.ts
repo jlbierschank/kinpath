@@ -14,7 +14,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ step: string }
     if (step === "start") return requestSignup(db, s("identifier"));
     if (step === "verify") return verifySignup(db, s("identifier"), s("code"));
     if (step === "finish") {
-      const out = await finishSignup(db, s("ticket"), { firstName: s("firstName"), lastName: s("lastName"), stage: s("stage"), clinicName: s("clinicName"), afterHoursPhone: s("afterHoursPhone"), timeZone: s("timeZone") }, s("device") || "Phone app");
+      const out = await finishSignup(db, s("ticket"), { firstName: s("firstName"), lastName: s("lastName"), stage: s("stage"), clinicName: s("clinicName"), afterHoursPhone: s("afterHoursPhone"), timeZone: s("timeZone"), preferredName: s("preferredName"), pronouns: s("pronouns") }, s("device") || "Phone app");
       const session = (await sessionFromToken(db, out.token))!;
       return { ...out, space: (await isPersonalSpace(db, session.clinicId)) ? "personal" : "clinic" };
     }

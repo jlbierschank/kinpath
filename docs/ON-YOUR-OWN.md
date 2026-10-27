@@ -18,6 +18,36 @@ For patients whose clinic isn't on Pumpkin (yet). She signs up herself, gets a p
 | **Download or delete** | Download everything as a file. Delete removes her whole space (meds, results, photos, costs, support people, activity log, her waitlist entry). It can't be undone. |
 | **Feeling unwell?** | Always at the top. Urgent words in anything she types or says skip reading entirely and go to her clinic's after-hours number, or 911 (988 for a crisis). Nothing is saved. |
 
+## Make Pumpkin yours
+
+Optional questions, asked a few at a time from a card on Today (not all at sign-up). Sign-up asks only her first name, what to call her, her pronouns (optional) and where she is.
+
+| Part | What she can tell us | What Pumpkin does with it |
+| --- | --- | --- |
+| **What to call you** | The name she uses, how to say it, pronouns (choices or her own words) | Greets her by that name everywhere; puts it on her visit summary |
+| **How you're building your family** | Any of: on her own (single parent by choice), with a partner, donor eggs, donor sperm, donor embryos, a gestational carrier, freezing for later, growing her family again, or "I'd rather not say"; her gender in her words | Suggests questions for her path; never assumes a husband, a donor or a pregnancy goal |
+| **Your person** | Their name, her word for them (partner, wife, husband, spouse, or her own), their pronouns | Uses her word, never ours |
+| **Your background** | Conditions she's been told about, past cycles, whether she's had a loss, allergies | Suggests questions for her visit and fills her visit summary. Never diagnoses |
+
+**Consent.** Identity, family and health answers need her OK first ("It's OK for Pumpkin to keep these answers to tailor my app"). The database refuses them without it. She can clear them anytime, which removes them. Only she can see them: not her support people, not clinic staff, not the community. The activity log records which parts changed, never the answers.
+
+## How Pumpkin talks to me
+
+- **Tone:** "Just the facts" or "A bit more reassurance."
+- **New numbers:** optionally wait behind "Show me" on Today and in her record.
+- **Costs:** show what's due anytime, or only when a payment is due within a week.
+- **Days to go easy:** dates she picks (every year or one year), each **quiet** (Today shows only meds and visits) or **gentle** (a "Thinking of you today" card, no nudges). The note is private.
+- **Need a break?** Pause for 3 days or a week, or "until I come back." Medication reminders still come. "I'm back" turns it off.
+
+## Visit help
+
+- **Ideas for your visit:** up to six questions for her stage, path and background, skipping ones she's already written. Tap to add.
+- **My visit summary:** one page with her name and pronouns, path, person, background, current meds, latest results (with the lab's range) and open questions. She prints it or shares it herself; Pumpkin doesn't send it anywhere.
+
+## Community name
+
+She picks a name (3 to 24 characters, unique, can't include her real name), a brush-line picture and color, and whether it shows her stage or path. Other members never see her real name; moderators can see the link only for safety. The community itself is next on the roadmap.
+
 ## The safety lines
 
 - **No verdicts on results.** Without her clinic's own ranges, Pumpkin shows what a test measures and the lab's printed range, never whether her number is good or bad. Her care team decides.

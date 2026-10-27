@@ -29,6 +29,8 @@
 
 - [ ] On your own, next: community (moderated), connect her clinic and move her space into it, patient-portal results sync (SMART on FHIR patient access), bank link (Plaid, optional and read-only), support-person invites from the on-your-own app, Spanish
 - [x] Free AI reads: a set number each month (default 10), then typed notes and adding by hand; premium has no limit
+- [x] Make Pumpkin yours (name, pronouns, family path, her person, background with consent), how Pumpkin talks to me (tone, days to go easy, pause and break, new numbers wait, cost check-ins), visit question ideas and summary, community name
+- [ ] Carry those choices to the rest of the app: support people's side (her notes on how to help, quiet days without the reason), clinic side when she connects (nurses see her name, pronouns and how she wants hard news, with permission), community content filters
 - [ ] Premium purchase in the app (App Store and Google Play subscriptions)
 - [ ] Sync health data from wearables and trackers (Oura, Apple Health, others), with her choosing what to share; check each company's data access terms first
 - [ ] Clinical advisor review of the test explainers before real patients

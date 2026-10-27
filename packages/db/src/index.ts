@@ -15,3 +15,4 @@ export * from "./fhir-pull";
 export * from "./money";
 export * from "./solo";
 export * from "./capture";
+export * from "./about";
