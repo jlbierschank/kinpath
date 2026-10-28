@@ -70,7 +70,17 @@ function Back({ label = "Back", onBack }: { label?: string; onBack: () => void }
     </View>
   );
 }
-function Urgent({ profile, crisis, back }: { profile: SoloProfile | null; crisis: boolean; back: () => void }) {
+function Urgent({ profile, crisis, back, api, reload }: { profile: SoloProfile | null; crisis: boolean; back: () => void; api: Api; reload: () => Promise<void> }) {
+  const [typed, setTyped] = useState("");
+  const [saved, setSaved] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const phone = profile?.afterHoursPhone || saved;
+  const save = async () => {
+    setSaving(true); setErr(null);
+    try { await api.saveSoloProfile({ afterHoursPhone: typed.trim() }); setSaved(typed.trim()); void reload(); }
+    catch (e) { setErr((e as Error).message); } finally { setSaving(false); }
+  };
   return (
     <>
       <View testID="solo-urgent" style={{ backgroundColor: C.alertSoft, borderRadius: 22, padding: 18, gap: 10 }}>
@@ -81,9 +91,16 @@ function Urgent({ profile, crisis, back }: { profile: SoloProfile | null; crisis
           : `Pumpkin didn't try to answer this, and nothing was saved. Call ${profile?.clinicName ? `${profile.clinicName}'s` : "your clinic's"} after-hours line now.`}</T>
         {crisis
           ? <Button kind="red" label="Call or text 988" onPress={() => Linking.openURL("tel:988")} />
-          : profile?.afterHoursPhone
-            ? <Button testID="call-after-hours" kind="red" label={`Call ${profile.afterHoursPhone}`} onPress={() => Linking.openURL(telOf(profile.afterHoursPhone!))} />
-            : <T style={{ fontFamily: F.sans600 }}>Your clinic's after-hours number is on your paperwork or their website. Add it in Settings so it's here next time.</T>}
+          : phone
+            ? <Button testID="call-after-hours" kind="red" label={`Call ${phone}`} onPress={() => Linking.openURL(telOf(phone))} />
+            : (
+              <View style={{ gap: 8 }}>
+                <T style={{ fontFamily: F.sans600 }}>Your clinic's after-hours number is on your paperwork or their website. Add it here and the call button shows up, now and next time.</T>
+                <Field testID="urgent-phone" label="Their after-hours nurse line" value={typed} onChange={setTyped} keyboard="phone-pad" placeholder="(813) 555-0100" />
+                {err ? <T style={{ color: C.red }}>{err}</T> : null}
+                <Button testID="urgent-phone-save" kind="esp" label={saving ? "Saving…" : "Save and show the call button"} disabled={saving || typed.replace(/\D/g, "").length < 7} onPress={save} />
+              </View>
+            )}
         <T style={{ fontFamily: F.sans700 }}>If you have chest pain, trouble breathing or heavy bleeding, call 911.</T>
         <Button kind="line" label="Call 911" onPress={() => Linking.openURL("tel:911")} />
       </View>
@@ -139,7 +156,7 @@ export function SignupFlow({ onSignedIn, onBack }: { onSignedIn: (u: SignedInUse
           <Chips>{STAGES.map(([id, label]) => <Chip key={id} testID={`stage-${id}`} label={label} selected={stage === id} onPress={() => setStage(id)} />)}</Chips>
         </View>
         <Field testID="signup-clinic" label="Your clinic (optional)" value={clinic} onChange={setClinic} placeholder="e.g. Coastal Fertility" />
-        <Field testID="signup-phone" label="Their after-hours number (optional)" value={phone} onChange={setPhone} keyboard="phone-pad" placeholder="(813) 555-0100"
+        <Field testID="signup-phone" label="Their after-hours nurse line (optional)" value={phone} onChange={setPhone} keyboard="phone-pad" placeholder="(813) 555-0100"
           hint="Without a nurse on Pumpkin, urgent symptoms go to this number. It's usually on your paperwork." />
         {err}
         <Button testID="signup-finish" label={busy ? "Setting up…" : "Start my record"} disabled={busy || !first.trim() || !stage}
@@ -223,7 +240,7 @@ export function SoloApp({ api, onSignOut }: { api: Api; onSignOut: () => void })
       {screen.name === "summary" && <SummaryScreen api={api} />}
       {screen.name === "people" && <PeopleScreen api={api} />}
       {screen.name === "feedback" && <FeedbackScreen api={api} done={(m) => { setScreen({ name: "more" }); setNotice(m); }} />}
-      {screen.name === "urgent" && <Urgent profile={today.profile} crisis={screen.crisis} back={() => home()} />}
+      {screen.name === "urgent" && <Urgent profile={today.profile} crisis={screen.crisis} back={() => home()} api={api} reload={load} />}
     </Frame>
     {welcome && !reduce ? (
       <Pressable testID="welcome" accessibilityRole="button" accessibilityLabel="Welcome to Pumpkin. Tap to continue." onPress={() => setWelcome(false)}
@@ -385,6 +402,7 @@ function TodayScreen({ d, api, go, reload }: { d: SoloToday; api: Api; go: (s: S
 
 function AskClinicCard({ api, profile, reload }: { api: Api; profile: SoloProfile; reload: () => Promise<void> }) {
   const [name, setName] = useState(profile.clinicName ?? "");
+  const [phone, setPhone] = useState(profile.afterHoursPhone ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [share, setShare] = useState<string | null>(null);
@@ -404,9 +422,10 @@ function AskClinicCard({ api, profile, reload }: { api: Api; profile: SoloProfil
       <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="people" color={C.sageInk} /><T style={{ fontFamily: F.display, fontSize: 21 }}>Want your clinic on Pumpkin?</T></View>
       <T style={{ fontSize: 15 }}>We'll let them know a patient asked. We never share your health details.</T>
       <Field testID="ask-clinic-name" label="Your clinic's name" value={name} onChange={setName} />
+      {profile.afterHoursPhone ? null : <Field testID="ask-clinic-phone" label="Their after-hours nurse line (optional)" value={phone} onChange={setPhone} keyboard="phone-pad" placeholder="(813) 555-0100" hint="If something's urgent, Pumpkin shows a button to call it." />}
       {err ? <T style={{ color: C.red }}>{err}</T> : null}
       <Button testID="ask-clinic" kind="esp" label={busy ? "Sending…" : "Ask my clinic to join"} disabled={busy || name.trim().length < 2}
-        onPress={async () => { setBusy(true); setErr(null); try { const r = await api.askMyClinic(name); setShare(r.shareText); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } }} />
+        onPress={async () => { setBusy(true); setErr(null); try { const r = await api.askMyClinic(name); if (!profile.afterHoursPhone && phone.trim()) await api.saveSoloProfile({ afterHoursPhone: phone.trim() }); setShare(r.shareText); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } }} />
     </View>
   );
 }
@@ -889,7 +908,7 @@ function MoreScreen({ api, profile, reload, onSignOut, go }: { api: Api; profile
         <T style={{ fontFamily: F.sans600, fontSize: 15 }}>Where are you right now?</T>
         <Chips>{STAGES.map(([id, label]) => <Chip key={id} label={label} selected={stage === id} onPress={() => setStage(id)} />)}</Chips>
         <Field label="Your clinic" value={clinic} onChange={setClinic} />
-        <Field label="Their after-hours number" value={phone} onChange={setPhone} keyboard="phone-pad" hint="Urgent symptoms go here (or 911)." />
+        <Field testID="settings-phone" label="Their after-hours nurse line" value={phone} onChange={setPhone} keyboard="phone-pad" hint="Urgent symptoms go here (or 911)." />
         <Button kind="esp" label="Save" onPress={() => act(() => api.saveSoloProfile({ stage, clinicName: clinic, afterHoursPhone: phone }), "Saved.")} />
       </Card>
       <Card style={{ gap: 10 }}>
