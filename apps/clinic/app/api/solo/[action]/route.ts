@@ -3,7 +3,7 @@ import {
   addAppointment, addCapture, addCost, addMedication, addQuestion, addResult, askMyClinic, captureFile, deleteAppointment, deleteCost, deleteMyAccount, deleteQuestion,
   deleteResult, dismissItem, exportMyData, getReminderPrefs, itemsToCheck, newCalendarLink, SAMPLES, saveItem, setQuestionAsked, soloCosts, soloMeds, soloProfile,
   soloResults, soloToday, stopCalendarLink, stopMedication, updateSoloProfile, visitQuestions, financePartners,
-  aboutMe, addTenderDate, deleteTenderDate, questionIdeas, saveAbout, setAlias, setQuiet, visitSummary, withdrawAboutConsent,
+  patientSharing, aboutMe, addTenderDate, deleteTenderDate, questionIdeas, saveAbout, setAlias, setQuiet, visitSummary, withdrawAboutConsent,
 } from "@kinpath/db";
 import { getDb } from "@/lib/db";
 import { handle, preflight } from "@/lib/api";
@@ -45,6 +45,7 @@ export async function GET(req: Request, ctx: Ctx) {
       case "about": return aboutMe(db, s, pid);
       case "question-ideas": return questionIdeas(db, s, pid);
       case "visit-summary": return visitSummary(db, s, pid);
+      case "sharing": return patientSharing(db, s, pid);
       default: throw new HandoffError("Not found.");
     }
   });

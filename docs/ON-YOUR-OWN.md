@@ -82,6 +82,12 @@ DATABASE_URL=... node apps/clinic/scripts/waitlist.mjs let-in 25             # n
 
 People who join from the app are added automatically. Everyone hears the same thing whether or not it's their turn, so the sign-up screen can't be used to find out who is on Pumpkin.
 
+## Your people, feedback, testing
+
+- **Your people** (Settings): she invites a partner, family member or friend by email or text, picks what they see (where she is, meds and doses, results, costs), and changes or removes them anytime. They join with a one-time code and confirm it's them. Her background answers and notes are never shared.
+- **Ask my clinic** emails the Pumpkin team the clinic's name and how many people have asked (`KINPATH_TEAM_EMAIL`), and gives her a note she can send her clinic herself.
+- **Send feedback** goes to the same team address and is kept. The beta test build is in docs/TESTING.md.
+
 ## Privacy and law (for counsel)
 
 A patient's own entries outside a clinic relationship aren't covered by HIPAA through a clinic. The FTC's Health Breach Notification Rule (expanded to health apps in 2024) and state laws such as Washington's My Health My Data Act apply instead. Counsel should review consent wording, the sign-up flow and the breach plan before real patients use it.
@@ -93,7 +99,7 @@ A patient's own entries outside a clinic relationship aren't covered by HIPAA th
 
 ## Not built yet
 
-Connecting a clinic and moving her space into it; reading results straight from a patient portal (SMART on FHIR patient access); linking a bank account (Plaid); two-way Google or Outlook calendar; recorded voice memos; support-person invites from the on-your-own app (the server supports them); Spanish for this part of the app.
+Connecting a clinic and moving her space into it; reading results straight from a patient portal (SMART on FHIR patient access); linking a bank account (Plaid); two-way Google or Outlook calendar; recorded voice memos; Spanish for this part of the app.
 
 ## Try it in the demo
 

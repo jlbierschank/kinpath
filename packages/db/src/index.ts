@@ -16,3 +16,5 @@ export * from "./money";
 export * from "./solo";
 export * from "./capture";
 export * from "./about";
+export * from "./deliver";
+export * from "./testing";

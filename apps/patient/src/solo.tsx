@@ -22,6 +22,8 @@ import { deviceName } from "./session";
 import { Button, C, Cap, Card, Chip, Chips, F, H1, Icon, Muted, Pill, st, T, Today, Toggle } from "./ui";
 import { Field } from "./field";
 import { AboutScreen, AliasScreen, QuestionIdeas, SummaryScreen, TalkScreen } from "./yours";
+import { FeedbackScreen, PeopleScreen } from "./people";
+import { TestBanner } from "./appinfo";
 import { PRONOUNS } from "@kinpath/core";
 
 const STAGES: [SoloStage, string, string][] = [
@@ -48,7 +50,7 @@ function Frame({ children, top, tabs }: { children: ReactNode; top?: ReactNode; 
       <StatusBar style="dark" />
       <View style={{ flex: 1, width: "100%", maxWidth: 480, alignSelf: "center" }}>
         {top}
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 28, gap: 14 }} keyboardShouldPersistTaps="handled">{children}</ScrollView>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 28, gap: 14 }} keyboardShouldPersistTaps="handled"><TestBanner />{children}</ScrollView>
         {tabs}
       </View>
     </SafeAreaView>
@@ -159,7 +161,7 @@ export function SignupFlow({ onSignedIn, onBack }: { onSignedIn: (u: SignedInUse
 // ---------- the app ----------
 
 type Tab = "today" | "record" | "add" | "costs" | "more";
-type Screen = { name: Tab } | { name: "check" } | { name: "urgent"; crisis: boolean } | { name: "say" } | { name: "type" } | { name: "by-hand"; kind: ItemKind } | { name: "original"; captureId: string; text?: string } | { name: "about" } | { name: "talk" } | { name: "alias" } | { name: "summary" };
+type Screen = { name: Tab } | { name: "check" } | { name: "urgent"; crisis: boolean } | { name: "say" } | { name: "type" } | { name: "by-hand"; kind: ItemKind } | { name: "original"; captureId: string; text?: string } | { name: "about" } | { name: "talk" } | { name: "alias" } | { name: "summary" } | { name: "people" } | { name: "feedback" };
 
 export function SoloApp({ api, onSignOut }: { api: Api; onSignOut: () => void }) {
   const [screen, setScreen] = useState<Screen>({ name: "today" });
@@ -210,6 +212,8 @@ export function SoloApp({ api, onSignOut }: { api: Api; onSignOut: () => void })
       {screen.name === "talk" && <TalkScreen api={api} done={(m) => home(m)} />}
       {screen.name === "alias" && <AliasScreen api={api} done={(m) => { void load(); setScreen({ name: "more" }); setNotice(m); }} />}
       {screen.name === "summary" && <SummaryScreen api={api} />}
+      {screen.name === "people" && <PeopleScreen api={api} />}
+      {screen.name === "feedback" && <FeedbackScreen api={api} done={(m) => { setScreen({ name: "more" }); setNotice(m); }} />}
       {screen.name === "urgent" && <Urgent profile={today.profile} crisis={screen.crisis} back={() => home()} />}
     </Frame>
   );
@@ -360,6 +364,18 @@ function AskClinicCard({ api, profile, reload }: { api: Api; profile: SoloProfil
   const [name, setName] = useState(profile.clinicName ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [share, setShare] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  if (share) return (
+    <View testID="ask-clinic-sent" style={{ backgroundColor: C.sage, borderRadius: 22, padding: 18, gap: 10 }}>
+      <T style={{ fontFamily: F.display, fontSize: 21 }}>Thanks. We'll reach out to them.</T>
+      <T style={{ fontSize: 15 }}>A note from you helps too. Here's one you can send your clinic, or change it however you like:</T>
+      <View style={{ backgroundColor: C.paper, borderRadius: 14, padding: 12 }}><T testID="ask-clinic-text" style={{ fontSize: 14.5 }}>{share}</T></View>
+      <Button kind="esp" label={copied ? "Copied" : "Copy the note"} onPress={async () => { await Clipboard.setStringAsync(share); setCopied(true); }} />
+      {Platform.OS !== "web" ? <Button kind="line" label="Send it" onPress={() => { void Share.share({ message: share }); }} /> : null}
+      <Pressable onPress={() => { setShare(null); void reload(); }}><Muted style={{ textDecorationLine: "underline" }}>Done</Muted></Pressable>
+    </View>
+  );
   return (
     <View style={{ backgroundColor: C.sage, borderRadius: 22, padding: 18, gap: 10 }}>
       <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="people" color={C.sageInk} /><T style={{ fontFamily: F.display, fontSize: 21 }}>Want your clinic on Pumpkin?</T></View>
@@ -367,7 +383,7 @@ function AskClinicCard({ api, profile, reload }: { api: Api; profile: SoloProfil
       <Field testID="ask-clinic-name" label="Your clinic's name" value={name} onChange={setName} />
       {err ? <T style={{ color: C.red }}>{err}</T> : null}
       <Button testID="ask-clinic" kind="esp" label={busy ? "Sending…" : "Ask my clinic to join"} disabled={busy || name.trim().length < 2}
-        onPress={async () => { setBusy(true); setErr(null); try { await api.askMyClinic(name); await reload(); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } }} />
+        onPress={async () => { setBusy(true); setErr(null); try { const r = await api.askMyClinic(name); setShare(r.shareText); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } }} />
     </View>
   );
 }
@@ -839,7 +855,7 @@ function MoreScreen({ api, profile, reload, onSignOut, go }: { api: Api; profile
       {msg ? <T testID="more-msg" style={{ color: C.sageInk, fontFamily: F.sans600 }}>{msg}</T> : null}
       {err ? <T style={{ color: C.red }}>{err}</T> : null}
       <Card pad={false}>
-        {([["about", "heart", "Make Pumpkin yours", "Your name, pronouns, family and background"], ["talk", "message", "How Pumpkin talks to me", "Tone, quiet days, pauses, new results"], ["summary", "doc", "My visit summary", "One page to bring to an appointment"], ["alias", "people", "My community name", "How you'll appear in the community"]] as const).map(([name, icon, title, sub], i) => (
+        {([["about", "heart", "Make Pumpkin yours", "Your name, pronouns, family and background"], ["talk", "message", "How Pumpkin talks to me", "Tone, quiet days, pauses, new results"], ["summary", "doc", "My visit summary", "One page to bring to an appointment"], ["people", "people", "Your people", "Invite a partner or friend, choose what they see"], ["alias", "people", "My community name", "How you'll appear in the community"], ["feedback", "message", "Send feedback", "Tell the Pumpkin team what to fix"]] as const).map(([name, icon, title, sub], i) => (
           <Pressable key={name} testID={`more-${name}`} onPress={() => go({ name })} style={[st.row, i === 0 && { borderTopWidth: 0 }, { minHeight: 64 }]}>
             <Icon name={icon} /><View style={{ flex: 1 }}><T style={{ fontFamily: F.sans600, fontSize: 15.5 }}>{title}</T><Muted style={{ fontSize: 13.5 }}>{sub}</Muted></View>
           </Pressable>

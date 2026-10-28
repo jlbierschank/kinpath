@@ -52,9 +52,9 @@ export interface SupportPerson { userId: string; name: string; relationship: Rel
 export interface Invite { id: string; name: string; relationship: Relationship; contact: string; sections: Shareable[]; expiresAt: string }
 export interface Note { id: string; fromName: string; body: string; level: "routine" | "urgent" | "crisis"; createdAt: string; seenAt: string | null }
 export type PartnerHome =
-  | { clinic: { name: string }; shared: false; name: string }
+  | { clinic: { name: string; personal?: boolean }; shared: false; name: string }
   | {
-      clinic: { name: string }; shared: true; name: string; firstName: string | null; sections: Shareable[];
+      clinic: { name: string; personal?: boolean }; shared: true; name: string; firstName: string | null; sections: Shareable[];
       stage: string | null; stimDay: number | null;
       schedule: { upcoming: Dose[]; missed: Dose[]; recent: Dose[] } | null;
       results: { id: string; analyte: string; value: number; unit: string; status: string; text: string }[] | null;
@@ -177,7 +177,9 @@ export class Api {
   soloToday = () => this.call<SoloToday>("/api/solo/today");
   soloProfile = () => this.call<SoloProfile>("/api/solo/profile");
   saveSoloProfile = (change: { stage?: SoloStage; clinicName?: string; afterHoursPhone?: string }) => this.call<unknown>("/api/solo/profile", { method: "POST", body: change });
-  askMyClinic = (clinicName: string) => this.call<{ ok: boolean }>("/api/solo/ask-clinic", { method: "POST", body: { clinicName } });
+  askMyClinic = (clinicName: string) => this.call<{ ok: boolean; shareText: string }>("/api/solo/ask-clinic", { method: "POST", body: { clinicName } });
+  soloSharing = () => this.call<{ partners: SupportPerson[]; notes: Note[]; invites: Invite[] }>("/api/solo/sharing");
+  sendFeedback = (body: string, screen?: string, appVersion?: string) => this.call<{ ok: boolean }>("/api/feedback", { method: "POST", body: { body, screen, appVersion } });
   soloMeds = () => this.call<SoloMed[]>("/api/solo/meds");
   soloResults = () => this.call<ResultGroup[]>("/api/solo/results");
   soloCosts = () => this.call<SoloCosts>("/api/solo/costs");

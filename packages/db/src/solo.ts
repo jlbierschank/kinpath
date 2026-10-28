@@ -16,6 +16,11 @@ import { sendDirect } from "./notify";
 import { contactOf } from "./patients";
 import { patientSchedule } from "./loop";
 import { aboutMe, todayFeel } from "./about";
+import { tellTeamClinicAsked } from "./testing";
+
+/** What she can send her clinic herself (by email or text). Nothing about her health. */
+export const clinicShareText = (clinicName: string) =>
+  `Hi ${clinicName}, I'm one of your patients and I use Pumpkin to keep track of my treatment. Would you consider offering it to your patients? It's a patient app clinics can brand as their own: thepumpkin.ai/clinics`;
 
 const CODE_MINUTES = 10;
 const TICKET_MINUTES = 30;
@@ -26,7 +31,7 @@ const mask = (s: string) => (s.includes("@") ? s.replace(/^(.).*(@.*)$/, "$1â€¢â
  * Demo builds (synthetic data, KINPATH_DEV_LOGIN=1) skip the waitlist unless KINPATH_OPEN_SIGNUP=0.
  * Real builds let people in from the waitlist in batches (KINPATH_OPEN_SIGNUP=1 opens it to everyone).
  */
-export const openSignup = () => process.env.KINPATH_OPEN_SIGNUP === "1" || (process.env.KINPATH_DEV_LOGIN === "1" && process.env.KINPATH_OPEN_SIGNUP !== "0");
+export const openSignup = () => process.env.KINPATH_OPEN_SIGNUP === "1" || ((process.env.KINPATH_DEV_LOGIN === "1" || process.env.KINPATH_TEST_MODE === "1") && process.env.KINPATH_OPEN_SIGNUP !== "0");
 
 // ---------- waitlist and sign-up (the sign-up service, outside row-level security) ----------
 
@@ -240,7 +245,8 @@ export async function askMyClinic(db: Db, actor: Actor, patientId: string, clini
     await audit(tx, actor, "patient.asked_clinic", patientId, {});
   });
   await db.query(`INSERT INTO clinic_requests (clinic_name, patient_id, source) VALUES ($1,$2,'app')`, [name, patientId]);
-  return { ok: true };
+  await tellTeamClinicAsked(db, name);
+  return { ok: true, shareText: clinicShareText(name) };
 }
 
 // ---------- meds ----------
@@ -554,12 +560,14 @@ export async function deleteMyAccount(db: Db, actor: Actor, confirm: string) {
   const tables = (await spaceTables(db)).filter((t) => t !== "clinics" && t !== "app_users");
   await db.transaction(async (tx) => {
     // Rows tied to her people but without a clinic_id.
-    for (const [table, col] of [["sessions", "user_id"], ["sign_in_codes", "user_id"], ["user_credentials", "user_id"], ["user_settings", "user_id"], ["notification_prefs", "user_id"]] as const) {
+    for (const [table, col] of [["sessions", "user_id"], ["sign_in_codes", "user_id"], ["user_credentials", "user_id"], ["user_settings", "user_id"], ["notification_prefs", "user_id"], ["feedback", "user_id"], ["outbox", "user_id"]] as const) {
       const exists = (await tx.query(`SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1`, [table])).rows[0];
       if (exists) await tx.query(`DELETE FROM ${table} WHERE ${col} = ANY($1::uuid[])`, [ids]);
     }
     await tx.query(`DELETE FROM clinic_requests WHERE patient_id = ANY($1::uuid[])`, [patients]);
-    await tx.query(`DELETE FROM early_access WHERE identifier = ANY($1::text[])`, [users.flatMap((u) => [u.email, u.phone].filter((x): x is string => !!x))]);
+    const contacts = users.flatMap((u) => [u.email, u.phone].filter((x): x is string => !!x));
+    await tx.query(`DELETE FROM early_access WHERE identifier = ANY($1::text[])`, [contacts]);
+    await tx.query(`DELETE FROM outbox WHERE to_address = ANY($1::text[])`, [contacts]);
     let left = tables;
     for (let pass = 0; pass < 12 && left.length; pass++) {
       const next: string[] = [];

@@ -107,7 +107,10 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localho
   ok(await sees('Today', 15000) && await sees('Just starting'), 'Signed up and landed on Today');
   ok(await sees('Want your clinic on Pumpkin?'), 'New space offers to ask her clinic');
   await byId('ask-clinic').click();
-  ok(await sees('You asked Gulf Coast Fertility to join'), 'Asked her clinic to join');
+  ok(await sees("We'll reach out to them"), 'Asked her clinic to join');
+  ok((await byId('ask-clinic-text').innerText()).includes('Gulf Coast Fertility'), 'Gets a note she can send her clinic');
+  await p.getByText('Done', { exact: true }).click();
+  ok(await sees('You asked Gulf Coast Fertility to join'), 'Today remembers she asked');
   await shot('solo-10-new');
 
   // Delete her account.

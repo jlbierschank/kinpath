@@ -7,7 +7,9 @@ export async function middleware(req: NextRequest) {
   if (!passcode) return NextResponse.next();
   const { pathname, search } = req.nextUrl;
   // The records connection has its own key, so it works behind the demo passcode too.
-  if (pathname === "/demo-pass" || pathname === "/api/demo-pass" || pathname === "/api/health" || pathname.startsWith("/api/integrations/")) return NextResponse.next();
+  if (pathname === "/demo-pass" || pathname === "/api/demo-pass" || pathname === "/api/health" || pathname.startsWith("/api/integrations/") || pathname === "/api/app-info") return NextResponse.next();
+  // The home-screen icon and app manifest hold nothing private; phones fetch them without the passcode cookie.
+  if (/^\/phone\/(manifest\.webmanifest|[\w-]+\.png)$/.test(pathname)) return NextResponse.next();
   if (req.cookies.get(DEMO_COOKIE)?.value === (await passToken(passcode))) return NextResponse.next();
   if (pathname.startsWith("/api/")) return NextResponse.json({ error: "This demo needs its passcode. Open the demo link first." }, { status: 401 });
   const url = req.nextUrl.clone();

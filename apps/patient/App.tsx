@@ -11,6 +11,7 @@ import { Api, auth, type Auth, type SignedInUser, type NextCycle, type Dose, typ
 import { askPermission, remindersSupported, syncReminders } from "./src/reminders";
 import { CostsCard, CostsScreen, PartnerCostsCard, ReceiptScreen } from "./src/money";
 import { SignupFlow, SoloApp } from "./src/solo";
+import { TestBanner, useAppInfo } from "./src/appinfo";
 import { clearSession, deviceName, loadSession, saveSession } from "./src/session";
 import { Bell, InboxScreen, NotificationSettingsScreen, SignInSection } from "./src/account";
 import { AskBox, Avatar, Button, C, Cap, Card, Chip, Chips, F, H1, JourneyPath, Moment, Muted, Pill, Row, st, T, TimelineItem, Today, Toggle } from "./src/ui";
@@ -75,7 +76,7 @@ function Frame({ children, tabs, top }: { children: ReactNode; tabs?: ReactNode;
       <StatusBar style="dark" />
       <View style={{ flex: 1, width: "100%", maxWidth: 480, alignSelf: "center" }}>
         {top}
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 24, gap: 14 }} keyboardShouldPersistTaps="handled">{children}</ScrollView>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 24, gap: 14 }} keyboardShouldPersistTaps="handled"><TestBanner />{children}</ScrollView>
         {tabs}
       </View>
     </SafeAreaView>
@@ -96,6 +97,9 @@ function SignIn({ onSignedIn, onDemo }: { onSignedIn: (u: SignedInUser) => void;
   const back = <BackBar label="Back" onBack={() => { setStep({ name: "start" }); setCode(""); setError(null); }} />;
   const codeInput = <TextInput testID="signin-code" style={[st.input, { fontFamily: F.sans600, fontSize: 24, letterSpacing: 6 }]} value={code} onChangeText={setCode} keyboardType="number-pad" textContentType="oneTimeCode" autoComplete="one-time-code" maxLength={7} placeholder="123456" placeholderTextColor={C.stone} />;
   const err = error && <T testID="signin-error" style={{ color: C.red }}>{error}</T>;
+  const info = useAppInfo();
+  // The beta test build is plain Pumpkin: no demo clinic, no test-person picker.
+  const plain = !!info?.testMode;
 
   if (step.name === "signup") return <SignupFlow onSignedIn={onSignedIn} onBack={() => setStep({ name: "start" })} />;
   if (step.name === "code") return (
@@ -111,7 +115,7 @@ function SignIn({ onSignedIn, onDemo }: { onSignedIn: (u: SignedInUser) => void;
   if (step.name === "join") return (
     <Frame top={back}>
       <Today size={34}>Join with an invite</Today>
-      <Muted>Someone going through treatment at Bayside invited you to follow along. You'll see only what they choose to share.</Muted>
+      <Muted>{plain ? "Someone invited you to follow along with their treatment. You'll see only what they choose to share." : "Someone going through treatment at Bayside invited you to follow along. You'll see only what they choose to share."}</Muted>
       <Card style={{ gap: 10 }}>
         <Cap>Invite code</Cap>
         <TextInput testID="invite-code" style={[st.input, { fontFamily: F.sans600, fontSize: 20, letterSpacing: 2 }]} value={inviteCode} onChangeText={setInviteCode} autoCapitalize="characters" autoCorrect={false} placeholder="ABCD-EFGH" placeholderTextColor={C.stone} />
@@ -132,9 +136,9 @@ function SignIn({ onSignedIn, onDemo }: { onSignedIn: (u: SignedInUser) => void;
     </Frame>
   );
   return (
-    <Frame top={<View style={{ padding: 18, paddingBottom: 6 }}><Muted>Bayside Fertility · powered by Pumpkin</Muted></View>}>
+    <Frame top={<View style={{ padding: 18, paddingBottom: 6 }}>{plain ? <Text style={{ fontFamily: F.display700, fontSize: 22, letterSpacing: -0.4, color: C.espresso }}>pumpkin</Text> : <Muted>Bayside Fertility · powered by Pumpkin</Muted>}</View>}>
       <Today size={38}>Welcome.</Today>
-      <Muted>Sign in with the mobile number or email Bayside has for you. We'll send a code. No password needed.</Muted>
+      <Muted>{plain ? "Sign in with your mobile number or email. We'll send a code. No password needed." : "Sign in with the mobile number or email Bayside has for you. We'll send a code. No password needed."}</Muted>
       <Card style={{ gap: 10 }}>
         <TextInput testID="signin-identifier" style={st.input} value={identifier} onChangeText={setIdentifier} autoCapitalize="none" keyboardType="email-address" textContentType="username" placeholder="(813) 555-0142 or you@email.com" placeholderTextColor={C.stone} />
         {err}
@@ -146,7 +150,7 @@ function SignIn({ onSignedIn, onDemo }: { onSignedIn: (u: SignedInUser) => void;
         <T style={{ fontSize: 14.5 }}>Keep your meds, numbers and costs in one place on your own, and bring your clinic in later.</T>
         <Button testID="start-on-my-own" kind="esp" label="Start on my own" onPress={() => { setError(null); setStep({ name: "signup" }); }} />
       </Card>
-      {(__DEV__ || process.env.EXPO_PUBLIC_DEMO === "1") && (
+      {(__DEV__ || process.env.EXPO_PUBLIC_DEMO === "1") && !plain && (
         <>
           <View style={{ height: 1, backgroundColor: C.line, marginVertical: 6 }} />
           <Cap>Demo build · test people (synthetic data only)</Cap>
@@ -216,7 +220,7 @@ function Signed({ api, initials, onSignOut, demo }: { api: Api; initials: string
   }, [api, refreshAlerts]);
   useEffect(() => { void load(); }, [load]);
 
-  if (error) return <Frame><Today size={34}>Can't reach Bayside</Today><Muted>{error}</Muted><Button label="Try again" onPress={load} /></Frame>;
+  if (error) return <Frame><Today size={34}>Can't reach Pumpkin</Today><Muted>{error}</Muted><Button label="Try again" onPress={load} /></Frame>;
   if (!data) return <Frame><Muted>Loading…</Muted></Frame>;
   const t: Tx = (en, es) => (data.lang === "es" ? es : en);
   const go = (s: Screen) => setScreen(s);
@@ -1167,7 +1171,7 @@ function PartnerApp({ api, initials, onSignOut, demo }: { api: Api; initials: st
   }, [api, refreshAlerts]);
   useEffect(() => { void load(); }, [load]);
 
-  if (error) return <Frame><Today size={34}>Can't reach Bayside</Today><Muted>{error}</Muted><Button label="Try again" onPress={load} /></Frame>;
+  if (error) return <Frame><Today size={34}>Can't reach Pumpkin</Today><Muted>{error}</Muted><Button label="Try again" onPress={load} /></Frame>;
   if (!data) return <Frame><Muted>Loading…</Muted></Frame>;
   const home = () => { void load(); setScreen({ name: "home" }); };
   const top = screen.name === "home"
@@ -1183,12 +1187,12 @@ function PartnerApp({ api, initials, onSignOut, demo }: { api: Api; initials: st
         : (
           <>
             <Today size={34}>Nothing shared right now</Today>
-            <Muted>When your partner shares parts of her treatment with you in her Bayside app, they'll show up here.</Muted>
+            <Muted>When your partner shares parts of her treatment with you in her app, they'll show up here.</Muted>
             <Button kind="plain" label={demo ? "Switch test person" : "Sign out"} onPress={onSignOut} />
           </>
         ))}
       {screen.name === "walk" && <Walk doses={screen.doses} focus={screen.focus} api={api} lang="en" t={t} done={home} helper={her} somethingWrong={() => Linking.openURL(NURSE_LINE)} />}
-      {screen.name === "urgent" && <PartnerUrgent level={screen.level} her={her} back={home} />}
+      {screen.name === "urgent" && <PartnerUrgent level={screen.level} her={her} back={home} personal={!!data.clinic.personal} />}
       {screen.name === "costs" && <CostsScreen api={api} t={t} lang="en" partner herName={data.shared ? data.firstName ?? undefined : undefined} />}
       {screen.name === "inbox" && <InboxScreen api={api} t={t} open={() => home()} changed={refreshAlerts} />}
       {screen.name === "notif-settings" && <NotificationSettingsScreen api={api} t={t} lang="en" />}
@@ -1201,7 +1205,7 @@ function PartnerApp({ api, initials, onSignOut, demo }: { api: Api; initials: st
           <Cap>Your access</Cap>
           <Card style={{ gap: 8 }}>
             <T style={{ fontSize: 15, lineHeight: 22 }}>{data.shared ? `You see what ${her} chooses to share: ${data.sections.map((s) => ({ schedule: "her cycle", meds: "injections", results: "results", money: "costs" })[s]).join(", ")}.` : "Nothing is shared with you right now."}</T>
-            <Muted>{`${her === "your partner" ? "Her" : `${her}'s`} messages with the care team are always private. She can change what you see at any time, and Bayside keeps a record each time you look.`}</Muted>
+            <Muted>{`${her === "your partner" ? "Her" : `${her}'s`} messages with the care team are always private. She can change what you see at any time, and Pumpkin keeps a record each time you look.`}</Muted>
           </Card>
           <SignInSection api={api} t={t} onSignOut={onSignOut} demo={demo} />
         </>
@@ -1299,7 +1303,7 @@ function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHom
           ) : (
             <View style={st.dark}>
               <Text style={{ fontFamily: F.serif, fontSize: 24, color: C.paper }}>All set for tonight</Text>
-              <T style={{ fontSize: 14.5, color: "#E9DED3" }}>{`${her} logged ${loggedToday.length}. Bayside can see them.`}</T>
+              <T style={{ fontSize: 14.5, color: "#E9DED3" }}>{`${her} logged ${loggedToday.length}.${data.clinic.personal ? "" : " Bayside can see them."}`}</T>
             </View>
           )}
         </View>
@@ -1310,7 +1314,7 @@ function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHom
         {sent && <Moment>{`Sent. ${her} will see it on her home screen.`}</Moment>}
         <Chips>{quickNotes(data.sections.includes("meds"), waiting, data.news).map((q) => <Chip key={q} label={q} onPress={() => { setSent(false); setNote(q); }} />)}</Chips>
         <AskBox testID="note" value={note} onChange={(v) => { setSent(false); setNote(v); }} onSubmit={() => send(note)} placeholder={`Write something for ${her}`} />
-        <Muted style={{ fontSize: 12 }}>{`Notes go to ${her}, not to the clinic. If something's wrong medically, call the nurse line.`}</Muted>
+        <Muted style={{ fontSize: 12 }}>{data.clinic.personal ? `Notes go only to ${her}. If something's wrong medically, help ${her} call her clinic, or 911.` : `Notes go to ${her}, not to the clinic. If something's wrong medically, call the nurse line.`}</Muted>
         {data.notes.length > 0 && (
           <Card pad={false}>
             {data.notes.map((n, i) => <Row key={n.id} title={n.body} sub={dayClock(n.createdAt)} right={<Pill tone={n.seenAt ? "sage" : "stone"} label={n.seenAt ? "Seen" : "Sent"} />} />)}
@@ -1324,8 +1328,8 @@ function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHom
           <Card pad={false}>
             {data.results.length === 0 && <Row title="No results yet" />}
             {data.results.map((r) => (
-              <Row key={r.id} title={`${label(r.analyte)} ${r.value} ${r.unit}`} sub={r.status === "in_range" ? r.text : `${her}'s nurse will go over this with her.`}
-                right={<Pill tone={r.status === "in_range" ? "sage" : "clay"} label={r.status === "in_range" ? "In Bayside's range" : "Nurse reviewing"} />} />
+              <Row key={r.id} title={`${label(r.analyte)} ${r.value} ${r.unit}`} sub={data.clinic.personal ? `From ${her}'s lab report. Her care team decides what it means.` : r.status === "in_range" ? r.text : `${her}'s nurse will go over this with her.`}
+                right={data.clinic.personal ? undefined : <Pill tone={r.status === "in_range" ? "sage" : "clay"} label={r.status === "in_range" ? "In Bayside's range" : "Nurse reviewing"} />} />
             ))}
           </Card>
         </View>
@@ -1340,7 +1344,7 @@ function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHom
   );
 }
 
-function PartnerUrgent({ level, her, back }: { level: "urgent" | "crisis"; her: string; back: () => void }) {
+function PartnerUrgent({ level, her, back, personal }: { level: "urgent" | "crisis"; her: string; back: () => void; personal?: boolean }) {
   const crisis = level === "crisis";
   return (
     <>
@@ -1348,9 +1352,10 @@ function PartnerUrgent({ level, her, back }: { level: "urgent" | "crisis"; her: 
         <Pill tone="red" label="Safety check · not an AI answer" />
         <Text testID="urgent-title" style={{ fontFamily: F.serifItalic, fontSize: 32, lineHeight: 34, color: C.red }}>{crisis ? "Please reach out now." : "This needs a nurse now."}</Text>
         <T style={{ fontSize: 15, lineHeight: 22 }}>{crisis
-          ? `If ${her} may be thinking about hurting herself, call or text 988 now and stay with her. Your note went to ${her}, but Bayside doesn't see notes.`
+          ? `If ${her} may be thinking about hurting herself, call or text 988 now and stay with her. Your note went to ${her}, but ${personal ? "Pumpkin" : "Bayside"} doesn't see notes.`
+          : personal ? `Your note went to ${her}. Help ${her} call her clinic's after-hours line now. Pumpkin doesn't see notes.`
           : `Your note went to ${her}, but Bayside doesn't see notes. Please call Bayside's nurse line now, or help ${her} call.`}</T>
-        {crisis ? <Button kind="red" label="Call or text 988" onPress={() => Linking.openURL("tel:988")} /> : <Button kind="red" label="Call the nurse line now" onPress={() => Linking.openURL(NURSE_LINE)} />}
+        {crisis ? <Button kind="red" label="Call or text 988" onPress={() => Linking.openURL("tel:988")} /> : personal ? null : <Button kind="red" label="Call the nurse line now" onPress={() => Linking.openURL(NURSE_LINE)} />}
         <T style={{ fontFamily: F.sans600 }}>{`If ${her} can't catch her breath, has chest pain, or passes out, call 911.`}</T>
       </View>
       <Button kind="line" label="Back" onPress={back} />

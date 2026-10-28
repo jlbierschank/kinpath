@@ -1,4 +1,4 @@
-import { partnerHome, partnerWait, upcomingAppointments } from "@kinpath/db";
+import { isPersonalSpace, partnerHome, partnerWait, upcomingAppointments } from "@kinpath/db";
 import { getDb } from "@/lib/db";
 import { handle, preflight } from "@/lib/api";
 
@@ -8,7 +8,8 @@ export const OPTIONS = preflight;
 export async function GET(req: Request) {
   return handle(req, ["partner"], async (s) => {
     const h = await partnerHome(await getDb(), s);
-    const clinic = { name: "Bayside Fertility" };
+    // Someone on her own has no clinic on Pumpkin: the app talks about Pumpkin and her own clinic instead.
+    const clinic = (await isPersonalSpace(await getDb(), s.clinicId)) ? { name: "Pumpkin", personal: true } : { name: "Bayside Fertility", personal: false };
     if (!h.shared) return { clinic, shared: false, name: s.name };
     // Visits only when she shares her schedule (row-level security enforces this too).
     const appointments = h.sections.includes("schedule") ? await upcomingAppointments(await getDb(), s, h.patientId) : [];
