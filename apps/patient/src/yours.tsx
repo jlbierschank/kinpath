@@ -2,11 +2,11 @@
  * "Make Pumpkin yours", "How Pumpkin talks to me", the community name, and the visit summary.
  * Every answer is optional and only she sees it. Identity and health answers ask for her OK first.
  */
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, Platform, Pressable, Share, Text, View } from "react-native";
 import { CONDITIONS, FAMILY_PATHS, PARTNER_TITLES, PRONOUNS } from "@kinpath/core";
 import type { About, Api, VisitSummary } from "./api";
-import { Button, C, Card, Chip, Chips, F, Icon, Muted, T, Today, Toggle } from "./ui";
+import { Button, C, Card, CheckList, Chip, Chips, F, Icon, Muted, SheetPicker, T, Today, Toggle } from "./ui";
 import { Field } from "./field";
 import { DateField } from "./datefield";
 
@@ -34,95 +34,154 @@ function WordChips({ options, value, onChange, otherLabel, testID }: { options: 
   );
 }
 
-// ---------- Make Pumpkin yours ----------
+// ---------- Make Pumpkin yours: one question at a time ----------
+
+type Q = { id: string; step: About["stepsLeft"][number]; last?: boolean; sensitive?: boolean };
+const QUESTIONS: Q[] = [
+  { id: "name", step: "name" }, { id: "pronouns", step: "name", last: true },
+  { id: "consent", step: "path", sensitive: true },
+  { id: "path", step: "path", sensitive: true }, { id: "gender", step: "path", sensitive: true, last: true },
+  { id: "person", step: "person", sensitive: true }, { id: "personPronouns", step: "person", sensitive: true, last: true },
+  { id: "conditions", step: "background", sensitive: true }, { id: "cycles", step: "background", sensitive: true }, { id: "loss", step: "background", sensitive: true }, { id: "allergies", step: "background", sensitive: true, last: true },
+];
 
 export function AboutScreen({ api, done }: { api: Api; done: (msg: string) => void }) {
   const [a, setA] = useState<About | null>(null);
   const [ok, setOk] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [saved, setSaved] = useState<string | null>(null);
-  const load = useCallback(async () => setA(await api.about()), [api]);
-  useEffect(() => { void load(); }, [load]);
+  const [busy, setBusy] = useState(false);
+  const [i, setI] = useState<number | null>(null);
+  const moving = useRef<number | null>(null); // the question the last tap moved to
+  const busyRef = useRef(false);
+  const [askOk, setAskOk] = useState(true);
   const [name, setName] = useState({ preferredName: "", pronunciation: "", pronouns: "" });
   const [path, setPath] = useState<{ familyPath: string[]; gender: string }>({ familyPath: [], gender: "" });
   const [person, setPerson] = useState({ partnerName: "", partnerTitle: "", partnerPronouns: "" });
   const [bg, setBg] = useState<{ conditions: string[]; conditionsOther: string; pastCycles: string; pastLoss: string; allergies: string }>({ conditions: [], conditionsOther: "", pastCycles: "", pastLoss: "", allergies: "" });
-  useEffect(() => {
-    if (!a) return;
-    setName({ preferredName: a.preferredName ?? "", pronunciation: a.pronunciation ?? "", pronouns: a.pronouns ?? "" });
-    setPath({ familyPath: a.familyPath, gender: a.gender ?? "" });
-    setPerson({ partnerName: a.partnerName ?? "", partnerTitle: a.partnerTitle ?? "", partnerPronouns: a.partnerPronouns ?? "" });
-    setBg({ conditions: a.conditions, conditionsOther: a.conditionsOther ?? "", pastCycles: a.pastCycles === null ? "" : String(a.pastCycles), pastLoss: a.pastLoss ?? "", allergies: a.allergies ?? "" });
-  }, [a]);
-  if (!a) return <ActivityIndicator color={C.espresso} />;
-  const save = async (patch: Partial<About>, step: string, msg: string, sensitive = false) => {
-    setErr(null); setSaved(null);
-    try { setA(await api.saveAbout(patch, { step, consent: sensitive && ok ? true : undefined })); setSaved(msg); }
-    catch (e) { setErr((e as Error).message); }
+  useEffect(() => { void api.about().then((x) => {
+    setA(x);
+    setName({ preferredName: x.preferredName ?? "", pronunciation: x.pronunciation ?? "", pronouns: x.pronouns ?? "" });
+    setPath({ familyPath: x.familyPath, gender: x.gender ?? "" });
+    setPerson({ partnerName: x.partnerName ?? "", partnerTitle: x.partnerTitle ?? "", partnerPronouns: x.partnerPronouns ?? "" });
+    setBg({ conditions: x.conditions, conditionsOther: x.conditionsOther ?? "", pastCycles: x.pastCycles === null ? "" : String(x.pastCycles), pastLoss: x.pastLoss ?? "", allergies: x.allergies ?? "" });
+    // Pick up where she left off.
+    setAskOk(!x.consented);
+    const list = QUESTIONS.filter((q) => q.id !== "consent" || !x.consented);
+    const first = list.findIndex((q) => x.stepsLeft.includes(q.step));
+    setI(first < 0 ? 0 : first);
+  }).catch((e: Error) => setErr(e.message)); }, [api]);
+  if (!a || i === null) return err ? <T style={{ color: C.red }}>{err}</T> : <ActivityIndicator color={C.espresso} />;
+
+  // Decided once when the screen opens, so saving her OK doesn't shift the questions under her.
+  const qs = QUESTIONS.filter((q) => q.id !== "consent" || askOk);
+  const qi = Math.min(i, qs.length - 1);
+  const q = qs[qi]!;
+  const needsOk = q.sensitive && !a.consented && !ok;
+  const patchFor = (step: Q["step"]): Partial<About> => step === "name" ? name
+    : step === "path" ? { familyPath: path.familyPath, gender: path.gender }
+    : step === "person" ? person
+    : { conditions: bg.conditions, conditionsOther: bg.conditionsOther, pastCycles: bg.pastCycles === "" ? null : Number(bg.pastCycles), pastLoss: (bg.pastLoss || null) as About["pastLoss"], allergies: bg.allergies };
+  const saveStep = async (step: Q["step"], sensitive: boolean) => setA(await api.saveAbout(patchFor(step), { step, consent: sensitive && ok ? true : undefined }));
+  const next = async () => {
+    // A double tap (or a tap before the screen redraws) moves one question, not two.
+    if (moving.current !== null && moving.current !== qi) return;
+    if (moving.current === qi && busyRef.current) return;
+    busyRef.current = true; moving.current = qi + 1; setErr(null); setBusy(true);
+    try {
+      if (q.last) await saveStep(q.step, !!q.sensitive);
+      if (qi + 1 >= qs.length) done("Thanks. Pumpkin will use what you shared.");
+      else setI(qi + 1);
+    } catch (e) { moving.current = qi; setErr((e as Error).message); } finally { setBusy(false); busyRef.current = false; }
   };
-  const needsOk = !a.consented && !ok;
+  const finishLater = async () => {
+    setErr(null);
+    // Keep what she answered in this group, unless it needs an OK she hasn't given.
+    try { if (!needsOk && q.id !== "consent") await saveStep(q.step, !!q.sensitive); } catch { /* nothing lost but this group */ }
+    done("Saved what you've answered. Come back anytime.");
+  };
   const toggle = (list: string[], v: string) => (list.includes(v) ? list.filter((x) => x !== v) : v === "prefer_not" ? ["prefer_not"] : [...list.filter((x) => x !== "prefer_not"), v]);
-  const Actions = ({ step, onSave, testID, sensitive }: { step: string; onSave: () => void; testID: string; sensitive?: boolean }) => (
-    <View style={{ flexDirection: "row", gap: 10 }}>
-      <View style={{ flex: 2 }}><Button testID={`${testID}-save`} kind="esp" label="Save" disabled={!!sensitive && needsOk} onPress={onSave} /></View>
-      {a.stepsLeft.includes(step as never) ? <View style={{ flex: 1 }}><Button kind="line" label="Skip" onPress={() => save({}, step, "Skipped. You can come back anytime.")} /></View> : null}
-    </View>
+  const Head = ({ title, sub }: { title: string; sub?: string }) => (
+    <View style={{ gap: 6 }}><Text accessibilityRole="header" style={{ fontFamily: F.display, fontSize: 28, lineHeight: 32, letterSpacing: -0.6, color: C.espresso }}>{title}</Text>{sub ? <Muted style={{ fontSize: 15 }}>{sub}</Muted> : null}</View>
   );
+
+  const body: Record<string, ReactNode> = {
+    name: <>
+      <Head title="What should we call you?" />
+      <Field testID="about-preferred" label="Your name" value={name.preferredName} onChange={(v) => setName({ ...name, preferredName: v })} placeholder={a.firstName} />
+      <Field label="How to say it (optional)" value={name.pronunciation} onChange={(v) => setName({ ...name, pronunciation: v })} placeholder="e.g. ah-LEX" />
+    </>,
+    pronouns: <>
+      <Head title="Your pronouns" sub="Pumpkin uses them everywhere, including messages to your person." />
+      <WordChips testID="pronouns" options={PRONOUNS} value={name.pronouns} onChange={(v) => setName({ ...name, pronouns: v })} otherLabel="Your pronouns" />
+    </>,
+    consent: <>
+      <Head title="Before the next questions" sub="They're about your identity, your family and your health. Only you see your answers: not a clinic, not your support people, not the community, unless you choose to share. You can clear them anytime." />
+      <Pressable testID="about-ok" accessibilityRole="checkbox" accessibilityState={{ checked: ok }} onPress={() => setOk((x) => !x)} style={{ flexDirection: "row", gap: 12, alignItems: "center", backgroundColor: C.sage, borderRadius: 14, padding: 14, minHeight: 52 }}>
+        <View style={{ width: 26, height: 26, borderRadius: 7, borderWidth: 2, borderColor: C.sageInk, backgroundColor: ok ? C.sageInk : "transparent", alignItems: "center", justifyContent: "center" }}>{ok ? <Icon name="check" color={C.sage} size={18} /> : null}</View>
+        <T style={{ flex: 1, fontSize: 15, fontFamily: F.sans600, color: C.sageInk }}>It's OK for Pumpkin to keep these answers to tailor my app.</T>
+      </Pressable>
+    </>,
+    path: <>
+      <Head title="How are you building your family?" sub="Choose any that fit. Pumpkin uses this to show what's relevant to you." />
+      <CheckList testIDPrefix="path-" options={Object.entries(FAMILY_PATHS)} selected={path.familyPath} onToggle={(id) => setPath({ ...path, familyPath: toggle(path.familyPath, id) })} />
+    </>,
+    gender: <>
+      <Head title="Your gender, in your words" sub="Optional. Leave it blank if you'd rather not say." />
+      <Field testID="about-gender" label="Your gender" value={path.gender} onChange={(v) => setPath({ ...path, gender: v })} />
+    </>,
+    person: <>
+      <Head title="Is someone in this with you?" sub="A partner, a friend, whoever. Skip it if it's just you." />
+      <Field testID="about-partner-name" label="Their name" value={person.partnerName} onChange={(v) => setPerson({ ...person, partnerName: v })} />
+      <SheetPicker testID="title" label="What do you call them?" value={person.partnerTitle} options={PARTNER_TITLES} onChange={(v) => setPerson({ ...person, partnerTitle: v })} otherLabel="Your word for them" />
+    </>,
+    personPronouns: <>
+      <Head title={person.partnerName ? `${person.partnerName}'s pronouns` : "Their pronouns"} sub="Optional." />
+      <WordChips options={PRONOUNS} value={person.partnerPronouns} onChange={(v) => setPerson({ ...person, partnerPronouns: v })} otherLabel="Their pronouns" />
+    </>,
+    conditions: <>
+      <Head title="Anything you've been told?" sub="Only you see this. Pumpkin uses it to suggest questions for your visits. It never diagnoses." />
+      <CheckList testIDPrefix="cond-" options={Object.entries(CONDITIONS)} selected={bg.conditions} onToggle={(id) => setBg({ ...bg, conditions: bg.conditions.includes(id) ? bg.conditions.filter((x) => x !== id) : [...bg.conditions, id] })} />
+      <Field label="Anything else" value={bg.conditionsOther} onChange={(v) => setBg({ ...bg, conditionsOther: v })} />
+    </>,
+    cycles: <>
+      <Head title="Treatment cycles before this one" sub="A rough number is fine." />
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 18, alignSelf: "center" }}>
+        <Pressable accessibilityLabel="One fewer" onPress={() => setBg({ ...bg, pastCycles: String(Math.max(0, Number(bg.pastCycles || 0) - 1)) })} style={{ width: 56, height: 56, borderRadius: 28, borderWidth: 1.5, borderColor: C.espresso, alignItems: "center", justifyContent: "center" }}><T style={{ fontSize: 26 }}>−</T></Pressable>
+        <Text testID="about-cycles" style={{ fontFamily: F.display, fontSize: 44, minWidth: 70, textAlign: "center", color: C.espresso }}>{bg.pastCycles === "" ? "–" : bg.pastCycles}</Text>
+        <Pressable accessibilityLabel="One more" onPress={() => setBg({ ...bg, pastCycles: String(Math.min(50, Number(bg.pastCycles || 0) + 1)) })} style={{ width: 56, height: 56, borderRadius: 28, borderWidth: 1.5, borderColor: C.espresso, alignItems: "center", justifyContent: "center" }}><T style={{ fontSize: 26 }}>+</T></Pressable>
+      </View>
+    </>,
+    loss: <>
+      <Head title="Have you had a pregnancy loss?" sub="If you tell us, Pumpkin can be gentler around hard dates." />
+      <Chips>{[["yes", "Yes"], ["no", "No"], ["skip", "I'd rather not say"]].map(([v, l]) => <Chip key={v} label={l!} selected={bg.pastLoss === v} onPress={() => setBg({ ...bg, pastLoss: bg.pastLoss === v ? "" : v! })} />)}</Chips>
+    </>,
+    allergies: <>
+      <Head title="Any allergies?" sub="Pumpkin puts them on your visit summary." />
+      <Field testID="about-allergies" label="Allergies" value={bg.allergies} onChange={(v) => setBg({ ...bg, allergies: v })} placeholder="e.g. latex, penicillin" />
+    </>,
+  };
+
   return (
     <>
-      <Today size={34}>Make Pumpkin yours</Today>
-      <Muted style={{ fontSize: 15 }}>Every question is optional, and you can change any answer later. Pumpkin uses them to talk to you the way you'd like.</Muted>
-      {saved ? <T testID="about-saved" style={{ color: C.sageInk, fontFamily: F.sans600 }}>{saved}</T> : null}
-      {err ? <T testID="about-error" style={{ color: C.red }}>{err}</T> : null}
-
-      <Section testID="about-name" icon="pen" title="What to call you">
-        <Field testID="about-preferred" label="The name you'd like us to use" value={name.preferredName} onChange={(v) => setName({ ...name, preferredName: v })} placeholder={a.firstName} />
-        <Field label="How to say it (optional)" value={name.pronunciation} onChange={(v) => setName({ ...name, pronunciation: v })} placeholder="e.g. ah-LEX" />
-        <Label>Your pronouns (optional)</Label>
-        <WordChips testID="pronouns" options={PRONOUNS} value={name.pronouns} onChange={(v) => setName({ ...name, pronouns: v })} otherLabel="Your pronouns" />
-        <Actions testID="about-name" step="name" onSave={() => save({ preferredName: name.preferredName, pronunciation: name.pronunciation, pronouns: name.pronouns }, "name", "Saved. Pumpkin will use your name.")} />
-      </Section>
-
-      {!a.consented ? (
-        <View testID="about-consent" style={{ backgroundColor: C.sage, borderRadius: 22, padding: 18, gap: 10 }}>
-          <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="shield" color={C.sageInk} /><T style={{ fontFamily: F.display, fontSize: 20 }}>Before the next questions</T></View>
-          <T style={{ fontSize: 15, lineHeight: 21 }}>They're about your identity, your family and your health. Only you see your answers: not a clinic, not your support people, not the community, unless you choose to share. You can clear them anytime.</T>
-          <Pressable testID="about-ok" accessibilityRole="checkbox" accessibilityState={{ checked: ok }} onPress={() => setOk((x) => !x)} style={{ flexDirection: "row", gap: 12, alignItems: "center", backgroundColor: C.paper, borderRadius: 14, padding: 12, minHeight: 48 }}>
-            <View style={{ width: 26, height: 26, borderRadius: 7, borderWidth: 2, borderColor: C.espresso, backgroundColor: ok ? C.espresso : C.paper, alignItems: "center", justifyContent: "center" }}>{ok ? <Icon name="check" color={C.paper} size={18} /> : null}</View>
-            <T style={{ flex: 1, fontSize: 15, fontFamily: F.sans600 }}>It's OK for Pumpkin to keep these answers to tailor my app.</T>
-          </Pressable>
+      <View style={{ gap: 8 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <T testID="about-progress" style={{ fontSize: 13.5, color: C.stone }}>{`Make Pumpkin yours · ${qi + 1} of ${qs.length}`}</T>
+          <Pressable testID="about-later" onPress={finishLater} style={{ minHeight: 40, justifyContent: "center" }}><T style={{ color: C.lavInk, fontFamily: F.sans600, fontSize: 14 }}>Finish later</T></Pressable>
         </View>
-      ) : null}
-
-      <Section testID="about-path" icon="heart" title="How you're building your family" sub="Choose any that fit. Pumpkin uses this to show what's relevant to you.">
-        <Chips>{Object.entries(FAMILY_PATHS).map(([id, label]) => <Chip key={id} testID={`path-${id}`} label={label} selected={path.familyPath.includes(id)} onPress={() => setPath({ ...path, familyPath: toggle(path.familyPath, id) })} />)}</Chips>
-        <Field label="Your gender, in your words (optional)" value={path.gender} onChange={(v) => setPath({ ...path, gender: v })} />
-        <Actions testID="about-path" step="path" sensitive onSave={() => save({ familyPath: path.familyPath, gender: path.gender }, "path", "Saved.", true)} />
-      </Section>
-
-      <Section testID="about-person" icon="people" title="Your person" sub="A partner, or whoever is in this with you. Skip it if it's just you.">
-        <Field testID="about-partner-name" label="Their name" value={person.partnerName} onChange={(v) => setPerson({ ...person, partnerName: v })} />
-        <Label>What do you call them?</Label>
-        <WordChips testID="title" options={PARTNER_TITLES} value={person.partnerTitle} onChange={(v) => setPerson({ ...person, partnerTitle: v })} otherLabel="Your word for them" />
-        <Label>Their pronouns (optional)</Label>
-        <WordChips options={PRONOUNS} value={person.partnerPronouns} onChange={(v) => setPerson({ ...person, partnerPronouns: v })} otherLabel="Their pronouns" />
-        <Actions testID="about-person" step="person" sensitive onSave={() => save(person, "person", "Saved. Pumpkin will use your words.", true)} />
-      </Section>
-
-      <Section testID="about-background" icon="doc" title="Your background" sub="Only you see this. Pumpkin uses it to suggest questions for your visits and to fill in your visit summary. It never diagnoses.">
-        <Label>Anything you've been told (optional)</Label>
-        <Chips>{Object.entries(CONDITIONS).map(([id, label]) => <Chip key={id} testID={`cond-${id}`} label={label} selected={bg.conditions.includes(id)} onPress={() => setBg({ ...bg, conditions: bg.conditions.includes(id) ? bg.conditions.filter((x) => x !== id) : [...bg.conditions, id] })} />)}</Chips>
-        <Field label="Anything else" value={bg.conditionsOther} onChange={(v) => setBg({ ...bg, conditionsOther: v })} />
-        <Field label="Treatment cycles before this one" value={bg.pastCycles} onChange={(v) => setBg({ ...bg, pastCycles: v.replace(/\D/g, "") })} keyboard="numeric" placeholder="0" />
-        <Label>Have you had a pregnancy loss?</Label>
-        <Muted style={{ fontSize: 13.5, marginTop: -6 }}>If you tell us, Pumpkin can be gentler around hard dates.</Muted>
-        <Chips>{[["yes", "Yes"], ["no", "No"], ["skip", "I'd rather not say"]].map(([v, l]) => <Chip key={v} label={l!} selected={bg.pastLoss === v} onPress={() => setBg({ ...bg, pastLoss: bg.pastLoss === v ? "" : v! })} />)}</Chips>
-        <Field label="Allergies" value={bg.allergies} onChange={(v) => setBg({ ...bg, allergies: v })} placeholder="e.g. latex, penicillin" />
-        <Actions testID="about-background" step="background" sensitive onSave={() => save({ conditions: bg.conditions, conditionsOther: bg.conditionsOther, pastCycles: bg.pastCycles === "" ? null : Number(bg.pastCycles), pastLoss: (bg.pastLoss || null) as About["pastLoss"], allergies: bg.allergies }, "background", "Saved.", true)} />
-      </Section>
-
-      {a.consented ? <Pressable onPress={async () => { setA(await api.withdrawAbout()); setOk(false); setSaved("Cleared. Your identity, family and health answers are gone."); }}><Muted style={{ textDecorationLine: "underline", fontSize: 14 }}>Clear my identity, family and health answers</Muted></Pressable> : null}
-      <Button kind="line" label="Done" onPress={() => done("Thanks. Pumpkin will use what you shared.")} />
+        <View style={{ height: 4, borderRadius: 2, backgroundColor: C.line }}><View style={{ height: 4, borderRadius: 2, width: `${((qi + 1) / qs.length) * 100}%`, backgroundColor: C.lavInk }} /></View>
+      </View>
+      <View testID={`about-q-${q.id}`} style={{ gap: 14 }}>{body[q.id]}</View>
+      {err ? <T testID="about-error" style={{ color: C.red }}>{err}</T> : null}
+      <View style={{ gap: 8 }}>
+        <Button testID="about-next" kind="esp" label={busy ? "Saving…" : qi + 1 >= qs.length ? "Done" : "Next"} disabled={busy || !!needsOk} onPress={next} />
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          {qi > 0 ? <Pressable testID="about-back" onPress={() => { moving.current = qi - 1; setI(qi - 1); }} style={{ minHeight: 44, justifyContent: "center" }}><T style={{ color: C.stone, fontFamily: F.sans600 }}>Back</T></Pressable> : <View />}
+          {q.id === "consent"
+            ? <Pressable testID="about-skip-personal" onPress={() => done("No problem. You can answer these anytime in Settings.")} style={{ minHeight: 44, justifyContent: "center" }}><T style={{ color: C.stone, fontFamily: F.sans600 }}>Skip these questions</T></Pressable>
+            : <Pressable testID="about-skip" onPress={next} disabled={busy || !!needsOk} style={{ minHeight: 44, justifyContent: "center" }}><T style={{ color: C.stone, fontFamily: F.sans600 }}>Skip</T></Pressable>}
+        </View>
+      </View>
+      {a.consented && qi === qs.length - 1 ? <Pressable onPress={async () => { setA(await api.withdrawAbout()); setOk(false); done("Cleared. Your identity, family and health answers are gone."); }}><Muted style={{ textDecorationLine: "underline", fontSize: 14 }}>Clear my identity, family and health answers</Muted></Pressable> : null}
     </>
   );
 }

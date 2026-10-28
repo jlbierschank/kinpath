@@ -18,28 +18,37 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localho
   await p.goto(APP + '/');
   await byId('pick-Alex Rivera').click();
   ok(await sees('Hi, Alex.', 15000), 'Today greets her by name');
-  ok(await byId('make-yours').count() === 1, 'Today offers "Make Pumpkin yours"');
-  await byId('make-yours').click();
+  // Alex has things waiting, so setup cards stay off Today; Make Pumpkin yours is in Settings.
+  ok(await byId('make-yours').count() === 0, 'No setup card on a day something needs her');
+  await byId('solo-tab-more').click();
+  await byId('more-about').click();
 
-  // Name and pronouns.
+  // One question at a time.
+  ok((await byId('about-progress').innerText()).includes('1 of'), 'Shows where she is');
   await byId('about-preferred').fill('Lex');
+  await byId('about-next').click();
   await byId('pronouns-they/them').click();
-  await byId('about-name-save').click();
-  ok(await sees('Pumpkin will use your name'), 'Saves her name and pronouns');
-
+  await byId('about-next').click();
   // Identity and health answers wait for her OK.
+  await byId('about-q-consent').waitFor();
+  ok(await byId('about-next').isDisabled(), "Can't go on to family questions before she says OK");
+  await byId('about-ok').click();
+  await byId('about-next').click();
   await byId('path-solo_by_choice').click();
   await byId('path-donor_sperm').click();
-  ok(await byId('about-path-save').isDisabled(), 'Family answers can\'t be saved before she says OK');
-  await byId('about-ok').click();
-  await byId('about-path-save').click();
-  await sees('Saved.');
+  await byId('about-next').click();
+  await byId('about-skip').click(); // gender
+  await byId('about-skip').click(); // her person
+  await byId('about-skip').click(); // their pronouns
   await byId('cond-pcos').click();
-  await byId('about-background-save').click();
-  await p.waitForTimeout(500);
-  ok(await byId('about-error').count() === 0, 'Background saved after her OK');
   await shot('yours-1-about');
-  await p.getByText('Done', { exact: true }).click();
+  await byId('about-next').click();
+  await byId('about-skip').click(); // cycles
+  await byId('about-skip').click(); // loss
+  await p.waitForTimeout(300);
+  ok(await byId('about-error').count() === 0, 'Answers saved after her OK');
+  await byId('about-next').click(); // allergies: Done
+  ok(await sees('Pumpkin will use what you shared'), 'Done');
 
   // How Pumpkin talks to me.
   await byId('solo-tab-more').click();
@@ -70,7 +79,7 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localho
   ok(await byId('today-add').count() === 0, 'Quiet: only what she needs');
   await shot('yours-4-paused');
   await p.getByText("I'm back").click();
-  ok(await sees('Got something new?'), "\"I'm back\" brings Today back");
+  ok(await sees('MEDS'), "\"I'm back\" brings Today back");
 
   // Visit help.
   await byId('solo-tab-record').click();

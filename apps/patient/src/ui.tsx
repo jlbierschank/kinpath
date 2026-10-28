@@ -4,7 +4,7 @@
  * paper cards with a hairline, solid pressed edges only on buttons, one marigold action per screen.
  */
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Image, Platform, Pressable, Switch, useColorScheme, Text, TextInput, View, type SwitchProps, type TextStyle, type ViewStyle } from "react-native";
+import { Image, Modal, Platform, Pressable, ScrollView, Switch, useColorScheme, Text, TextInput, View, type SwitchProps, type TextStyle, type ViewStyle } from "react-native";
 import Svg, { Circle, Path, Text as SvgText } from "react-native-svg";
 import { ICONS, type IconName } from "./icons";
 import { SvgPulse } from "./motion";
@@ -270,4 +270,63 @@ const LOGO = require("../assets/logo-horizontal.png");
 const LOGO_DARK = require("../assets/logo-horizontal-on-dark.png");
 export function Logo({ width = 124 }: { width?: number }) {
   return <Image testID="logo" source={isDark() ? LOGO_DARK : LOGO} accessibilityRole="image" accessibilityLabel="Pumpkin" style={{ width: Math.max(96, width), height: Math.max(96, width) * 251 / 800 }} resizeMode="contain" />;
+}
+
+/** A long list where several can be picked: one full-width row per option, with a checkmark. */
+export function CheckList({ options, selected, onToggle, testIDPrefix }: { options: [string, string][]; selected: string[]; onToggle: (id: string) => void; testIDPrefix?: string }) {
+  return (
+    <View style={[st.card, { overflow: "hidden" }]}>
+      {options.map(([id, label], i) => {
+        const on = selected.includes(id);
+        return (
+          <Pressable key={id} testID={testIDPrefix ? `${testIDPrefix}${id}` : undefined} accessibilityRole="checkbox" accessibilityState={{ checked: on }} onPress={() => onToggle(id)}
+            style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 13, paddingHorizontal: 14, minHeight: 52, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: C.lineSoft, backgroundColor: on ? C.softLav : "transparent" }}>
+            <View style={{ width: 24, height: 24, borderRadius: 7, borderWidth: 2, borderColor: on ? C.lavInk : C.stone, backgroundColor: on ? C.lavInk : "transparent", alignItems: "center", justifyContent: "center" }}>
+              {on ? <Svg width={14} height={14} viewBox="0 0 24 24"><Path d="M5 12.5l4.5 4.5L19 7.5" stroke={C.softLav} strokeWidth={3} fill="none" strokeLinecap="round" strokeLinejoin="round" /></Svg> : null}
+            </View>
+            <T style={{ flex: 1, fontSize: 15.5, fontFamily: on ? F.sans600 : F.sans }}>{label}</T>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** A long list where one is picked: shows the answer, and opens a sheet from the bottom to choose. */
+export function SheetPicker({ label, value, options, onChange, otherLabel, testID }: { label: string; value: string; options: readonly string[]; onChange: (v: string) => void; otherLabel?: string; testID?: string }) {
+  const [open, setOpen] = useState(false);
+  const [typing, setTyping] = useState(false);
+  const custom = !!value && !options.includes(value);
+  return (
+    <View style={{ gap: 4 }}>
+      <T style={{ fontFamily: F.sans600, fontSize: 14 }}>{label}</T>
+      {typing || custom ? (
+        <TextInput testID={testID ? `${testID}-own` : undefined} value={value} onChangeText={onChange} placeholder={otherLabel ?? "In your words"} placeholderTextColor={C.stone} autoFocus={typing}
+          style={[st.input, { minHeight: 48, fontSize: 16, borderColor: C.espresso }]} />
+      ) : (
+        <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={`${label}: ${value || "not chosen"}`} onPress={() => setOpen(true)}
+          style={[st.input, { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderColor: C.espresso }]}>
+          <T style={{ fontSize: 16, color: value ? C.ink : C.stone }}>{value || "Choose"}</T>
+          <Svg width={16} height={16} viewBox="0 0 24 24"><Path d="M6 9l6 6 6-6" stroke={C.stone} strokeWidth={2.2} fill="none" strokeLinecap="round" strokeLinejoin="round" /></Svg>
+        </Pressable>
+      )}
+      {typing || custom ? <Pressable onPress={() => { setTyping(false); onChange(""); setOpen(true); }} style={{ alignSelf: "flex-start", minHeight: 36, justifyContent: "center" }}><T style={{ color: C.lavInk, fontFamily: F.sans600, fontSize: 14 }}>Pick from the list instead</T></Pressable> : null}
+      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
+        <Pressable accessibilityLabel="Close" onPress={() => setOpen(false)} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.35)" }} />
+        <View style={{ backgroundColor: C.paper, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingTop: 10, paddingBottom: 28, maxHeight: "70%", width: "100%", maxWidth: 480, alignSelf: "center" }}>
+          <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: C.line, alignSelf: "center", marginBottom: 8 }} />
+          <T style={{ fontFamily: F.sans700, fontSize: 15, paddingHorizontal: 18, paddingBottom: 8 }}>{label}</T>
+          <ScrollView>
+            {[...options, ...(otherLabel ? ["__own"] : [])].map((o) => (
+              <Pressable key={o} testID={testID ? `${testID}-${o}` : undefined} onPress={() => { setOpen(false); if (o === "__own") { setTyping(true); onChange(""); } else onChange(o); }}
+                style={{ paddingVertical: 14, paddingHorizontal: 18, borderTopWidth: 1, borderTopColor: C.lineSoft, flexDirection: "row", justifyContent: "space-between", minHeight: 50 }}>
+                <T style={{ fontSize: 16, fontFamily: value === o ? F.sans600 : F.sans }}>{o === "__own" ? "Something else (type it)" : o}</T>
+                {value === o ? <T style={{ color: C.lavInk, fontFamily: F.sans700 }}>✓</T> : null}
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      </Modal>
+    </View>
+  );
 }

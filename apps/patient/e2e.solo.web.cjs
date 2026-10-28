@@ -23,7 +23,7 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localho
   ok(await sees('Follistim 200 IU'), 'Today: tonight\'s med she added');
   ok(await sees('$6,133'), 'Today: next payment');
   ok(await sees('YOUR LATEST NUMBERS'), 'Today: latest numbers');
-  ok(await sees('Want your clinic on Pumpkin?'), 'Today: ask my clinic');
+  ok(await byId('ask-clinic').count() === 0, 'Setup cards wait for a day when nothing needs her');
   await shot('solo-1-today');
 
   // Check what Pumpkin read: the med needs a tick.
@@ -105,12 +105,15 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localho
   await shot('solo-9-signup');
   await byId('signup-finish').click();
   ok(await sees('Today', 15000) && await sees('Just starting'), 'Signed up and landed on Today');
-  ok(await sees('Want your clinic on Pumpkin?'), 'New space offers to ask her clinic');
+  await byId('make-yours').waitFor({ timeout: 15000 });
+  ok(await byId('ask-clinic').count() === 0, 'One setup card at a time: Make Pumpkin yours first');
+  await byId('yours-not-now').click();
+  ok(await sees('Want your clinic on Pumpkin?'), 'Not now: the next setup card, asking her clinic');
   await byId('ask-clinic').click();
   ok(await sees("We'll reach out to them"), 'Asked her clinic to join');
   ok((await byId('ask-clinic-text').innerText()).includes('Gulf Coast Fertility'), 'Gets a note she can send her clinic');
   await p.getByText('Done', { exact: true }).click();
-  ok(await sees('You asked Gulf Coast Fertility to join'), 'Today remembers she asked');
+  ok(await sees('You asked Gulf Coast Fertility to join'), 'Today confirms she asked (for a day, then it lives in Settings)');
   await shot('solo-10-new');
 
   // Delete her account.

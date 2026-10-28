@@ -194,6 +194,7 @@ export function SoloApp({ api, onSignOut }: { api: Api; onSignOut: () => void })
   const reduce = useReduceMotion();
   const [welcome, setWelcome] = useState(() => { const w = welcomeNext; welcomeNext = false; return w; });
   const tl = useTodayLayout();
+  const tp = useTodayPrefs();
   const load = useCallback(async () => {
     try { const d = await api.soloToday(); setToday(d); setError(null); void syncReminders(d.reminders).catch(() => 0); }
     catch (e) { setError((e as Error).message); }
@@ -236,7 +237,7 @@ export function SoloApp({ api, onSignOut }: { api: Api; onSignOut: () => void })
     <View style={{ flex: 1 }}>
     <Frame top={top} tabs={tabs}>
       {notice ? <RiseIn key={notice}><View testID="solo-notice" style={{ backgroundColor: C.sage, borderRadius: 16, padding: 14 }}><T style={{ fontFamily: F.sans600, color: C.sageInk, fontSize: 15 }}>{notice}</T></View></RiseIn> : null}
-      {screen.name === "today" && tl.loaded && <TodayScreen d={today} api={api} go={go} reload={load} layout={tl.layout} notice={setNotice} />}
+      {screen.name === "today" && tl.loaded && <TodayScreen d={today} api={api} go={go} reload={load} layout={tl.layout} notice={setNotice} prefs={tp.prefs} setPrefs={tp.save} />}
       {screen.name === "edit-today" && <EditTodayScreen stage={today.profile.stage} layout={tl.layout} save={tl.save} done={() => home("Today is set up your way.")} />}
       {screen.name === "add" && <AddScreen api={api} profile={today.profile} go={go} done={afterCapture} />}
       {screen.name === "say" && <SayScreen api={api} done={afterCapture} />}
@@ -275,8 +276,8 @@ function Tabs({ current, go, badge }: { current: string; go: (s: Screen) => void
         const on = current === name; const add = name === "add";
         return (
           <Pressable key={name} testID={`solo-tab-${name}`} accessibilityRole="tab" accessibilityState={{ selected: on }} onPress={() => go({ name })}
-            style={{ flex: add ? 1.1 : 1, borderRadius: 999, paddingVertical: 11, alignItems: "center", backgroundColor: on ? C.fill : add ? C.marigold : "transparent" }}>
-            <Text numberOfLines={1} style={{ fontFamily: on || add ? F.sans700 : F.sans500, fontSize: 13, color: on ? C.onFill : add ? C.onMarigold : C.espresso }}>{add ? "+ Add" : label}{name === "today" && badge ? ` · ${badge}` : ""}</Text>
+            style={{ flex: add ? 1.1 : 1, borderRadius: 999, paddingVertical: 11, alignItems: "center", backgroundColor: on ? C.fill : add ? C.lav : "transparent" }}>
+            <Text numberOfLines={1} style={{ fontFamily: on || add ? F.sans700 : F.sans500, fontSize: 13, color: on ? C.onFill : add ? C.lavInk : C.espresso }}>{add ? "+ Add" : label}{name === "today" && badge ? ` · ${badge}` : ""}</Text>
           </Pressable>
         );
       })}
@@ -309,6 +310,18 @@ export function defaultOrder(stage: SoloStage): TileId[] {
   }
 }
 export type TodayLayout = { order: TileId[]; hidden: TileId[] };
+/** Small things Today remembers on this device: the swipe tip after first use, and cards she put off. */
+export type TodayPrefs = { swiped: boolean; hideUntil: Record<string, string> };
+export function useTodayPrefs() {
+  const [prefs, set] = useState<TodayPrefs>({ swiped: false, hideUntil: {} });
+  useEffect(() => { void loadPref<TodayPrefs>("today-prefs").then((p) => { if (p) set({ swiped: !!p.swiped, hideUntil: p.hideUntil ?? {} }); }); }, []);
+  const save = (p: TodayPrefs) => { set(p); void savePref("today-prefs", p); };
+  return { prefs, save };
+}
+/** Off by default (the + Add tab does this job); she can turn it back on in Edit Today. */
+const DEFAULT_HIDDEN: TileId[] = ["add"];
+/** One-time setup cards: at most one on Today, only when nothing else needs her. */
+const SETUP: TileId[] = ["yours", "clinic"];
 const LAYOUT_KEY = "today-layout";
 export function useTodayLayout() {
   const [layout, setLayout] = useState<TodayLayout | null>(null);
@@ -320,13 +333,13 @@ export function useTodayLayout() {
 /** Her saved order, with any tile added since then placed where the stage default puts it. Locked tiles never hide. */
 export function orderFor(stage: SoloStage, layout: TodayLayout | null): { order: TileId[]; hidden: Set<TileId> } {
   const def = defaultOrder(stage);
-  if (!layout) return { order: def, hidden: new Set() };
+  if (!layout) return { order: def, hidden: new Set(DEFAULT_HIDDEN) };
   const order = layout.order.filter((t) => t in TILE_INFO);
   for (const t of def) if (!order.includes(t)) order.splice(Math.min(def.indexOf(t), order.length), 0, t);
   return { order, hidden: new Set(layout.hidden.filter((t) => !TILE_INFO[t]?.locked)) };
 }
 
-function TodayScreen({ d, api, go, reload, layout, notice }: { d: SoloToday; api: Api; go: (s: Screen) => void; reload: () => Promise<void>; layout: TodayLayout | null; notice: (m: string) => void }) {
+function TodayScreen({ d, api, go, reload, layout, notice, prefs, setPrefs }: { d: SoloToday; api: Api; go: (s: Screen) => void; reload: () => Promise<void>; layout: TodayLayout | null; notice: (m: string) => void; prefs: TodayPrefs; setPrefs: (p: TodayPrefs) => void }) {
   const p = d.profile;
   // The next day's doses (the next 30 hours), so the 8 pm dose stays visible after tonight's is done.
   const soon = d.schedule.upcoming.filter((x) => new Date(x.scheduledFor).getTime() - Date.now() < 30 * 3600_000);
@@ -350,6 +363,8 @@ function TodayScreen({ d, api, go, reload, layout, notice }: { d: SoloToday; api
   const daysTo = (ymd: string) => (Date.parse(`${ymd}T12:00:00`) - Date.now()) / 86400_000;
   const dueSoon = !!d.nextDue && (d.about.costCheckins === "always" || daysTo(d.nextDue.dueOn) <= 7);
   const refills = d.refills.filter((r) => r.daysLeft !== null && r.daysLeft <= 5);
+  const snoozed = (k: string) => { const u = prefs.hideUntil[k]; return !!u && Date.parse(u) > Date.now(); };
+  const notNow = (k: string, days = 7) => ({ label: "Not now", bg: C.oat, fg: C.stone, run: () => { setPrefs({ ...prefs, hideUntil: { ...prefs.hideUntil, [k]: new Date(Date.now() + days * 86400_000).toISOString() } }); } });
 
   // ----- what matters most right now -----
   const nextDose = soon.find((x) => !x.takenAt);
@@ -367,7 +382,11 @@ function TodayScreen({ d, api, go, reload, layout, notice }: { d: SoloToday; api
     else if (d.nextDue && daysTo(d.nextDue.dueOn) <= 3 && !hard && p.stage !== "two_week_wait") { nowId = "payment"; nowWhy = "Due soon"; }
   }
 
+  const isToday = (iso: string) => new Date(iso).toDateString() === new Date().toDateString();
   const doseRow = (x: (typeof soon)[number]) => {
+    if (!isToday(x.scheduledFor) && !x.takenAt && x !== nextDose) return (
+      <T key={x.id} testID={`later-${x.id}`} style={{ color: C.fillMuted, fontSize: 14.5 }}>{`Tomorrow ${clock(x.scheduledFor)} · ${x.medication} ${x.dose}`}</T>
+    );
     const row = (
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10, paddingVertical: 4 }}>
         <View style={{ flex: 1 }}>
@@ -383,7 +402,7 @@ function TodayScreen({ d, api, go, reload, layout, notice }: { d: SoloToday; api
     if (x.takenAt) return <View key={x.id}>{row}</View>;
     return (
       <SwipeRow key={x.id} testID={`swipe-${x.id}`} surface={C.fill} radius={12}
-        right={{ label: "Log it", bg: C.sage, fg: C.sageInk, run: () => log(x.id) }}
+        right={{ label: "Log it", bg: C.sage, fg: C.sageInk, run: async () => { await log(x.id); if (!prefs.swiped) setPrefs({ ...prefs, swiped: true }); } }}
         left={remindersSupported ? { label: "Snooze 15 min", bg: C.lav, fg: C.lavInk, run: () => snooze(x) } : undefined}>
         {row}
       </SwipeRow>
@@ -404,7 +423,7 @@ function TodayScreen({ d, api, go, reload, layout, notice }: { d: SoloToday; api
           </View>
         ))}
         {soon.map(doseRow)}
-        {nextDose && !calm ? <T style={{ fontSize: 12.5, color: C.fillMuted }}>{remindersSupported ? "Tip: swipe right to log, left to snooze." : "Tip: swipe right to log."}</T> : null}
+        {nextDose && !calm && !prefs.swiped ? <T style={{ fontSize: 12.5, color: C.fillMuted }}>{remindersSupported ? "Tip: swipe right to log, left to snooze." : "Tip: swipe right to log."}</T> : null}
       </View>
     ) : null,
     check: d.toCheck > 0 && !quiet ? (
@@ -425,7 +444,7 @@ function TodayScreen({ d, api, go, reload, layout, notice }: { d: SoloToday; api
     numbers: d.latestResults.length > 0 && !quiet ? (shown ? (
       <Pressable onPress={() => go({ name: "record" })} style={[st.card, { padding: 16, gap: 8 }]}>
         <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="lab" /><T style={{ fontFamily: F.sans700, fontSize: 13, letterSpacing: 0.6 }}>YOUR LATEST NUMBERS</T></View>
-        {d.latestResults.map((r) => <View key={r.key} style={{ flexDirection: "row", justifyContent: "space-between" }}><T style={{ fontSize: 15 }}>{r.name}</T><T style={{ fontFamily: F.sans600, fontSize: 15 }}>{`${r.value} ${r.unit} · ${dayLabel(r.on)}`}</T></View>)}
+        {d.latestResults.map((r) => <View key={r.key} style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}><T numberOfLines={1} style={{ fontSize: 15, flex: 1 }}>{r.name.split(" (")[0]!}</T><T numberOfLines={1} style={{ fontFamily: F.sans600, fontSize: 15 }}>{`${r.value} ${r.unit}`}<T style={{ fontSize: 13, color: C.stone }}>{` · ${new Date(`${r.on}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}</T></T></View>)}
         <T style={{ color: C.lavInk, fontFamily: F.sans600 }}>See what each test measures</T>
       </Pressable>
     ) : (
@@ -449,27 +468,39 @@ function TodayScreen({ d, api, go, reload, layout, notice }: { d: SoloToday; api
         <Button testID="today-add" kind="esp" label="Add something" onPress={() => go({ name: "add" })} />
       </Card>
     ) : null,
-    yours: d.about.stepsLeft.length > 0 && !quiet && !gentle && !hard ? (
-      <Pressable testID="make-yours" onPress={() => go({ name: "about" })} style={[st.card, { padding: 16, gap: 6 }]}>
-        <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="heart" /><T style={{ fontFamily: F.display, fontSize: 20 }}>Make Pumpkin yours</T></View>
-        <T style={{ fontSize: 15 }}>{d.about.stepsLeft.includes("name") ? "Tell us what to call you, and a little about how you're building your family." : "A few optional questions so Pumpkin talks to you the way you'd like."}</T>
-        <T style={{ color: C.lavInk, fontFamily: F.sans600 }}>{`${5 - d.about.stepsLeft.length} of 5 done`}</T>
-      </Pressable>
+    yours: d.about.stepsLeft.length > 0 && !quiet && !gentle && !hard && !snoozed("yours") ? (
+      <SwipeRow surface={C.paper} radius={22} right={notNow("yours")} left={notNow("yours")}>
+        <View style={[st.card, { padding: 16, gap: 6 }]}>
+          <Pressable testID="make-yours" onPress={() => go({ name: "about" })} style={{ gap: 6 }}>
+            <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="heart" /><T style={{ fontFamily: F.display, fontSize: 20 }}>Make Pumpkin yours</T></View>
+            <T style={{ fontSize: 15 }}>{d.about.stepsLeft.includes("name") ? "Tell us what to call you, and a little about how you're building your family. One question at a time." : "A few optional questions so Pumpkin talks to you the way you'd like."}</T>
+            <T style={{ color: C.lavInk, fontFamily: F.sans600 }}>{`${5 - d.about.stepsLeft.length} of 5 done`}</T>
+          </Pressable>
+          <Pressable testID="yours-not-now" onPress={() => void notNow("yours").run()} style={{ alignSelf: "flex-start", minHeight: 36, justifyContent: "center" }}><Muted style={{ fontSize: 13.5, textDecorationLine: "underline" }}>Not now</Muted></Pressable>
+        </View>
+      </SwipeRow>
     ) : null,
-    clinic: quiet || gentle ? null : !p.askedClinicAt ? <AskClinicCard api={api} profile={p} reload={reload} /> : (
-      <View style={{ backgroundColor: C.sage, borderRadius: 22, padding: 16 }}><T style={{ color: C.sageInk, fontFamily: F.sans600, fontSize: 15 }}>{`You asked ${p.clinicName ?? "your clinic"} to join. When they do, your nurse can see what you've logged, if you choose to share it.`}</T></View>
-    ),
+    clinic: quiet || gentle || hard ? null : !p.askedClinicAt ? (snoozed("clinic") ? null : <AskClinicCard api={api} profile={p} reload={reload} onNotNow={() => void notNow("clinic").run()} />)
+      : Date.now() - new Date(p.askedClinicAt).getTime() < 24 * 3600_000 && !snoozed("clinicSent") ? (
+      // The confirmation shows for a day, then lives in Settings. Swipe it away sooner.
+      <SwipeRow surface={C.sage} radius={22} right={notNow("clinicSent", 3650)} left={notNow("clinicSent", 3650)}>
+        <View testID="clinic-sent" style={{ backgroundColor: C.sage, borderRadius: 22, padding: 16, gap: 4 }}><T style={{ color: C.sageInk, fontFamily: F.sans600, fontSize: 15 }}>{`You asked ${p.clinicName ?? "your clinic"} to join. When they do, your nurse can see what you've logged, if you choose to share it.`}</T><Muted style={{ fontSize: 12.5 }}>Swipe to clear. It's in Settings too.</Muted></View>
+      </SwipeRow>
+    ) : null,
   };
   const { order, hidden } = orderFor(p.stage, layout);
-  const rest = order.filter((t) => t !== nowId && !hidden.has(t) && tiles[t]);
+  const shownTiles = order.filter((t) => t !== nowId && !hidden.has(t) && tiles[t]);
+  // Setup cards: one at a time, and only on a day nothing else needs her (a sent-clinic note shows for its one day).
+  const setupOk = (t: TileId) => (t === "clinic" && !!p.askedClinicAt) || (!nowId && !missed.length && d.toCheck === 0);
+  const firstSetup = shownTiles.find((t) => SETUP.includes(t) && setupOk(t));
+  const rest = shownTiles.filter((t) => !SETUP.includes(t) || t === firstSetup);
 
   return (
     <>
-      <View style={{ gap: 4 }}>
-        <Today>Today</Today>
-        <T testID="greeting" style={{ fontSize: 17, fontFamily: F.sans600 }}>{`Hi, ${d.about.displayName}.`}</T>
+      <View style={{ gap: 6 }}>
+        <Text testID="greeting" accessibilityRole="header" style={{ fontFamily: F.display, fontSize: 34, lineHeight: 37, letterSpacing: -1, color: C.espresso }}>{`Hi, ${d.about.displayName}.`}</Text>
         <View style={{ flexDirection: "row", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <Muted style={{ fontSize: 15 }}>{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</Muted>
+          <Muted style={{ fontSize: 15 }}>{new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</Muted>
           <PulseOnce still={calm}><Pill tone="lav" label={p.stageLabel} /></PulseOnce>
         </View>
       </View>
@@ -590,7 +621,7 @@ function SupplyCard({ api, refills, reload }: { api: Api; refills: Refill[]; rel
   );
 }
 
-function AskClinicCard({ api, profile, reload }: { api: Api; profile: SoloProfile; reload: () => Promise<void> }) {
+function AskClinicCard({ api, profile, reload, onNotNow }: { api: Api; profile: SoloProfile; reload: () => Promise<void>; onNotNow?: () => void }) {
   const [name, setName] = useState(profile.clinicName ?? "");
   const [phone, setPhone] = useState(profile.afterHoursPhone ?? "");
   const [busy, setBusy] = useState(false);
@@ -616,6 +647,7 @@ function AskClinicCard({ api, profile, reload }: { api: Api; profile: SoloProfil
       {err ? <T style={{ color: C.red }}>{err}</T> : null}
       <Button testID="ask-clinic" kind="esp" label={busy ? "Sending…" : "Ask my clinic to join"} disabled={busy || name.trim().length < 2}
         onPress={async () => { setBusy(true); setErr(null); try { const r = await api.askMyClinic(name); if (!profile.afterHoursPhone && phone.trim()) await api.saveSoloProfile({ afterHoursPhone: phone.trim() }); setShare(r.shareText); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } }} />
+      {onNotNow ? <Pressable testID="clinic-not-now" onPress={onNotNow} style={{ alignSelf: "flex-start", minHeight: 36, justifyContent: "center" }}><Muted style={{ fontSize: 13.5, textDecorationLine: "underline" }}>Not now</Muted></Pressable> : null}
     </View>
   );
 }
@@ -1128,6 +1160,7 @@ function MoreScreen({ api, profile, reload, onSignOut, go }: { api: Api; profile
         <T style={{ fontFamily: F.sans600, fontSize: 15 }}>Where are you right now?</T>
         <Chips>{STAGES.map(([id, label]) => <Chip key={id} label={label} selected={stage === id} onPress={() => setStage(id)} />)}</Chips>
         <Field label="Your clinic" value={clinic} onChange={setClinic} />
+        {profile.askedClinicAt ? <T testID="clinic-asked" style={{ fontSize: 13.5, marginTop: -6, color: C.stone }}>{`You asked them to join Pumpkin on ${new Date(profile.askedClinicAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}.`}</T> : null}
         <Field testID="settings-phone" label="Their after-hours nurse line" value={phone} onChange={setPhone} keyboard="phone-pad" hint="Urgent symptoms go here (or 911)." />
         <Button kind="esp" label="Save" onPress={() => act(() => api.saveSoloProfile({ stage, clinicName: clinic, afterHoursPhone: phone }), "Saved.")} />
       </Card>
