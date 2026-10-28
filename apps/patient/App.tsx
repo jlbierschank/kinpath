@@ -197,8 +197,8 @@ function TabBar({ current, t, go, badge }: { current: string; t: Tx; go: (s: Scr
       {items.map(([name, label]) => {
         const on = current === name;
         return (
-          <Pressable key={name} testID={`tab-${name}`} onPress={() => go({ name })} style={{ flex: 1, borderRadius: 999, paddingVertical: 10, alignItems: "center", backgroundColor: on ? C.espresso : "transparent" }}>
-            <Text numberOfLines={1} style={{ fontFamily: on ? F.sans600 : F.sans, fontSize: 12.5, color: on ? C.paper : C.stone }}>{label}{name === "team" && badge ? ` · ${badge}` : ""}</Text>
+          <Pressable key={name} testID={`tab-${name}`} onPress={() => go({ name })} style={{ flex: 1, borderRadius: 999, paddingVertical: 10, alignItems: "center", backgroundColor: on ? C.fill : "transparent" }}>
+            <Text numberOfLines={1} style={{ fontFamily: on ? F.sans600 : F.sans, fontSize: 12.5, color: on ? C.onFill : C.stone }}>{label}{name === "team" && badge ? ` · ${badge}` : ""}</Text>
           </Pressable>
         );
       })}
@@ -336,13 +336,13 @@ function Home({ data, api, t, go, afterSend, reload }: { data: TodayData; api: A
         {tonight.length > 0 ? (
           <View style={st.dark}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" }}>
-              <Text style={{ fontFamily: F.serif, fontSize: 26, letterSpacing: -0.5, color: C.paper }}>{clock(nextAt!)}</Text>
-              <T style={{ fontSize: 13, color: C.tan }}>{t(`${tonight.length} injection${tonight.length > 1 ? "s" : ""} tonight`, `${tonight.length} inyección${tonight.length > 1 ? "es" : ""} esta noche`)}</T>
+              <Text style={{ fontFamily: F.serif, fontSize: 26, letterSpacing: -0.5, color: C.onFill }}>{clock(nextAt!)}</Text>
+              <T style={{ fontSize: 13, color: C.fillMuted }}>{t(`${tonight.length} injection${tonight.length > 1 ? "s" : ""} tonight`, `${tonight.length} inyección${tonight.length > 1 ? "es" : ""} esta noche`)}</T>
             </View>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
               {tonight.map((d) => (
                 <Pressable key={d.id} onPress={() => go({ name: "walk", doses: tonight, focus: d.medication })} style={st.medchip}>
-                  <T style={{ fontSize: 13.5, color: C.paper }}>{d.medication}</T>
+                  <T style={{ fontSize: 13.5, color: C.onFill }}>{d.medication}</T>
                 </Pressable>
               ))}
             </View>
@@ -350,8 +350,8 @@ function Home({ data, api, t, go, afterSend, reload }: { data: TodayData; api: A
           </View>
         ) : (
           <View style={st.dark}>
-            <Text style={{ fontFamily: F.serif, fontSize: 24, color: C.paper }}>{t("All set for tonight", "Todo listo por esta noche")}</Text>
-            <T style={{ fontSize: 14.5, color: C.onEspMuted }}>{t(`${loggedTonight.length} logged. Maria can see them.`, `${loggedTonight.length} registradas. María puede verlas.`)}</T>
+            <Text style={{ fontFamily: F.serif, fontSize: 24, color: C.onFill }}>{t("All set for tonight", "Todo listo por esta noche")}</Text>
+            <T style={{ fontSize: 14.5, color: C.fillSoft }}>{t(`${loggedTonight.length} logged. Maria can see them.`, `${loggedTonight.length} registradas. María puede verlas.`)}</T>
           </View>
         )}
       </View>
@@ -430,9 +430,9 @@ function WaitHome({ data, api, t, go, reload, notice }: { data: TodayData; api: 
 
       {w.testAt && (
         <View style={st.dark}>
-          <T style={{ fontSize: 13, color: C.tan }}>{t("Your pregnancy blood test", "Tu prueba de embarazo en sangre")}</T>
-          <Text testID="test-date" style={{ fontFamily: F.serif, fontSize: 27, lineHeight: 31, color: C.paper }}>{longDate(w.testAt, data.lang)} · {clock(w.testAt)}</Text>
-          <T style={{ fontSize: 13.5, color: C.onEspMuted }}>{t("Your nurse shares the result the way you choose below.", "Tu enfermera te dará el resultado como elijas abajo.")}</T>
+          <T style={{ fontSize: 13, color: C.fillMuted }}>{t("Your pregnancy blood test", "Tu prueba de embarazo en sangre")}</T>
+          <Text testID="test-date" style={{ fontFamily: F.serif, fontSize: 27, lineHeight: 31, color: C.onFill }}>{longDate(w.testAt, data.lang)} · {clock(w.testAt)}</Text>
+          <T style={{ fontSize: 13.5, color: C.fillSoft }}>{t("Your nurse shares the result the way you choose below.", "Tu enfermera te dará el resultado como elijas abajo.")}</T>
         </View>
       )}
 
@@ -772,12 +772,12 @@ function ShareSummary({ api, t, ob }: { api: Api; t: Tx; ob: string | null }) {
       ) : (
         <>
           <View style={st.dark}>
-            <T style={{ fontSize: 13, color: C.tan }}>{t(`Secure link for ${recipient}`, `Enlace seguro para ${recipient}`)}</T>
-            <Text testID="summary-url" selectable numberOfLines={2} style={{ fontFamily: F.sans500, fontSize: 14, color: C.paper }}>{made.url}</Text>
+            <T style={{ fontSize: 13, color: C.fillMuted }}>{t(`Secure link for ${recipient}`, `Enlace seguro para ${recipient}`)}</T>
+            <Text testID="summary-url" selectable numberOfLines={2} style={{ fontFamily: F.sans500, fontSize: 14, color: C.onFill }}>{made.url}</Text>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <T style={{ fontSize: 13, color: C.onEspMuted }}>{t("Expires in 7 days", "Vence en 7 días")}</T>
+              <T style={{ fontSize: 13, color: C.fillSoft }}>{t("Expires in 7 days", "Vence en 7 días")}</T>
               <Pressable testID="copy-summary" onPress={async () => { await Clipboard.setStringAsync(made.url); setCopied(true); }} style={{ borderRadius: 999, borderWidth: 1, borderColor: C.tan, paddingHorizontal: 14, paddingVertical: 8 }}>
-                <T style={{ fontFamily: F.sans600, color: C.paper }}>{copied ? t("Copied ✓", "Copiado ✓") : t("Copy link", "Copiar enlace")}</T>
+                <T style={{ fontFamily: F.sans600, color: C.onFill }}>{copied ? t("Copied ✓", "Copiado ✓") : t("Copy link", "Copiar enlace")}</T>
               </Pressable>
             </View>
           </View>
@@ -843,7 +843,7 @@ function Walk({ doses, focus, api, lang, t, done, somethingWrong, helper, quiet 
       <H1 testID="walk-med">{dose.medication}</H1>
       <Muted>{dose.dose} · {clock(dose.scheduledFor)}</Muted>
       <View style={{ height: 150, borderRadius: 18, backgroundColor: C.well, alignItems: "center", justifyContent: "center" }}>
-        <T style={{ color: C.tan, fontSize: 13 }}>{guide?.videoUrl ? t("Play video", "Ver video") : t(`Video for ${dose.medication} coming from your clinic`, `Video de ${dose.medication} pronto, de tu clínica`)}</T>
+        <T style={{ color: C.fillMuted, fontSize: 13 }}>{guide?.videoUrl ? t("Play video", "Ver video") : t(`Video for ${dose.medication} coming from your clinic`, `Video de ${dose.medication} pronto, de tu clínica`)}</T>
       </View>
       {!guide && <Muted>{t("Loading steps…", "Cargando pasos…")}</Muted>}
       {guide && guide.steps.length > 0 && (
@@ -892,8 +892,8 @@ function CareTeam({ data, api, t, reload, afterSend }: { data: TodayData; api: A
       {items.length === 0 && <Muted>{t("No messages yet.", "Aún no hay mensajes.")}</Muted>}
       {items.map((m) => (
         <View key={m.id} style={{ gap: 8 }}>
-          <View style={{ alignSelf: "flex-end", maxWidth: "82%", backgroundColor: C.espresso, borderRadius: 18, borderBottomRightRadius: 4, paddingVertical: 11, paddingHorizontal: 14 }}>
-            <T style={{ color: C.paper, fontSize: 15 }}>{m.patientMessage}</T>
+          <View style={{ alignSelf: "flex-end", maxWidth: "82%", backgroundColor: C.fill, borderRadius: 18, borderBottomRightRadius: 4, paddingVertical: 11, paddingHorizontal: 14 }}>
+            <T style={{ color: C.onFill, fontSize: 15 }}>{m.patientMessage}</T>
           </View>
           {m.sentText ? (
             <Card style={{ gap: 8, ...(m.status === "sent" ? { borderColor: C.marigold } : {}) }}>
@@ -1075,12 +1075,12 @@ function InviteScreen({ api, t, reload, done }: { api: Api; t: Tx; reload: () =>
       <>
         <H1>{t(`Send ${first} the invite`, `Envía la invitación a ${first}`)}</H1>
         <View style={st.dark}>
-          <T style={{ fontSize: 13, color: C.tan }}>{t("Invite code", "Código de invitación")}</T>
-          <Text testID="invite-made-code" selectable numberOfLines={1} style={{ fontFamily: F.serif, fontSize: 36, letterSpacing: 3, color: C.paper }}>{made.code}</Text>
+          <T style={{ fontSize: 13, color: C.fillMuted }}>{t("Invite code", "Código de invitación")}</T>
+          <Text testID="invite-made-code" selectable numberOfLines={1} style={{ fontFamily: F.serif, fontSize: 36, letterSpacing: 3, color: C.onFill }}>{made.code}</Text>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <T style={{ fontSize: 13.5, color: C.onEspMuted }}>{t("Works once. Expires in 7 days.", "Funciona una vez. Vence en 7 días.")}</T>
+            <T style={{ fontSize: 13.5, color: C.fillSoft }}>{t("Works once. Expires in 7 days.", "Funciona una vez. Vence en 7 días.")}</T>
             <Pressable testID="copy-code" accessibilityLabel={t("Copy code", "Copiar código")} onPress={copy} style={{ borderRadius: 999, borderWidth: 1, borderColor: C.tan, paddingHorizontal: 14, paddingVertical: 8 }}>
-              <T style={{ fontFamily: F.sans600, color: C.paper }}>{copied ? t("Copied ✓", "Copiado ✓") : t("Copy code", "Copiar código")}</T>
+              <T style={{ fontFamily: F.sans600, color: C.onFill }}>{copied ? t("Copied ✓", "Copiado ✓") : t("Copy code", "Copiar código")}</T>
             </Pressable>
           </View>
         </View>
@@ -1291,13 +1291,13 @@ function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHom
           {tonight.length > 0 ? (
             <View style={st.dark}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" }}>
-                <Text style={{ fontFamily: F.serif, fontSize: 26, letterSpacing: -0.5, color: C.paper }}>{clock(nextAt!)}</Text>
-                <T style={{ fontSize: 13, color: C.tan }}>{`${tonight.length} injection${tonight.length > 1 ? "s" : ""}`}</T>
+                <Text style={{ fontFamily: F.serif, fontSize: 26, letterSpacing: -0.5, color: C.onFill }}>{clock(nextAt!)}</Text>
+                <T style={{ fontSize: 13, color: C.fillMuted }}>{`${tonight.length} injection${tonight.length > 1 ? "s" : ""}`}</T>
               </View>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
                 {tonight.map((d) => (
                   <Pressable key={d.id} onPress={() => go({ name: "walk", doses: tonight, focus: d.medication })} style={st.medchip}>
-                    <T style={{ fontSize: 13.5, color: C.paper }}>{d.medication}</T>
+                    <T style={{ fontSize: 13.5, color: C.onFill }}>{d.medication}</T>
                   </Pressable>
                 ))}
               </View>
@@ -1305,8 +1305,8 @@ function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHom
             </View>
           ) : (
             <View style={st.dark}>
-              <Text style={{ fontFamily: F.serif, fontSize: 24, color: C.paper }}>All set for tonight</Text>
-              <T style={{ fontSize: 14.5, color: C.onEspMuted }}>{`${her} logged ${loggedToday.length}.${data.clinic.personal ? "" : " Bayside can see them."}`}</T>
+              <Text style={{ fontFamily: F.serif, fontSize: 24, color: C.onFill }}>All set for tonight</Text>
+              <T style={{ fontSize: 14.5, color: C.fillSoft }}>{`${her} logged ${loggedToday.length}.${data.clinic.personal ? "" : " Bayside can see them."}`}</T>
             </View>
           )}
         </View>

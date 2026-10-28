@@ -245,8 +245,8 @@ function Tabs({ current, go, badge }: { current: string; go: (s: Screen) => void
         const on = current === name; const add = name === "add";
         return (
           <Pressable key={name} testID={`solo-tab-${name}`} accessibilityRole="tab" accessibilityState={{ selected: on }} onPress={() => go({ name })}
-            style={{ flex: add ? 1.1 : 1, borderRadius: 999, paddingVertical: 11, alignItems: "center", backgroundColor: on ? C.espresso : add ? C.marigold : "transparent" }}>
-            <Text numberOfLines={1} style={{ fontFamily: on || add ? F.sans700 : F.sans500, fontSize: 13, color: on ? C.paper : add ? C.onMarigold : C.espresso }}>{add ? "+ Add" : label}{name === "today" && badge ? ` · ${badge}` : ""}</Text>
+            style={{ flex: add ? 1.1 : 1, borderRadius: 999, paddingVertical: 11, alignItems: "center", backgroundColor: on ? C.fill : add ? C.marigold : "transparent" }}>
+            <Text numberOfLines={1} style={{ fontFamily: on || add ? F.sans700 : F.sans500, fontSize: 13, color: on ? C.onFill : add ? C.onMarigold : C.espresso }}>{add ? "+ Add" : label}{name === "today" && badge ? ` · ${badge}` : ""}</Text>
           </Pressable>
         );
       })}
@@ -312,19 +312,19 @@ function TodayScreen({ d, api, go, reload }: { d: SoloToday; api: Api; go: (s: S
 
       {(soon.length > 0 || missed.length > 0) && (
         <View style={[st.dark, { gap: 12 }]}>
-          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><Icon name="medication" color={C.marigoldOnEsp} /><T style={{ fontFamily: F.sans700, color: C.marigoldOnEsp, fontSize: 13, letterSpacing: 0.6 }}>MEDS</T></View>
+          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><Icon name="medication" color={C.marigoldOnFill} /><T style={{ fontFamily: F.sans700, color: C.marigoldOnFill, fontSize: 13, letterSpacing: 0.6 }}>MEDS</T></View>
           {missed.map((x) => (
             <View key={x.id} style={{ gap: 6 }}>
-              <T style={{ color: C.paper, fontSize: 15.5 }}>{`${x.medication} ${x.dose} · was due ${clock(x.scheduledFor)}`}</T>
+              <T style={{ color: C.onFill, fontSize: 15.5 }}>{`${x.medication} ${x.dose} · was due ${clock(x.scheduledFor)}`}</T>
               <View style={{ flexDirection: "row", gap: 8 }}>
-                <Pressable testID={`late-${x.id}`} onPress={() => log(x.id)} style={{ backgroundColor: C.paper, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 16 }}><T style={{ fontFamily: F.sans700 }}>{logging === x.id ? "Saving…" : "I took it"}</T></Pressable>
-                {p.afterHoursPhone ? <Pressable onPress={() => Linking.openURL(telOf(p.afterHoursPhone!))} style={{ borderColor: C.paper, borderWidth: 1.5, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 16 }}><T style={{ fontFamily: F.sans600, color: C.paper }}>Not sure? Call your clinic</T></Pressable> : null}
+                <Pressable testID={`late-${x.id}`} onPress={() => log(x.id)} style={{ backgroundColor: C.onFill, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 16 }}><T style={{ fontFamily: F.sans700, color: C.fill }}>{logging === x.id ? "Saving…" : "I took it"}</T></Pressable>
+                {p.afterHoursPhone ? <Pressable onPress={() => Linking.openURL(telOf(p.afterHoursPhone!))} style={{ borderColor: C.onFill, borderWidth: 1.5, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 16 }}><T style={{ fontFamily: F.sans600, color: C.onFill }}>Not sure? Call your clinic</T></Pressable> : null}
               </View>
             </View>
           ))}
           {soon.map((x) => (
             <View key={x.id} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-              <View style={{ flex: 1 }}><T style={{ fontFamily: F.display, fontSize: 20, color: C.paper }}>{`${new Date(x.scheduledFor).toDateString() === new Date().toDateString() ? "" : "Tomorrow "}${clock(x.scheduledFor)}`}</T><T style={{ color: C.tan, fontSize: 15 }}>{`${x.medication} ${x.dose}`}</T></View>
+              <View style={{ flex: 1 }}><T style={{ fontFamily: F.display, fontSize: 20, color: C.onFill }}>{`${new Date(x.scheduledFor).toDateString() === new Date().toDateString() ? "" : "Tomorrow "}${clock(x.scheduledFor)}`}</T><T style={{ color: C.fillMuted, fontSize: 15 }}>{`${x.medication} ${x.dose}`}</T></View>
               {x.takenAt ? (justLogged === x.id && !calm
                 ? <View testID={`logged-${x.id}`} style={{ flexDirection: "row", gap: 6, alignItems: "center", backgroundColor: C.sage, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 12 }}><DrawCheck size={18} /><T style={{ fontFamily: F.sans600, color: C.sageInk, fontSize: 13.5 }}>Done</T></View>
                 : <Pill tone="sage" label="Done" />) : <Pressable testID={`log-${x.id}`} onPress={() => log(x.id)} style={{ backgroundColor: C.marigold, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 16, minHeight: 44, justifyContent: "center" }}><T style={{ fontFamily: F.sans700, color: C.onMarigold }}>{logging === x.id ? "Saving…" : "Log it"}</T></Pressable>}

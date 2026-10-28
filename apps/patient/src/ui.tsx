@@ -18,10 +18,13 @@ const LIGHT = {
   stone: "#5C4F47", alertSoft: "#FBE5E2", line: "#E6DED2", lineSoft: "#EFE8DC", tan: "#D9CBBE", well: "#45352E", softLav: "#F1ECFA",
   /** Text and icons on marigold, in both themes. */
   onMarigold: "#2E211C",
-  /** Marigold labels and icons on espresso fills (a deeper amber in dark, where those fills turn cream). */
-  marigoldOnEsp: "#F0A83A",
-  /** Secondary text on espresso fills. */
-  onEspMuted: "#E9DED3",
+  /** The strong dark surfaces: tonight's card, dark buttons, selected chips and tabs, your sent messages.
+   * Espresso in light; in dark a slightly lighter brown with a marigold edge, so the screen stays dim at night. */
+  fill: "#2E211C", fillEdge: "#1A120E",
+  /** Text on fill, and its quieter versions (labels, then secondary lines). */
+  onFill: "#FFFCF7", fillMuted: "#D9CBBE", fillSoft: "#E9DED3",
+  /** Marigold labels and icons on fill. */
+  marigoldOnFill: "#F0A83A",
   lavShadow: "#B9ACDF", onRed: "#FFFFFF", redEdge: "#7E1810", field: "#FFFFFF",
   /** The brush pumpkin's center stroke and stem (they lighten on dark, as in the on-dark logo). */
   pumpkinCenter: "#B9781C", stem: "#3E5A33",
@@ -31,8 +34,9 @@ const DARK: Palette = {
   espresso: "#F4EDE3", espressoEdge: "#C9BEB1", ink: "#F4EDE3", oat: "#231B17", paper: "#1B1512",
   marigold: "#F0A83A", marigoldEdge: "#B9781C", lav: "#2F2944", lavInk: "#CDC2F2", lavDeep: "#CDC2F2",
   sage: "#24301F", sageInk: "#B6CFA7", clay: "#3B2721", clayInk: "#F1B79D", red: "#FF8C7C",
-  stone: "#B8AA9E", alertSoft: "#3E1D19", line: "#30271F", lineSoft: "#2A211C", tan: "#6B5D53", well: "#E8DFD3", softLav: "#26213A",
-  onMarigold: "#2E211C", marigoldOnEsp: "#8F5A12", onEspMuted: "#4A3D35",
+  stone: "#B8AA9E", alertSoft: "#3E1D19", line: "#30271F", lineSoft: "#2A211C", tan: "#6B5D53", well: "#4E3D33", softLav: "#26213A",
+  onMarigold: "#2E211C",
+  fill: "#3A2C25", fillEdge: "#B9781C", onFill: "#F4EDE3", fillMuted: "#CBBFB3", fillSoft: "#DED3C7", marigoldOnFill: "#F0A83A",
   lavShadow: "#3E3560", onRed: "#2A0F0B", redEdge: "#C25A4C", field: "#1B1512",
   pumpkinCenter: "#D9913A", stem: "#B6CFA7",
 };
@@ -144,7 +148,7 @@ export function Row({ title, sub, right, onPress, testID }: { title: string; sub
 export function Button({ label, onPress, kind = "mari", disabled, testID }: { label: string; onPress: () => void; kind?: "mari" | "esp" | "line" | "plain" | "red"; disabled?: boolean; testID?: string }) {
   const look = {
     mari: { bg: C.marigold, fg: C.onMarigold, edge: C.marigoldEdge, font: F.sans700 },
-    esp: { bg: C.espresso, fg: C.paper, edge: C.espressoEdge, font: F.sans600 },
+    esp: { bg: C.fill, fg: C.onFill, edge: C.fillEdge, font: F.sans600 },
     red: { bg: C.red, fg: C.onRed, edge: C.redEdge, font: F.sans700 },
     line: { bg: C.paper, fg: C.ink, edge: null, font: F.sans600 },
     plain: { bg: "transparent", fg: C.stone, edge: null, font: F.sans600 },
@@ -161,8 +165,8 @@ export function Button({ label, onPress, kind = "mari", disabled, testID }: { la
 
 export function Chip({ label, onPress, selected, testID }: { label: string; onPress?: () => void; selected?: boolean; testID?: string }) {
   return (
-    <Pressable testID={testID} onPress={onPress} style={[st.chip, selected && { backgroundColor: C.espresso, borderColor: C.espresso }]}>
-      <Text style={{ fontFamily: F.sans500, fontSize: 13.5, color: selected ? C.paper : C.ink }}>{label}</Text>
+    <Pressable testID={testID} onPress={onPress} style={[st.chip, selected && { backgroundColor: C.fill, borderColor: C.fill }]}>
+      <Text style={{ fontFamily: F.sans500, fontSize: 13.5, color: selected ? C.onFill : C.ink }}>{label}</Text>
     </Pressable>
   );
 }
@@ -243,7 +247,7 @@ export function TimelineItem({ when, what, action, onAction, tone = "lav", icon 
 
 function makeStyles() { return {
   card: { backgroundColor: C.paper, borderRadius: 22, borderWidth: 1, borderColor: C.line },
-  dark: { backgroundColor: C.espresso, borderRadius: 20, padding: 18, gap: 10, borderBottomWidth: 4, borderBottomColor: C.espressoEdge },
+  dark: { backgroundColor: C.fill, borderRadius: 20, padding: 18, gap: 10, borderBottomWidth: 4, borderBottomColor: C.fillEdge },
   btn: { borderRadius: 999, paddingVertical: 13, alignItems: "center", width: "100%" },
   chip: { borderWidth: 1, borderColor: C.line, backgroundColor: C.paper, borderRadius: 999, paddingVertical: 9, paddingHorizontal: 13 },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, paddingVertical: 13, paddingHorizontal: 16, borderTopWidth: 1, borderTopColor: C.lineSoft },

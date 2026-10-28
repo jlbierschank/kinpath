@@ -66,12 +66,12 @@ export function CostsScreen({ api, t, lang, openReceipt, partner = false, herNam
         <View testID="balance" style={[st.dark, { gap: 4 }]}>
           {m.balanceCents > 0 ? (
             <>
-              <T style={{ color: C.tan, fontSize: 13 }}>{partner ? t("Owed", "Pendiente") : t("You owe", "Debes")}</T>
-              <T style={{ fontFamily: F.serif, fontSize: 32, color: C.paper }}>{usd(m.balanceCents)}</T>
-              {m.nextDue && <T style={{ color: C.onEspMuted, fontSize: 14 }}>{t(`${usd(m.nextDue.amountCents)} due ${day(m.nextDue.dueOn)}`, `${usd(m.nextDue.amountCents)} vence el ${day(m.nextDue.dueOn, true)}`)}</T>}
+              <T style={{ color: C.fillMuted, fontSize: 13 }}>{partner ? t("Owed", "Pendiente") : t("You owe", "Debes")}</T>
+              <T style={{ fontFamily: F.serif, fontSize: 32, color: C.onFill }}>{usd(m.balanceCents)}</T>
+              {m.nextDue && <T style={{ color: C.fillSoft, fontSize: 14 }}>{t(`${usd(m.nextDue.amountCents)} due ${day(m.nextDue.dueOn)}`, `${usd(m.nextDue.amountCents)} vence el ${day(m.nextDue.dueOn, true)}`)}</T>}
             </>
-          ) : <T style={{ fontFamily: F.serif, fontSize: 24, color: C.paper }}>{t("All paid up", "Todo pagado")}</T>}
-          <T style={{ color: C.onEspMuted, fontSize: 13 }}>{t(`Paid so far: ${usd(m.paidCents)}`, `Pagado hasta ahora: ${usd(m.paidCents)}`)}</T>
+          ) : <T style={{ fontFamily: F.serif, fontSize: 24, color: C.onFill }}>{t("All paid up", "Todo pagado")}</T>}
+          <T style={{ color: C.fillSoft, fontSize: 13 }}>{t(`Paid so far: ${usd(m.paidCents)}`, `Pagado hasta ahora: ${usd(m.paidCents)}`)}</T>
         </View>
       )}
 
