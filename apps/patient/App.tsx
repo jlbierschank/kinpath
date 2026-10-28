@@ -316,7 +316,7 @@ function Home({ data, api, t, go, afterSend, reload }: { data: TodayData; api: A
 
       <NoteCards data={data} api={api} t={t} reload={reload} />
 
-      <JourneyPath current={stageIndex(data.stage)} labels={data.lang === "es" ? STAGES_ES : STAGES} />
+      <JourneyPath current={stageIndex(data.stage)} labels={data.lang === "es" ? STAGES_ES : STAGES} calm={data.stage === "wait" || data.stage === "result"} />
 
       <AskBox testID="ask" value={ask} onChange={setAsk} onSubmit={() => send(ask)} placeholder={t("Ask a question or tell us how you're doing", "Haz una pregunta o cuéntanos cómo estás")} />
 
@@ -423,7 +423,7 @@ function WaitHome({ data, api, t, go, reload, notice }: { data: TodayData; api: 
         <Today>{w.prefs.hideDayCount || !w.dayOfWait ? t("The wait", "La espera") : t(`Day ${w.dayOfWait} of the wait`, `Día ${w.dayOfWait} de la espera`)}</Today>
         <Muted>{t("Waiting is hard. We're with you.", "Esperar es difícil. Estamos contigo.")}</Muted>
       </View>
-      <JourneyPath current={5} labels={data.lang === "es" ? STAGES_ES : STAGES} />
+      <JourneyPath current={5} labels={data.lang === "es" ? STAGES_ES : STAGES} calm />
       {notice && <Moment>{notice}</Moment>}
       <NoteCards data={data} api={api} t={t} reload={reload} />
 
@@ -1264,7 +1264,7 @@ function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHom
         </Card>
       )}
 
-      {data.sections.includes("schedule") && <JourneyPath current={stageIndex(data.stage)} labels={STAGES} />}
+      {data.sections.includes("schedule") && <JourneyPath current={stageIndex(data.stage)} labels={STAGES} calm={data.stage === "wait" || data.stage === "result"} />}
       {data.sections.includes("money") && <PartnerCostsCard api={api} open={() => go({ name: "costs" })} />}
       {(data.appointments?.length ?? 0) > 0 && (
         <View style={{ gap: 8 }} testID="partner-visits">

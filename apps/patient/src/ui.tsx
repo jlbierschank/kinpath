@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import { Image, Pressable, StyleSheet, Switch, Text, TextInput, View, type SwitchProps, type TextStyle, type ViewStyle } from "react-native";
 import Svg, { Circle, Path, Text as SvgText } from "react-native-svg";
 import { ICONS, type IconName } from "./icons";
+import { SvgPulse } from "./motion";
 
 export const C = {
   espresso: "#2E211C", espressoEdge: "#1A120E", ink: "#231A16", oat: "#F6F1E8", paper: "#FFFCF7",
@@ -122,7 +123,7 @@ export function AskBox({ value, onChange, onSubmit, placeholder, testID }: { val
 }
 
 /** The dotted path through treatment. Done = sage, current = marigold, ahead = paper. */
-export function JourneyPath({ current, labels }: { current: number; labels: string[] }) {
+export function JourneyPath({ current, labels, calm = false }: { current: number; labels: string[]; calm?: boolean }) {
   const xs = [14, 57, 100, 143, 186, 229, 272, 315], ys = [38, 22, 34, 18, 32, 20, 30, 24];
   let d = `M${xs[0]} ${ys[0]}`;
   for (let i = 1; i < xs.length; i++) d += ` Q${(xs[i - 1]! + xs[i]!) / 2} ${ys[i - 1]! - 12} ${xs[i]} ${ys[i]}`;
@@ -132,6 +133,7 @@ export function JourneyPath({ current, labels }: { current: number; labels: stri
     <View accessible accessibilityLabel={`You are at: ${labels[current]}`} style={{ height: 62 }}>
       <Svg width="100%" height={62} viewBox="0 0 330 62">
         <Path d={d} fill="none" stroke={C.tan} strokeWidth={2} strokeDasharray="3 5" strokeLinecap="round" />
+        <SvgPulse cx={xs[current]!} cy={ys[current]!} still={calm} />
         {xs.map((x, i) => (
           <Circle key={i} cx={x} cy={ys[i]} r={i === current ? 7 : 4.5}
             fill={i < current ? C.sageInk : i === current ? C.marigold : C.paper}

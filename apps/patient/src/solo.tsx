@@ -24,6 +24,10 @@ import { Field } from "./field";
 import { AboutScreen, AliasScreen, QuestionIdeas, SummaryScreen, TalkScreen } from "./yours";
 import { FeedbackScreen, PeopleScreen } from "./people";
 import { TestBanner } from "./appinfo";
+import { BrushSketch, DrawCheck, DrawPumpkin, PulseOnce, RiseIn, useReduceMotion } from "./motion";
+
+/** Set when someone has just finished signing up, so the app greets them once. */
+let welcomeNext = false;
 import { PRONOUNS } from "@kinpath/core";
 
 const STAGES: [SoloStage, string, string][] = [
@@ -139,7 +143,7 @@ export function SignupFlow({ onSignedIn, onBack }: { onSignedIn: (u: SignedInUse
           hint="Without a nurse on Pumpkin, urgent symptoms go to this number. It's usually on your paperwork." />
         {err}
         <Button testID="signup-finish" label={busy ? "Setting up…" : "Start my record"} disabled={busy || !first.trim() || !stage}
-          onPress={() => run(async () => onSignedIn(await auth.signupFinish({ ticket: step.ticket, firstName: first, preferredName: preferred, pronouns, stage: stage!, clinicName: clinic, afterHoursPhone: phone, timeZone: zone(), device: deviceName() })))} />
+          onPress={() => run(async () => { const u = await auth.signupFinish({ ticket: step.ticket, firstName: first, preferredName: preferred, pronouns, stage: stage!, clinicName: clinic, afterHoursPhone: phone, timeZone: zone(), device: deviceName() }); welcomeNext = true; onSignedIn(u); })} />
       </Card>
       <Muted style={{ fontSize: 13 }}>Your record is private. You choose who sees each part, and you can download it or delete it anytime.</Muted>
     </Frame>
@@ -168,11 +172,15 @@ export function SoloApp({ api, onSignOut }: { api: Api; onSignOut: () => void })
   const [today, setToday] = useState<SoloToday | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const reduce = useReduceMotion();
+  const [welcome, setWelcome] = useState(() => { const w = welcomeNext; welcomeNext = false; return w; });
   const load = useCallback(async () => {
     try { const d = await api.soloToday(); setToday(d); setError(null); void syncReminders(d.reminders).catch(() => 0); }
     catch (e) { setError((e as Error).message); }
   }, [api]);
   useEffect(() => { void load(); }, [load]);
+  const ready = today !== null;
+  useEffect(() => { if (!welcome || !ready) return; const t = setTimeout(() => setWelcome(false), 2600); return () => clearTimeout(t); }, [welcome, ready]);
   const go = (s: Screen) => { setNotice(null); setScreen(s); };
   const home = (msg?: string) => { void load(); setScreen({ name: "today" }); setNotice(msg ?? null); };
   const afterCapture = (r: { status: string; urgent: "urgent" | "crisis" | null; items: number; problem: string | null }) => {
@@ -196,8 +204,9 @@ export function SoloApp({ api, onSignOut }: { api: Api; onSignOut: () => void })
     : <Back label={screen.name === "original" ? "Back to checking" : "Today"} onBack={() => (screen.name === "original" ? setScreen({ name: "check" }) : home())} />;
 
   return (
+    <View style={{ flex: 1 }}>
     <Frame top={top} tabs={tabs}>
-      {notice ? <View testID="solo-notice" style={{ backgroundColor: C.sage, borderRadius: 16, padding: 14 }}><T style={{ fontFamily: F.sans600, color: C.sageInk, fontSize: 15 }}>{notice}</T></View> : null}
+      {notice ? <RiseIn key={notice}><View testID="solo-notice" style={{ backgroundColor: C.sage, borderRadius: 16, padding: 14 }}><T style={{ fontFamily: F.sans600, color: C.sageInk, fontSize: 15 }}>{notice}</T></View></RiseIn> : null}
       {screen.name === "today" && <TodayScreen d={today} api={api} go={go} reload={load} />}
       {screen.name === "add" && <AddScreen api={api} profile={today.profile} go={go} done={afterCapture} />}
       {screen.name === "say" && <SayScreen api={api} done={afterCapture} />}
@@ -216,6 +225,15 @@ export function SoloApp({ api, onSignOut }: { api: Api; onSignOut: () => void })
       {screen.name === "feedback" && <FeedbackScreen api={api} done={(m) => { setScreen({ name: "more" }); setNotice(m); }} />}
       {screen.name === "urgent" && <Urgent profile={today.profile} crisis={screen.crisis} back={() => home()} />}
     </Frame>
+    {welcome && !reduce ? (
+      <Pressable testID="welcome" accessibilityRole="button" accessibilityLabel="Welcome to Pumpkin. Tap to continue." onPress={() => setWelcome(false)}
+        style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: C.oat, alignItems: "center", justifyContent: "center", gap: 18, padding: 24 }}>
+        <DrawPumpkin size={150} />
+        <RiseIn delay={900}><Today size={30}>{`Welcome, ${today.about.displayName}.`}</Today></RiseIn>
+        <RiseIn delay={1200}><Muted style={{ fontSize: 15.5, textAlign: "center" }}>Your record is ready. It's yours to keep.</Muted></RiseIn>
+      </Pressable>
+    ) : null}
+    </View>
   );
 }
 
@@ -244,10 +262,13 @@ function TodayScreen({ d, api, go, reload }: { d: SoloToday; api: Api; go: (s: S
   const soon = d.schedule.upcoming.filter((x) => new Date(x.scheduledFor).getTime() - Date.now() < 30 * 3600_000);
   const missed = d.schedule.missed.filter((x) => Date.now() - new Date(x.scheduledFor).getTime() < 36 * 3600_000);
   const [logging, setLogging] = useState<string | null>(null);
-  const log = async (id: string) => { setLogging(id); try { await api.logDose(id); await reload(); } finally { setLogging(null); } };
+  const log = async (id: string) => { setLogging(id); try { await api.logDose(id); setJustLogged(id); await reload(); } finally { setLogging(null); } };
   const hard = p.stage === "after_hard_result";
   const f = d.feel;
   const quiet = f.quiet, gentle = f.tender?.mode === "gentle";
+  // No flourishes on quiet or gentle days, during a pause, in the two-week wait or after a hard result.
+  const calm = quiet || !!f.tender || f.paused || f.onBreak || hard || p.stage === "two_week_wait";
+  const [justLogged, setJustLogged] = useState<string | null>(null);
   const [shown, setShown] = useState(!d.about.revealResults);
   useEffect(() => { setShown(!d.about.revealResults); }, [d.about.revealResults]);
   const [resuming, setResuming] = useState(false);
@@ -260,7 +281,7 @@ function TodayScreen({ d, api, go, reload }: { d: SoloToday; api: Api; go: (s: S
         <T testID="greeting" style={{ fontSize: 17, fontFamily: F.sans600 }}>{`Hi, ${d.about.displayName}.`}</T>
         <View style={{ flexDirection: "row", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <Muted style={{ fontSize: 15 }}>{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</Muted>
-          <Pill tone="lav" label={p.stageLabel} />
+          <PulseOnce still={calm}><Pill tone="lav" label={p.stageLabel} /></PulseOnce>
         </View>
       </View>
       {f.onBreak || f.paused ? (
@@ -304,7 +325,9 @@ function TodayScreen({ d, api, go, reload }: { d: SoloToday; api: Api; go: (s: S
           {soon.map((x) => (
             <View key={x.id} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
               <View style={{ flex: 1 }}><T style={{ fontFamily: F.display, fontSize: 20, color: C.paper }}>{`${new Date(x.scheduledFor).toDateString() === new Date().toDateString() ? "" : "Tomorrow "}${clock(x.scheduledFor)}`}</T><T style={{ color: C.tan, fontSize: 15 }}>{`${x.medication} ${x.dose}`}</T></View>
-              {x.takenAt ? <Pill tone="sage" label="Done" /> : <Pressable testID={`log-${x.id}`} onPress={() => log(x.id)} style={{ backgroundColor: C.marigold, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 16, minHeight: 44, justifyContent: "center" }}><T style={{ fontFamily: F.sans700 }}>{logging === x.id ? "Saving…" : "Log it"}</T></Pressable>}
+              {x.takenAt ? (justLogged === x.id && !calm
+                ? <View testID={`logged-${x.id}`} style={{ flexDirection: "row", gap: 6, alignItems: "center", backgroundColor: C.sage, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 12 }}><DrawCheck size={18} /><T style={{ fontFamily: F.sans600, color: C.sageInk, fontSize: 13.5 }}>Done</T></View>
+                : <Pill tone="sage" label="Done" />) : <Pressable testID={`log-${x.id}`} onPress={() => log(x.id)} style={{ backgroundColor: C.marigold, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 16, minHeight: 44, justifyContent: "center" }}><T style={{ fontFamily: F.sans700 }}>{logging === x.id ? "Saving…" : "Log it"}</T></Pressable>}
             </View>
           ))}
         </View>
@@ -452,7 +475,7 @@ function AddScreen({ api, profile, go, done }: { api: Api; profile: SoloProfile;
           <Muted style={{ fontSize: 13 }}>{profile.aiReads.left === 0 ? "Typed and spoken notes still work, and you can always add things by hand." : "Each thing Pumpkin reads for you uses one. Samples don't."}</Muted>
         </View>
       ) : null}
-      {busy ? <View style={{ backgroundColor: C.lav, borderRadius: 16, padding: 14, flexDirection: "row", gap: 10, alignItems: "center" }}><ActivityIndicator color={C.lavInk} /><T style={{ color: C.lavInk, fontFamily: F.sans600 }}>Reading it now. This can take a few seconds.</T></View> : null}
+      {busy ? <View style={{ backgroundColor: C.lav, borderRadius: 16, padding: 14, flexDirection: "row", gap: 10, alignItems: "center" }}><BrushSketch /><T style={{ color: C.lavInk, fontFamily: F.sans600, flex: 1 }}>Reading it now. This can take a few seconds.</T></View> : null}
       {error ? <T testID="add-error" style={{ color: C.red, fontSize: 15 }}>{error}</T> : null}
       {Platform.OS !== "web" ? <Option id="camera" icon="doc" title="Take a photo" sub="Instruction sheets, lab reports, receipts" onPress={() => photo(true)} /> : null}
       <Option id="photo" icon="doc" title={Platform.OS === "web" ? "Upload a photo or screenshot" : "Choose a photo or screenshot"} sub="A portal screenshot works too" onPress={() => photo(false)} />
@@ -545,6 +568,7 @@ function CheckScreen({ api, go, done }: { api: Api; go: (s: Screen) => void; don
     <>
       <Today size={34}>Check what Pumpkin read</Today>
       <Muted style={{ fontSize: 15 }}>Compare each one with what you sent. Fix anything that's off. Pumpkin copies what's written; it doesn't decide what anything means.</Muted>
+      {saved > 0 ? <RiseIn key={saved}><View style={{ backgroundColor: C.sage, borderRadius: 14, padding: 12, flexDirection: "row", gap: 8, alignItems: "center" }}><DrawCheck size={18} /><T style={{ fontFamily: F.sans600, color: C.sageInk }}>{saved === 1 ? "Added to your record." : `${saved} added to your record.`}</T></View></RiseIn> : null}
       {items.map((it) => <ItemCard key={it.id} item={it} api={api} go={go} onDone={(kept) => { if (kept) setSaved((n) => n + 1); setItems((xs) => xs!.filter((x) => x.id !== it.id)); }} />)}
     </>
   );
