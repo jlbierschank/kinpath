@@ -11,7 +11,7 @@ import { PrintButton } from "./print";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "IVF pregnancy summary", robots: { index: false, follow: false } };
 
-const d = (s: string | null) => (s ? new Date(s.length === 10 ? `${s}T12:00:00` : s).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "—");
+const d = (s: string | null) => (s ? new Date(s.length === 10 ? `${s}T12:00:00` : s).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "Not given");
 const OUT: Record<string, string> = { positive: "Positive", negative: "Negative", repeat: "Repeat test needed" };
 
 export default async function Summary({ params }: { params: Promise<{ token: string }> }) {
@@ -42,7 +42,7 @@ export default async function Summary({ params }: { params: Promise<{ token: str
         <div className="card">
           <h2 style={{ marginTop: 0 }}>Pregnancy blood tests</h2>
           {s.tests.length === 0 && <span className="muted">None released.</span>}
-          {s.tests.map((t, i) => <div className="row" key={i}><span>{d(t.at)}</span><b>hCG {t.hcg ?? "—"} mIU/mL · {OUT[t.outcome] ?? t.outcome}</b></div>)}
+          {s.tests.map((t, i) => <div className="row" key={i}><span>{d(t.at)}</span><b>hCG {t.hcg ?? "Not given"} mIU/mL · {OUT[t.outcome] ?? t.outcome}</b></div>)}
         </div>
       )}
       {s.labs && s.labs.length > 0 && (

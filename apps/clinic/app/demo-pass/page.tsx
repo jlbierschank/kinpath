@@ -18,7 +18,7 @@ export default async function DemoPass({ searchParams }: { searchParams: Promise
         <input type="hidden" name="next" value={test && next === "/" ? "/phone" : next} />
         <label htmlFor="passcode">Passcode</label>
         <input id="passcode" name="passcode" type="password" autoComplete="off" autoFocus required />
-        <div style={{ marginTop: 12 }}><button className="btn btn-main" type="submit">{test ? "Continue" : "Open the demo"}</button></div>
+        <div style={{ marginTop: 12 }}><button className="btn btn-main" type="submit">{test ? "Open Pumpkin" : "Open the demo"}</button></div>
       </form>
       {test ? null : <p className="muted" style={{ fontSize: 13 }}>After this you&apos;ll pick a test person: a patient, her partner, or a nurse. The patient&apos;s phone app is at <code>/phone</code>.</p>}
     </div>

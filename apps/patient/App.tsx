@@ -122,7 +122,7 @@ function SignIn({ onSignedIn, onDemo }: { onSignedIn: (u: SignedInUser) => void;
         <Cap>Your name</Cap>
         <TextInput testID="invite-name" style={st.input} value={name} onChangeText={setName} placeholder="First and last name" placeholderTextColor={C.stone} />
         {err}
-        <Button testID="join" label={busy ? "Checking…" : "Continue"} disabled={busy || !inviteCode.trim() || !name.trim()} onPress={() => run(async () => { const r = await auth.startJoin(inviteCode, name); setCode(""); setStep({ name: "join-confirm", code: inviteCode, sentTo: r.sentTo, patient: r.patientFirstName }); })} />
+        <Button testID="join" label={busy ? "Checking…" : "Check my invite"} disabled={busy || !inviteCode.trim() || !name.trim()} onPress={() => run(async () => { const r = await auth.startJoin(inviteCode, name); setCode(""); setStep({ name: "join-confirm", code: inviteCode, sentTo: r.sentTo, patient: r.patientFirstName }); })} />
       </Card>
     </Frame>
   );
@@ -673,7 +673,7 @@ function GraduationHome({ data, api, t, go, reload, notice, setNotice, afterSend
 
       <Card style={{ gap: 6 }}>
         <Cap>{t("A keepsake", "Un recuerdo")}</Cap>
-        <Text style={{ fontFamily: F.serifItalic, fontSize: 23, lineHeight: 28, color: C.espresso }}>{g?.days ? t(`Your journey, start to finish · ${g.days} days`, `Tu camino, de principio a fin · ${g.days} días`) : t("Your journey, start to finish", "Tu camino, de principio a fin")}</Text>
+        <Text style={{ fontFamily: F.serifItalic, fontSize: 23, lineHeight: 28, color: C.espresso }}>{g?.days ? t(`Your treatment, start to finish · ${g.days} days`, `Tu camino, de principio a fin · ${g.days} días`) : t("Your treatment, start to finish", "Tu camino, de principio a fin")}</Text>
         <Muted>{t("Every step and milestone, yours to keep. Leave out anything you'd rather not remember.", "Cada paso y logro, para que lo guardes. Deja fuera lo que prefieras no recordar.")}</Muted>
         <Button testID="open-keepsake" kind="line" label={g?.keepsake.saved ? t("See my keepsake", "Ver mi recuerdo") : t("Make my keepsake", "Crear mi recuerdo")} onPress={() => go({ name: "keepsake" })} />
       </Card>
@@ -711,7 +711,7 @@ function KeepsakeScreen({ api, t, lang }: { api: Api; t: Tx; lang: "en" | "es" }
   } as Record<KeepsakeId, [string, string]>)[i.id];
   return (
     <>
-      <Today size={34}>{t("Your journey", "Tu camino")}</Today>
+      <Today size={34}>{t("Your keepsake", "Tu recuerdo")}</Today>
       <Muted>{t("Switch off anything you'd rather leave out. Only you see this.", "Desactiva lo que prefieras dejar fuera. Solo tú ves esto.")}</Muted>
       <Card pad={false}>
         {g.keepsake.items.map((i, k) => {

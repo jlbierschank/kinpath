@@ -54,9 +54,9 @@ export default async function Patients({ searchParams }: { searchParams: Promise
                         )}
                       </details>
                     </td>
-                    <td><code>{p.mrn ?? "—"}</code></td>
+                    <td><code>{p.mrn ?? "Not set"}</code></td>
                     <td className="muted" style={{ fontSize: 13 }}>{p.stage ? `${STAGE[p.stage] ?? p.stage}${p.cycleKind ? ` · ${CYCLE_KINDS[p.cycleKind as keyof typeof CYCLE_KINDS] ?? p.cycleKind}` : ""}` : "No cycle yet"}</td>
-                    <td className="muted" style={{ fontSize: 13 }}>{p.nextVisit ? when(p.nextVisit) : "—"}</td>
+                    <td className="muted" style={{ fontSize: 13 }}>{p.nextVisit ? when(p.nextVisit) : "Not set"}</td>
                   </tr>
                 ))}
               </tbody>

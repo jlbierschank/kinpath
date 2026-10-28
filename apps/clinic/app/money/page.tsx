@@ -4,7 +4,7 @@ import { getDb } from "@/lib/db";
 import { requireSession } from "@/lib/session";
 import { RecordRow } from "../record-row";
 
-const day = (d: string | null) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—");
+const day = (d: string | null) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Not given");
 
 export default async function Money({ searchParams }: { searchParams: Promise<{ error?: string; saved?: string }> }) {
   const sp = await searchParams;

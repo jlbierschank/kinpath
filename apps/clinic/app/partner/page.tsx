@@ -6,7 +6,7 @@ const fmt = (iso: string) => new Date(iso).toLocaleString("en-US", { weekday: "s
 
 export default async function PartnerHome() {
   const s = await requireSession(["partner"]);
-  if (!s.patientId) return <p>No one has shared their journey with you yet.</p>;
+  if (!s.patientId) return <p>No one has shared anything with you yet.</p>;
   const db = await getDb();
   const [today, results] = await Promise.all([patientToday(db, s, s.patientId), patientResults(db, s, s.patientId)]);
   return (

@@ -20,7 +20,7 @@ const totp = (secret) => { const buf = Buffer.alloc(8); buf.writeBigUInt64BE(Big
   const outbox = async () => { const o = await fresh(); await o.goto(S + '/dev/outbox'); const rows = await o.locator('[data-testid=outbox-row]').allInnerTexts(); await o.context().close(); return rows; };
   const staffSignIn = async (p, email, secret) => {
     await p.goto(S + '/login'); await p.fill('#email', email); await p.fill('#password', PW);
-    await submit(p, p.locator('button:has-text("Continue")'));
+    await submit(p, p.locator('button:has-text("Next: your code")'));
     if (!secret) secret = (await p.locator('[data-testid=totp-secret]').innerText()).replace(/\s/g, '');
     await p.fill('#code', totp(secret));
     await submit(p, p.locator('button[type=submit]').filter({ hasText: /Turn on two-step|Sign in/ }));
@@ -32,11 +32,11 @@ const totp = (secret) => { const buf = Buffer.alloc(8); buf.writeBigUInt64BE(Big
   // ---- Staff sign-in with two-step ----
   const maria = await fresh();
   await maria.goto(S + '/login'); await maria.fill('#email', 'maria@bayside.example'); await maria.fill('#password', 'wrong password!!');
-  await submit(maria, maria.locator('button:has-text("Continue")'));
+  await submit(maria, maria.locator('button:has-text("Next: your code")'));
   ok(await sees(maria, "That email and password don't match."), 'A wrong password is refused in plain words');
   await maria.screenshot({ path: D + 'a1-login.png' });
   await maria.fill('#email', 'maria@bayside.example'); await maria.fill('#password', PW);
-  await submit(maria, maria.locator('button:has-text("Continue")'));
+  await submit(maria, maria.locator('button:has-text("Next: your code")'));
   ok(await sees(maria, 'Set up two-step sign-in'), 'First sign-in asks Maria to set up two-step');
   ok(await maria.locator('svg').count() > 0, 'With a QR code for her authenticator app');
   await maria.screenshot({ path: D + 'a2-two-step-setup.png', fullPage: true });

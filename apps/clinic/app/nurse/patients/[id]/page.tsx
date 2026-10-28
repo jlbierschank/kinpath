@@ -113,7 +113,7 @@ export default async function PatientCycle({ params, searchParams }: { params: P
           {t?.releasedAt && t.outcome === "positive" && c.stage !== "graduated" && (
             <form className="card" action={graduateAction}>
               <h2 style={{ marginTop: 0 }}>Graduate to her OB-GYN</h2>
-              <p className="muted" style={{ fontSize: 13.5 }}>When she&apos;s ready to leave Bayside&apos;s care. Her app shows her graduation, a keepsake of her journey, and a secure way to share her IVF pregnancy summary with her OB-GYN.</p>
+              <p className="muted" style={{ fontSize: 13.5 }}>When she&apos;s ready to leave Bayside&apos;s care. Her app shows her graduation, a keepsake of her treatment, and a secure way to share her IVF pregnancy summary with her OB-GYN.</p>
               <input type="hidden" name="patientId" value={id} />
               <label htmlFor="obName">Her OB-GYN</label>
               <input id="obName" name="obName" placeholder="Dr. Ana Reyes, Tampa Women's Health" required />

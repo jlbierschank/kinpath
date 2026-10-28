@@ -114,7 +114,7 @@ export function SignupFlow({ onSignedIn, onBack }: { onSignedIn: (u: SignedInUse
         <TextInput testID="signup-code" value={code} onChangeText={setCode} keyboardType="number-pad" textContentType="oneTimeCode" autoComplete="one-time-code" maxLength={7} placeholder="123456" placeholderTextColor={C.stone}
           style={[st.input, { minHeight: 48, fontFamily: F.sans600, fontSize: 24, letterSpacing: 6, borderColor: C.espresso }]} />
         {err}
-        <Button testID="signup-verify" label={busy ? "Checking…" : "Continue"} disabled={busy || code.replace(/\D/g, "").length !== 6}
+        <Button testID="signup-verify" label={busy ? "Checking…" : "Next: about you"} disabled={busy || code.replace(/\D/g, "").length !== 6}
           onPress={() => run(async () => { const r = await auth.signupVerify(step.contact, code); setStep({ name: "about", ticket: r.ticket }); })} />
       </Card>
     </Frame>
@@ -151,7 +151,7 @@ export function SignupFlow({ onSignedIn, onBack }: { onSignedIn: (u: SignedInUse
       <Card style={{ gap: 10 }}>
         <Field testID="signup-contact" label="Mobile number or email" value={contact} onChange={setContact} keyboard="email-address" placeholder="you@email.com" />
         {err}
-        <Button testID="signup-start" label={busy ? "Sending…" : "Continue"} disabled={busy || !contact.trim()}
+        <Button testID="signup-start" label={busy ? "Sending…" : "Send me a code"} disabled={busy || !contact.trim()}
           onPress={() => run(async () => { const r = await auth.signupStart(contact); setCode(""); setStep({ name: "code", contact, sentTo: r.sentTo }); })} />
       </Card>
     </Frame>

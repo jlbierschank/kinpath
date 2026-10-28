@@ -11,6 +11,7 @@
  *  4. A draft that fails any check is held back: the nurse sees the protocol text instead, with
  *     the reason. A nurse reviews and sends every reply either way.
  */
+import { VOICE_RULES } from "./voice";
 import { normalize } from "./triage";
 import type { Lang } from "./ranges";
 
@@ -53,6 +54,8 @@ export function buildDraftPrompt(input: { message: string; sections: ProtocolTex
     `- Write in plain, warm ${language} at about a 6th-grade reading level. 2 to 5 short sentences.`,
     "- No greeting and no sign-off; the app adds them.",
     "- End with a final line exactly like: SOURCES: <section id>, <section id>",
+    "",
+    VOICE_RULES,
   ].join("\n");
   const user = [
     "Clinic protocol sections:",

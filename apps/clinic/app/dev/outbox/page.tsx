@@ -20,7 +20,7 @@ export default async function Outbox() {
             {rows.map((r) => (
               <tr key={r.id} data-testid="outbox-row">
                 <td style={{ whiteSpace: "nowrap" }}>{new Date(r.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</td>
-                <td>{r.name ?? "—"}<br /><span className="muted" style={{ fontSize: 12.5 }}>{r.to_address}</span></td>
+                <td>{r.name ?? "Not set"}<br /><span className="muted" style={{ fontSize: 12.5 }}>{r.to_address}</span></td>
                 <td>{r.channel === "sms" ? "Text" : r.channel === "email" ? "Email" : "Push"}</td>
                 <td><b>{r.subject}</b><br />{r.body}</td>
                 <td><span className={`pill ${STATUS[r.status]?.[1] ?? "p-lav"}`}>{STATUS[r.status]?.[0] ?? r.status}</span></td>

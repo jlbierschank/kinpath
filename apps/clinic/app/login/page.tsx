@@ -23,7 +23,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
           <input id="email" name="email" type="email" autoComplete="username" required />
           <label htmlFor="password">Password</label>
           <input id="password" name="password" type="password" autoComplete="current-password" required />
-          <div style={{ marginTop: 14 }}><button className="btn btn-dark" type="submit" style={{ width: "100%" }}>Continue</button></div>
+          <div style={{ marginTop: 14 }}><button className="btn btn-dark" type="submit" style={{ width: "100%" }}>Next: your code</button></div>
           <p className="muted" style={{ fontSize: 12.5, marginBottom: 0 }}>Next you&apos;ll enter a code from your authenticator app. Forgot your password? Ask your clinic admin to send a new setup link.</p>
         </form>
       ) : (

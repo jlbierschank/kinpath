@@ -5,7 +5,7 @@ import { getDb } from "@/lib/db";
 import { requireSession } from "@/lib/session";
 import { addEntryAction, answerAction, deleteDraftAction, saveCoverageAction, saveEstimateAction, shareEstimateAction, voidEntryAction } from "../actions";
 
-const day = (d: string | null) => (d ? new Date(`${d.slice(0, 10)}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—");
+const day = (d: string | null) => (d ? new Date(`${d.slice(0, 10)}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Not given");
 const amt = (c: number | null) => (c == null ? "" : (c / 100).toFixed(2));
 const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
 
