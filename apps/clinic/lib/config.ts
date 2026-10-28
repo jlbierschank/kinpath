@@ -9,7 +9,7 @@ export function checkConfig() {
   if (!prod) return;
   const problems: string[] = [];
   if (!process.env.DATABASE_URL) problems.push("DATABASE_URL is not set. Production must use managed Postgres under a signed BAA, not the demo database.");
-  else if (!/sslmode=(require|verify-full|verify-ca)/.test(process.env.DATABASE_URL) && process.env.DATABASE_SSL !== "1") problems.push("The database connection isn't encrypted. Add sslmode=require (or verify-full) to DATABASE_URL.");
+  else if (!/sslmode=(require|verify-full|verify-ca)/.test(process.env.DATABASE_URL) && process.env.DATABASE_SSL !== "1" && !process.env.DATABASE_CA_CERT) problems.push("The database connection isn't encrypted. Add sslmode=require (or verify-full) to DATABASE_URL.");
   if (process.env.KINPATH_SEED_DEMO === "1") problems.push("KINPATH_SEED_DEMO must not be set in production.");
   if (process.env.KINPATH_INSECURE_COOKIES === "1") problems.push("KINPATH_INSECURE_COOKIES must not be set in production.");
   const test = process.env.KINPATH_TEST_MODE === "1";

@@ -20,30 +20,61 @@ screen says so.
 Dose reminders on the phone need the TestFlight app (Apple), not the web version. The calendar link
 works on both.
 
-## Set it up (DigitalOcean, about 30 minutes)
+## Set it up (about 45 minutes, most of it waiting)
 
-1. **Email sending.** Make a free account at resend.com, add and verify the domain thepumpkin.ai
-   (it shows DNS records to add), and create an API key.
-2. **Database.** In DigitalOcean: Create → Databases → PostgreSQL, the smallest size, same region as
-   the app. Copy its connection string (it ends in `sslmode=require`).
-3. **The app.** Create → App Platform → the same GitHub repo and `main` branch, 1 GiB size. Settings:
+### 1. Email for sign-in codes (Resend, free)
 
-   | Variable | Value |
+1. Go to **resend.com** and sign up.
+2. **Domains → Add Domain**, type `thepumpkin.ai`, pick the US region.
+3. Resend shows a few DNS records (a TXT for DKIM, and an MX and a TXT on a `send` subdomain). If it
+   offers to set them up in Cloudflare for you, use that. Otherwise open Cloudflare → thepumpkin.ai →
+   **DNS → Add record** and copy each one exactly, with the proxy turned **off** (grey cloud, "DNS only").
+4. Back in Resend, click **Verify**. It can take a few minutes to an hour.
+5. **API Keys → Create API Key**, permission "Sending access". Copy the key (it starts with `re_`); you
+   only see it once.
+
+### 2. The database (DigitalOcean)
+
+1. In DigitalOcean: **Create → Databases → PostgreSQL**, the smallest size, region **New York**.
+   Name it `pumpkin-beta`. Check the monthly price it shows before you click Create.
+2. Wait until it says it's ready (a few minutes).
+
+### 3. The tester app (DigitalOcean)
+
+1. **Create → App Platform → GitHub**, repo **jlbierschank/kinpath**, branch **main**, Autodeploy on.
+2. Size **1 GiB** ($10 fixed size), 1 instance, region New York.
+3. **Add Resource → Database → Previously created DigitalOcean database** → `pumpkin-beta`. This lets the
+   app reach the database and fills in its address and certificate.
+4. Environment variables on the web service (tick **Encrypt** on the key ones):
+
+   | Name | Value |
    | --- | --- |
-   | `DATABASE_URL` | the connection string from step 2 |
+   | `DATABASE_URL` | `${pumpkin-beta.DATABASE_URL}` |
+   | `DATABASE_CA_CERT` | `${pumpkin-beta.CA_CERT}` |
+   | `PORT` | `8080` |
    | `KINPATH_TEST_MODE` | `1` |
    | `KINPATH_DEMO_PASSCODE` | a passcode for testers |
    | `KINPATH_EMAIL_PROVIDER` | `resend` |
-   | `KINPATH_EMAIL_KEY` | the Resend API key |
+   | `KINPATH_EMAIL_KEY` | the Resend key (encrypt) |
    | `KINPATH_EMAIL_FROM` | `Pumpkin <hello@thepumpkin.ai>` |
    | `KINPATH_TEAM_EMAIL` | where feedback and "ask my clinic" emails go |
-   | `KINPATH_AI_PROVIDER` / `ANTHROPIC_API_KEY` | optional: turns on AI reading of photos and PDFs |
+   | `KINPATH_AI_PROVIDER` and `ANTHROPIC_API_KEY` | optional: AI reading of photos and PDFs |
 
-   Do **not** set `KINPATH_DEV_LOGIN` here. Optional: add `beta.thepumpkin.ai` under Settings → Domains.
-4. Open the address, enter the passcode, and sign up yourself first.
+   Do **not** set `KINPATH_DEV_LOGIN` on this app.
+   If the `${...}` values don't fill in, copy the connection string from the database's page into
+   `DATABASE_URL`, and paste the downloaded CA certificate into `DATABASE_CA_CERT`.
+5. **Create Resources.** The first build takes several minutes.
+6. Optional: **Settings → Domains → Add** `beta.thepumpkin.ai`, then add the CNAME it shows in Cloudflare.
 
-Texts (Twilio) are optional for testing; testers can sign in by email. To add them later:
-`KINPATH_SMS_PROVIDER=twilio`, `KINPATH_TWILIO_SID`, `KINPATH_TWILIO_TOKEN`, `KINPATH_SMS_FROM`.
+### 4. Try it, then invite testers
+
+1. On your phone, open the address with `/phone` on the end, enter the passcode, tap **Start on my own**
+   and sign up with your email. The code should arrive within a minute (check spam the first time).
+2. Safari: Share → **Add to Home Screen**. Android Chrome: menu → **Add to Home screen**.
+3. Send testers the `/phone` link, the passcode, and one line: "Use made-up information only."
+4. Feedback arrives at your team email. Testers can delete their accounts in Settings.
+
+If sign-up says it can't send, check the app's **Runtime Logs** for a line from "sender".
 
 ## Before real patients
 

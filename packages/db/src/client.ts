@@ -27,7 +27,7 @@ pg.types.setTypeParser(1082, (v: string) => v);
 /** Managed Postgres in production (DATABASE_URL). Connections use TLS when the URL asks for it. */
 export class PgDb implements Db {
   private pool: pg.Pool;
-  constructor(connectionString: string, opts: { max?: number; ssl?: boolean | { rejectUnauthorized: boolean } } = {}) {
+  constructor(connectionString: string, opts: { max?: number; ssl?: boolean | { rejectUnauthorized: boolean; ca?: string } } = {}) {
     this.pool = new pg.Pool({ connectionString, max: opts.max ?? 10, ssl: opts.ssl, idleTimeoutMillis: 30_000 });
   }
   async query<T>(sql: string, params?: unknown[]) { const r = await this.pool.query(sql, params as unknown[]); return { rows: r.rows as T[] }; }
@@ -68,10 +68,15 @@ export async function openDb(dataDir?: string): Promise<Db> {
 
 /** Production: DATABASE_URL set → managed Postgres. Otherwise the embedded database. */
 export async function openConfiguredDb(dataDir?: string): Promise<Db> {
-  const url = process.env.DATABASE_URL;
+  let url = process.env.DATABASE_URL;
   if (!url) return openDb(dataDir);
-  const ssl = /sslmode=(require|verify-full|verify-ca)/.test(url) || process.env.DATABASE_SSL === "1"
-    ? { rejectUnauthorized: process.env.DATABASE_SSL_INSECURE !== "1" } : undefined;
+  // Managed databases (DigitalOcean, AWS) sign with their own certificate authority: pass it as
+  // DATABASE_CA_CERT (on DigitalOcean App Platform: ${your-db.CA_CERT}) so the connection is verified.
+  const ca = process.env.DATABASE_CA_CERT?.replace(/\\n/g, "\n");
+  const ssl = /sslmode=(require|verify-full|verify-ca)/.test(url) || process.env.DATABASE_SSL === "1" || ca
+    ? { rejectUnauthorized: process.env.DATABASE_SSL_INSECURE !== "1", ...(ca ? { ca } : {}) } : undefined;
+  // node-postgres would let sslmode in the URL override these settings, so it's removed here.
+  url = url.replace(/([?&])sslmode=[^&]*&?/, "$1").replace(/[?&]$/, "");
   return new PgDb(url, { ssl, max: Number(process.env.DATABASE_POOL_MAX ?? 10) });
 }
 
