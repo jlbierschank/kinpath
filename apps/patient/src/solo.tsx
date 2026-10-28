@@ -19,7 +19,7 @@ import Svg, { Circle, Path, Text as SvgText } from "react-native-svg";
 import { auth, type Api, type CaptureInput, type ItemKind, type PendingItem, type ResultGroup, type SignedInUser, type SoloCosts, type SoloMed, type SoloProfile, type SoloStage, type SoloToday } from "./api";
 import { askPermission, remindersSupported, syncReminders } from "./reminders";
 import { deviceName } from "./session";
-import { Button, C, Cap, Card, Logo, Chip, Chips, F, H1, Icon, Muted, Pill, st, T, Today, Toggle } from "./ui";
+import { AppearanceCard, Button, C, isDark, Cap, Card, Logo, Chip, Chips, F, H1, Icon, Muted, Pill, st, T, Today, Toggle } from "./ui";
 import { Field } from "./field";
 import { AboutScreen, AliasScreen, QuestionIdeas, SummaryScreen, TalkScreen } from "./yours";
 import { FeedbackScreen, PeopleScreen } from "./people";
@@ -51,7 +51,7 @@ const zone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZo
 function Frame({ children, top, tabs }: { children: ReactNode; top?: ReactNode; tabs?: ReactNode }) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.oat }}>
-      <StatusBar style="dark" />
+      <StatusBar style={isDark() ? "light" : "dark"} />
       <View style={{ flex: 1, width: "100%", maxWidth: 480, alignSelf: "center" }}>
         {top}
         <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 28, gap: 14 }} keyboardShouldPersistTaps="handled"><TestBanner />{children}</ScrollView>
@@ -246,7 +246,7 @@ function Tabs({ current, go, badge }: { current: string; go: (s: Screen) => void
         return (
           <Pressable key={name} testID={`solo-tab-${name}`} accessibilityRole="tab" accessibilityState={{ selected: on }} onPress={() => go({ name })}
             style={{ flex: add ? 1.1 : 1, borderRadius: 999, paddingVertical: 11, alignItems: "center", backgroundColor: on ? C.espresso : add ? C.marigold : "transparent" }}>
-            <Text numberOfLines={1} style={{ fontFamily: on || add ? F.sans700 : F.sans500, fontSize: 13, color: on ? C.paper : C.espresso }}>{add ? "+ Add" : label}{name === "today" && badge ? ` · ${badge}` : ""}</Text>
+            <Text numberOfLines={1} style={{ fontFamily: on || add ? F.sans700 : F.sans500, fontSize: 13, color: on ? C.paper : add ? C.onMarigold : C.espresso }}>{add ? "+ Add" : label}{name === "today" && badge ? ` · ${badge}` : ""}</Text>
           </Pressable>
         );
       })}
@@ -312,7 +312,7 @@ function TodayScreen({ d, api, go, reload }: { d: SoloToday; api: Api; go: (s: S
 
       {(soon.length > 0 || missed.length > 0) && (
         <View style={[st.dark, { gap: 12 }]}>
-          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><Icon name="medication" color={C.marigold} /><T style={{ fontFamily: F.sans700, color: C.marigold, fontSize: 13, letterSpacing: 0.6 }}>MEDS</T></View>
+          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><Icon name="medication" color={C.marigoldOnEsp} /><T style={{ fontFamily: F.sans700, color: C.marigoldOnEsp, fontSize: 13, letterSpacing: 0.6 }}>MEDS</T></View>
           {missed.map((x) => (
             <View key={x.id} style={{ gap: 6 }}>
               <T style={{ color: C.paper, fontSize: 15.5 }}>{`${x.medication} ${x.dose} · was due ${clock(x.scheduledFor)}`}</T>
@@ -327,7 +327,7 @@ function TodayScreen({ d, api, go, reload }: { d: SoloToday; api: Api; go: (s: S
               <View style={{ flex: 1 }}><T style={{ fontFamily: F.display, fontSize: 20, color: C.paper }}>{`${new Date(x.scheduledFor).toDateString() === new Date().toDateString() ? "" : "Tomorrow "}${clock(x.scheduledFor)}`}</T><T style={{ color: C.tan, fontSize: 15 }}>{`${x.medication} ${x.dose}`}</T></View>
               {x.takenAt ? (justLogged === x.id && !calm
                 ? <View testID={`logged-${x.id}`} style={{ flexDirection: "row", gap: 6, alignItems: "center", backgroundColor: C.sage, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 12 }}><DrawCheck size={18} /><T style={{ fontFamily: F.sans600, color: C.sageInk, fontSize: 13.5 }}>Done</T></View>
-                : <Pill tone="sage" label="Done" />) : <Pressable testID={`log-${x.id}`} onPress={() => log(x.id)} style={{ backgroundColor: C.marigold, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 16, minHeight: 44, justifyContent: "center" }}><T style={{ fontFamily: F.sans700 }}>{logging === x.id ? "Saving…" : "Log it"}</T></Pressable>}
+                : <Pill tone="sage" label="Done" />) : <Pressable testID={`log-${x.id}`} onPress={() => log(x.id)} style={{ backgroundColor: C.marigold, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 16, minHeight: 44, justifyContent: "center" }}><T style={{ fontFamily: F.sans700, color: C.onMarigold }}>{logging === x.id ? "Saving…" : "Log it"}</T></Pressable>}
             </View>
           ))}
         </View>
@@ -553,7 +553,7 @@ function TypeScreen({ api, done }: { api: Api; done: (r: { status: string; urgen
 // ---------- checking what Pumpkin read ----------
 
 const KIND_LABEL: Record<ItemKind, string> = { medication: "Medication", result: "Test result", appointment: "Appointment", cost: "Cost", question: "Question for your visit" };
-const KIND_TINT: Record<ItemKind, [string, string]> = { medication: [C.lav, C.lavInk], result: [C.lav, C.lavInk], appointment: [C.oat, C.espresso], cost: [C.clay, C.clayInk], question: [C.sage, C.sageInk] };
+const KIND_TINT = (): Record<ItemKind, [string, string]> => ({ medication: [C.lav, C.lavInk], result: [C.lav, C.lavInk], appointment: [C.oat, C.espresso], cost: [C.clay, C.clayInk], question: [C.sage, C.sageInk] });
 const KIND_ICON: Record<ItemKind, Parameters<typeof Icon>[0]["name"]> = { medication: "medication", result: "lab", appointment: "calendar", cost: "wallet", question: "message" };
 
 function CheckScreen({ api, go, done }: { api: Api; go: (s: Screen) => void; done: (msg: string) => void }) {
@@ -579,7 +579,7 @@ function ItemCard({ item, api, go, onDone }: { item: PendingItem; api: Api; go: 
   const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [bg, fg] = KIND_TINT[item.kind];
+  const [bg, fg] = KIND_TINT()[item.kind];
   const from = item.source.kind === "sample" ? "Sample document" : item.source.kind === "email" ? `Email${item.source.filename ? `: ${item.source.filename}` : ""}` : item.source.kind === "voice" ? "What you said" : item.source.kind === "text" ? "What you typed" : item.source.filename ?? "Your photo";
   return (
     <View testID={`item-${item.kind}`} style={[st.card, { overflow: "hidden" }]}>
@@ -904,6 +904,7 @@ function MoreScreen({ api, profile, reload, onSignOut, go }: { api: Api; profile
         {profile.calendarOn ? <Pressable onPress={() => act(() => api.calendarOff(), "Calendar link turned off.")}><Muted style={{ textDecorationLine: "underline" }}>Turn off my calendar link</Muted></Pressable> : null}
       </Card>
       {remindersSupported ? <Card style={{ gap: 8 }}><T style={{ fontFamily: F.sans600, fontSize: 15 }}>Dose reminders</T><Muted style={{ fontSize: 14 }}>A reminder 15 minutes before each dose. The lock screen says only "You have a reminder."</Muted><Button kind="line" label="Turn on reminders" onPress={() => act(async () => { if (!(await askPermission())) throw new Error("Reminders are off in your phone's Settings."); }, "Reminders are on.")} /></Card> : null}
+      <AppearanceCard />
       <Card style={{ gap: 10 }}>
         <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><Icon name="shield" /><T style={{ fontFamily: F.sans600, fontSize: 15 }}>Your data, your call</T></View>
         <Button testID="download" kind="line" label="Download my record" onPress={() => act(async () => {

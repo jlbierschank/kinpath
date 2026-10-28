@@ -114,7 +114,7 @@ function InviteForm({ api, done }: { api: Api; done: () => void }) {
         <View style={{ backgroundColor: C.espresso, borderRadius: 22, padding: 18, gap: 8 }}>
           <T style={{ fontSize: 13, color: C.tan }}>Invite code</T>
           <Text testID="invite-made-code" selectable style={{ fontFamily: F.display700, fontSize: 34, letterSpacing: 3, color: C.paper }}>{made.code}</Text>
-          <T style={{ fontSize: 13.5, color: "#E9DED3" }}>Works once. Expires in 7 days.</T>
+          <T style={{ fontSize: 13.5, color: C.onEspMuted }}>Works once. Expires in 7 days.</T>
         </View>
         <Button testID="send-invite" label={isEmail ? `Email ${who}` : `Text ${who}`} onPress={() => { void Linking.openURL(url).catch(() => setErr("Couldn't open that here. Copy the message instead.")); }} />
         <Button testID="copy-invite" kind="line" label={copied ? "Copied" : "Copy the message"} onPress={async () => { await Clipboard.setStringAsync(message); setCopied(true); }} />

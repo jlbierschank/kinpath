@@ -3,18 +3,96 @@
  * Bricolage Grotesque for headlines, Instrument Sans for everything else, oat background,
  * paper cards with a hairline, solid pressed edges only on buttons, one marigold action per screen.
  */
-import type { ReactNode } from "react";
-import { Image, Pressable, StyleSheet, Switch, Text, TextInput, View, type SwitchProps, type TextStyle, type ViewStyle } from "react-native";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Image, Platform, Pressable, Switch, useColorScheme, Text, TextInput, View, type SwitchProps, type TextStyle, type ViewStyle } from "react-native";
 import Svg, { Circle, Path, Text as SvgText } from "react-native-svg";
 import { ICONS, type IconName } from "./icons";
 import { SvgPulse } from "./motion";
+import * as SecureStore from "expo-secure-store";
 
-export const C = {
+/** Light and dark palettes. Same names, same jobs; dark values come from the design system's dark theme. */
+const LIGHT = {
   espresso: "#2E211C", espressoEdge: "#1A120E", ink: "#231A16", oat: "#F6F1E8", paper: "#FFFCF7",
   marigold: "#F0A83A", marigoldEdge: "#B9781C", lav: "#D8CFF0", lavInk: "#3F3466", lavDeep: "#3F3466",
   sage: "#DDE7D5", sageInk: "#3E5A33", clay: "#F5DDD0", clayInk: "#9A4A2A", red: "#B42318",
   stone: "#5C4F47", alertSoft: "#FBE5E2", line: "#E6DED2", lineSoft: "#EFE8DC", tan: "#D9CBBE", well: "#45352E", softLav: "#F1ECFA",
+  /** Text and icons on marigold, in both themes. */
+  onMarigold: "#2E211C",
+  /** Marigold labels and icons on espresso fills (a deeper amber in dark, where those fills turn cream). */
+  marigoldOnEsp: "#F0A83A",
+  /** Secondary text on espresso fills. */
+  onEspMuted: "#E9DED3",
+  lavShadow: "#B9ACDF", onRed: "#FFFFFF", redEdge: "#7E1810", field: "#FFFFFF",
+  /** The brush pumpkin's center stroke and stem (they lighten on dark, as in the on-dark logo). */
+  pumpkinCenter: "#B9781C", stem: "#3E5A33",
 };
+type Palette = typeof LIGHT;
+const DARK: Palette = {
+  espresso: "#F4EDE3", espressoEdge: "#C9BEB1", ink: "#F4EDE3", oat: "#231B17", paper: "#1B1512",
+  marigold: "#F0A83A", marigoldEdge: "#B9781C", lav: "#2F2944", lavInk: "#CDC2F2", lavDeep: "#CDC2F2",
+  sage: "#24301F", sageInk: "#B6CFA7", clay: "#3B2721", clayInk: "#F1B79D", red: "#FF8C7C",
+  stone: "#B8AA9E", alertSoft: "#3E1D19", line: "#30271F", lineSoft: "#2A211C", tan: "#6B5D53", well: "#E8DFD3", softLav: "#26213A",
+  onMarigold: "#2E211C", marigoldOnEsp: "#8F5A12", onEspMuted: "#4A3D35",
+  lavShadow: "#3E3560", onRed: "#2A0F0B", redEdge: "#C25A4C", field: "#1B1512",
+  pumpkinCenter: "#D9913A", stem: "#B6CFA7",
+};
+
+/** The live palette. Read it at render time; applyTheme swaps its values in place. */
+export const C: Palette = { ...LIGHT };
+export type Scheme = "light" | "dark";
+export type Appearance = "system" | Scheme;
+let current: Scheme | null = null; // null until first applied, so the page background is set on load
+export const isDark = () => current === "dark";
+
+/** Swap every color (and the shared styles) to light or dark. Safe to call on every render. */
+export function applyTheme(scheme: Scheme) {
+  if (scheme === current) return;
+  current = scheme;
+  Object.assign(C, scheme === "dark" ? DARK : LIGHT);
+  Object.assign(st, makeStyles());
+  if (Platform.OS === "web" && typeof document !== "undefined") {
+    document.documentElement.style.colorScheme = scheme;
+    document.body.style.backgroundColor = C.oat;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", C.oat);
+  }
+}
+
+const APPEARANCE_KEY = "kinpath.appearance";
+async function loadAppearance(): Promise<Appearance> {
+  try {
+    const v = Platform.OS === "web" ? globalThis.localStorage?.getItem(APPEARANCE_KEY) : await SecureStore.getItemAsync(APPEARANCE_KEY);
+    return v === "light" || v === "dark" ? v : "system";
+  } catch { return "system"; }
+}
+async function saveAppearance(a: Appearance) {
+  try { if (Platform.OS === "web") globalThis.localStorage?.setItem(APPEARANCE_KEY, a); else await SecureStore.setItemAsync(APPEARANCE_KEY, a); } catch { /* kept for this session */ }
+}
+
+const ThemeCtx = createContext<{ appearance: Appearance; scheme: Scheme; setAppearance: (a: Appearance) => void }>({ appearance: "system", scheme: "light", setAppearance: () => {} });
+/** Wraps the app: follows the phone's light or dark setting unless the person picked one in Settings. */
+export function ThemeProvider({ children }: { children: ReactNode }) {
+  const phone = useColorScheme();
+  const [appearance, setA] = useState<Appearance>("system");
+  useEffect(() => { void loadAppearance().then(setA); }, []);
+  const scheme: Scheme = appearance === "system" ? (phone === "dark" ? "dark" : "light") : appearance;
+  applyTheme(scheme);
+  const value = useMemo(() => ({ appearance, scheme, setAppearance: (a: Appearance) => { setA(a); void saveAppearance(a); } }), [appearance, scheme]);
+  return <ThemeCtx.Provider value={value}>{children}</ThemeCtx.Provider>;
+}
+/** Re-renders the caller (and everything it draws) when the theme changes. */
+export const useTheme = () => useContext(ThemeCtx);
+
+/** Settings card: match the phone, or always light or dark. */
+export function AppearanceCard() {
+  const { appearance, setAppearance } = useTheme();
+  const opts: [Appearance, string][] = [["system", "Match phone"], ["light", "Light"], ["dark", "Dark"]];
+  return (
+    <Card style={{ gap: 10 }}>
+      <View><T style={{ fontFamily: F.sans600, fontSize: 15 }}>Appearance</T><Muted>Dark is easier on the eyes at night. Match phone follows your phone's setting.</Muted></View>
+      <Chips>{opts.map(([v, label]) => <Chip key={v} testID={`appearance-${v}`} label={label} selected={appearance === v} onPress={() => setAppearance(v)} />)}</Chips>
+    </Card>
+  );
+}
 
 export const F = {
   serif: "BricolageGrotesque_600SemiBold", serifItalic: "BricolageGrotesque_600SemiBold", display: "BricolageGrotesque_600SemiBold", display700: "BricolageGrotesque_700Bold",
@@ -65,9 +143,9 @@ export function Row({ title, sub, right, onPress, testID }: { title: string; sub
 
 export function Button({ label, onPress, kind = "mari", disabled, testID }: { label: string; onPress: () => void; kind?: "mari" | "esp" | "line" | "plain" | "red"; disabled?: boolean; testID?: string }) {
   const look = {
-    mari: { bg: C.marigold, fg: C.ink, edge: C.marigoldEdge, font: F.sans700 },
+    mari: { bg: C.marigold, fg: C.onMarigold, edge: C.marigoldEdge, font: F.sans700 },
     esp: { bg: C.espresso, fg: C.paper, edge: C.espressoEdge, font: F.sans600 },
-    red: { bg: C.red, fg: "#fff", edge: "#7E1810", font: F.sans700 },
+    red: { bg: C.red, fg: C.onRed, edge: C.redEdge, font: F.sans700 },
     line: { bg: C.paper, fg: C.ink, edge: null, font: F.sans600 },
     plain: { bg: "transparent", fg: C.stone, edge: null, font: F.sans600 },
   }[kind];
@@ -93,7 +171,7 @@ export function Chips({ children }: { children: ReactNode }) {
 }
 
 export function Pill({ label, tone }: { label: string; tone: "sage" | "clay" | "lav" | "stone" | "red" }) {
-  const [bg, fg] = { sage: [C.sage, C.sageInk], clay: [C.clay, C.clayInk], lav: [C.lav, C.lavDeep], stone: [C.lineSoft, C.stone], red: [C.red, "#fff"] }[tone];
+  const [bg, fg] = { sage: [C.sage, C.sageInk], clay: [C.clay, C.clayInk], lav: [C.lav, C.lavDeep], stone: [C.lineSoft, C.stone], red: [C.red, C.onRed] }[tone];
   return <View style={{ backgroundColor: bg, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4, alignSelf: "flex-start" }}><Text style={{ fontFamily: F.sans600, fontSize: 12, color: fg }}>{label}</Text></View>;
 }
 
@@ -116,7 +194,7 @@ export function AskBox({ value, onChange, onSubmit, placeholder, testID }: { val
       <TextInput testID={testID} value={value} onChangeText={onChange} onSubmitEditing={onSubmit} placeholder={placeholder} placeholderTextColor={C.stone}
         returnKeyType="send" style={{ flex: 1, fontFamily: F.sans, fontSize: 15, color: C.ink, paddingVertical: 11 }} />
       <Pressable testID={testID ? `${testID}-send` : undefined} accessibilityLabel="Send" onPress={onSubmit} style={[st.sq, { backgroundColor: value.trim() ? C.marigold : C.lav }]}>
-        <Svg width={18} height={18} viewBox="0 0 24 24"><Path d="M5 12h14M13 6l6 6-6 6" stroke={value.trim() ? C.ink : C.lavInk} strokeWidth={2.2} fill="none" strokeLinecap="round" strokeLinejoin="round" /></Svg>
+        <Svg width={18} height={18} viewBox="0 0 24 24"><Path d="M5 12h14M13 6l6 6-6 6" stroke={value.trim() ? C.onMarigold : C.lavInk} strokeWidth={2.2} fill="none" strokeLinecap="round" strokeLinejoin="round" /></Svg>
       </Pressable>
     </View>
   );
@@ -163,7 +241,7 @@ export function TimelineItem({ when, what, action, onAction, tone = "lav", icon 
   );
 }
 
-export const st = StyleSheet.create({
+function makeStyles() { return {
   card: { backgroundColor: C.paper, borderRadius: 22, borderWidth: 1, borderColor: C.line },
   dark: { backgroundColor: C.espresso, borderRadius: 20, padding: 18, gap: 10, borderBottomWidth: 4, borderBottomColor: C.espressoEdge },
   btn: { borderRadius: 999, paddingVertical: 13, alignItems: "center", width: "100%" },
@@ -172,8 +250,10 @@ export const st = StyleSheet.create({
   ask: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.paper, borderWidth: 1.5, borderColor: C.espresso, borderBottomWidth: 4, borderRadius: 16, paddingLeft: 14, paddingRight: 4, paddingVertical: 4 },
   sq: { width: 42, height: 42, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   medchip: { flexDirection: "row", alignItems: "center", borderRadius: 10, paddingVertical: 7, paddingHorizontal: 10, backgroundColor: C.well },
-  input: { borderWidth: 1.5, borderColor: C.line, borderRadius: 14, padding: 12, backgroundColor: "#fff", fontFamily: F.sans, fontSize: 15, minHeight: 80, textAlignVertical: "top", color: C.ink },
-});
+  input: { borderWidth: 1.5, borderColor: C.line, borderRadius: 14, padding: 12, backgroundColor: C.field, fontFamily: F.sans, fontSize: 15, minHeight: 80, textAlignVertical: "top", color: C.ink },
+} as const; }
+/** Shared styles; rebuilt in place when the theme changes. */
+export const st: ReturnType<typeof makeStyles> = { ...makeStyles() };
 
 /** On/off switch in the app's colors. activeThumbColor is the web equivalent of thumbColor when on. */
 export function Toggle({ value, onChange, disabled, testID }: { value: boolean; onChange: (v: boolean) => void; disabled?: boolean; testID?: string }) {
@@ -183,6 +263,7 @@ export function Toggle({ value, onChange, disabled, testID }: { value: boolean; 
 
 /** The Pumpkin logo (color mark plus lowercase wordmark), from the design system. Minimum width 96. */
 const LOGO = require("../assets/logo-horizontal.png");
+const LOGO_DARK = require("../assets/logo-horizontal-on-dark.png");
 export function Logo({ width = 124 }: { width?: number }) {
-  return <Image testID="logo" source={LOGO} accessibilityRole="image" accessibilityLabel="Pumpkin" style={{ width: Math.max(96, width), height: Math.max(96, width) * 251 / 800 }} resizeMode="contain" />;
+  return <Image testID="logo" source={isDark() ? LOGO_DARK : LOGO} accessibilityRole="image" accessibilityLabel="Pumpkin" style={{ width: Math.max(96, width), height: Math.max(96, width) * 251 / 800 }} resizeMode="contain" />;
 }

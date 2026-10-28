@@ -205,14 +205,14 @@ export function TalkScreen({ api, done }: { api: Api; done: (msg: string) => voi
 // ---------- community name ----------
 
 const ALIAS_ICONS = ["heart", "people", "calendar", "pen", "doc", "eye", "tag", "shield"] as const;
-const TINTS: Record<string, [string, string]> = { lav: [C.lav, C.lavInk], sage: [C.sage, C.sageInk], clay: [C.clay, C.clayInk], oat: [C.oat, C.espresso] };
+const TINTS = (): Record<string, [string, string]> => ({ lav: [C.lav, C.lavInk], sage: [C.sage, C.sageInk], clay: [C.clay, C.clayInk], oat: [C.oat, C.espresso] });
 export function AliasScreen({ api, done }: { api: Api; done: (msg: string) => void }) {
   const [a, setA] = useState<About | null>(null);
   const [alias, setAliasText] = useState(""); const [icon, setIcon] = useState("heart"); const [tint, setTint] = useState("lav"); const [shows, setShows] = useState<string[]>([]);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => { api.about().then((x) => { setA(x); setAliasText(x.alias ?? ""); setIcon(x.aliasIcon ?? "heart"); setTint(x.aliasTint ?? "lav"); setShows(x.aliasShows); }).catch((e: Error) => setErr(e.message)); }, [api]);
   if (!a) return err ? <T style={{ color: C.red }}>{err}</T> : <ActivityIndicator color={C.espresso} />;
-  const [bg, fg] = TINTS[tint]!;
+  const [bg, fg] = TINTS()[tint]!;
   return (
     <>
       <Today size={34}>Your community name</Today>
@@ -227,7 +227,7 @@ export function AliasScreen({ api, done }: { api: Api; done: (msg: string) => vo
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
           {ALIAS_ICONS.map((i) => <Pressable key={i} accessibilityLabel={i} onPress={() => setIcon(i)} style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: icon === i ? bg : C.oat, borderWidth: icon === i ? 2 : 0, borderColor: C.espresso, alignItems: "center", justifyContent: "center" }}><Icon name={i} color={icon === i ? fg : C.espresso} /></Pressable>)}
         </View>
-        <Chips>{Object.keys(TINTS).map((t) => <Chip key={t} label={{ lav: "Lavender", sage: "Sage", clay: "Clay", oat: "Oat" }[t]!} selected={tint === t} onPress={() => setTint(t)} />)}</Chips>
+        <Chips>{Object.keys(TINTS()).map((t) => <Chip key={t} label={{ lav: "Lavender", sage: "Sage", clay: "Clay", oat: "Oat" }[t]!} selected={tint === t} onPress={() => setTint(t)} />)}</Chips>
         <T style={{ fontFamily: F.sans600, fontSize: 14 }}>Show with my name (optional)</T>
         <Chips>
           <Chip label="My stage" selected={shows.includes("stage")} onPress={() => setShows((s) => (s.includes("stage") ? s.filter((x) => x !== "stage") : [...s, "stage"]))} />

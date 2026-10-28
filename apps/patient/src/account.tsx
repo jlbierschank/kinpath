@@ -17,7 +17,7 @@ export function Bell({ unread, onPress, t }: { unread: number; onPress: () => vo
       <Svg width={19} height={19} viewBox="0 0 24 24"><Path d="M6 16V11a6 6 0 1112 0v5l1.5 2h-15L6 16zM10 20a2 2 0 004 0" fill="none" stroke={C.espresso} strokeWidth={1.8} strokeLinejoin="round" /></Svg>
       {unread > 0 && (
         <View testID="bell-count" style={{ position: "absolute", top: -4, right: -6, backgroundColor: C.red, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 }}>
-          <Text style={{ color: "#fff", fontFamily: F.sans700, fontSize: 11 }}>{unread > 99 ? "99+" : unread}</Text>
+          <Text style={{ color: C.onRed, fontFamily: F.sans700, fontSize: 11 }}>{unread > 99 ? "99+" : unread}</Text>
         </View>
       )}
     </Pressable>

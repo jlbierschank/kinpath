@@ -53,9 +53,9 @@ const PUMPKIN: { d: string; color: string; width: number; length: number }[] = [
   { d: "M270 150 C400 160 450 320 405 420 C370 500 290 515 262 505", color: "#F0A83A", width: 36, length: 520 },
   { d: "M256 152 C185 175 172 320 194 420 C210 475 244 500 258 498", color: "#F5BE66", width: 30, length: 400 },
   { d: "M264 152 C335 175 348 320 326 420 C310 475 276 500 262 498", color: "#F5BE66", width: 30, length: 400 },
-  { d: "M260 148 C252 240 252 400 260 500", color: "#B9781C", width: 20, length: 360 },
-  { d: "M260 148 C256 112 272 88 302 74", color: "#3E5A33", width: 16, length: 100 },
-  { d: "M302 74 C330 62 350 76 340 96 C332 110 312 104 318 92", color: "#3E5A33", width: 7, length: 110 },
+  { d: "M260 148 C252 240 252 400 260 500", color: "center", width: 20, length: 360 },
+  { d: "M260 148 C256 112 272 88 302 74", color: "stem", width: 16, length: 100 },
+  { d: "M302 74 C330 62 350 76 340 96 C332 110 312 104 318 92", color: "stem", width: 7, length: 110 },
 ];
 
 /** The brush pumpkin drawing itself, about 1.6 seconds, like the website's hero. */
@@ -68,7 +68,7 @@ export function DrawPumpkin({ size = 120, still = false }: { size?: number; stil
       {PUMPKIN.map((s, i) => {
         const startAt = (i / (n - 1)) * (1 - span);
         const local = Math.min(1, Math.max(0, (p - startAt) / span));
-        return <Path key={i} d={s.d} stroke={s.color} strokeWidth={s.width} strokeLinecap="round" fill="none"
+        return <Path key={i} d={s.d} stroke={s.color === "center" ? C.pumpkinCenter : s.color === "stem" ? C.stem : s.color} strokeWidth={s.width} strokeLinecap="round" fill="none"
           strokeDasharray={`${s.length} ${s.length}`} strokeDashoffset={s.length * (1 - local)} />;
       })}
     </Svg>
