@@ -4,7 +4,7 @@
  * paper cards with a hairline, solid pressed edges only on buttons, one marigold action per screen.
  */
 import type { ReactNode } from "react";
-import { Pressable, StyleSheet, Switch, Text, TextInput, View, type SwitchProps, type TextStyle, type ViewStyle } from "react-native";
+import { Image, Pressable, StyleSheet, Switch, Text, TextInput, View, type SwitchProps, type TextStyle, type ViewStyle } from "react-native";
 import Svg, { Circle, Path, Text as SvgText } from "react-native-svg";
 import { ICONS, type IconName } from "./icons";
 
@@ -177,4 +177,10 @@ export const st = StyleSheet.create({
 export function Toggle({ value, onChange, disabled, testID }: { value: boolean; onChange: (v: boolean) => void; disabled?: boolean; testID?: string }) {
   const web = { activeThumbColor: C.paper, activeTrackColor: C.espresso } as unknown as SwitchProps;
   return <Switch testID={testID} value={value} disabled={disabled} onValueChange={onChange} thumbColor={C.paper} trackColor={{ true: C.espresso, false: C.line }} ios_backgroundColor={C.line} {...web} />;
+}
+
+/** The Pumpkin logo (color mark plus lowercase wordmark), from the design system. Minimum width 96. */
+const LOGO = require("../assets/logo-horizontal.png");
+export function Logo({ width = 124 }: { width?: number }) {
+  return <Image testID="logo" source={LOGO} accessibilityRole="image" accessibilityLabel="Pumpkin" style={{ width: Math.max(96, width), height: Math.max(96, width) * 251 / 800 }} resizeMode="contain" />;
 }

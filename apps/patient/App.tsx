@@ -14,7 +14,7 @@ import { SignupFlow, SoloApp } from "./src/solo";
 import { TestBanner, useAppInfo } from "./src/appinfo";
 import { clearSession, deviceName, loadSession, saveSession } from "./src/session";
 import { Bell, InboxScreen, NotificationSettingsScreen, SignInSection } from "./src/account";
-import { AskBox, Avatar, Button, C, Cap, Card, Chip, Chips, F, H1, JourneyPath, Moment, Muted, Pill, Row, st, T, TimelineItem, Today, Toggle } from "./src/ui";
+import { AskBox, Avatar, Logo, Button, C, Cap, Card, Chip, Chips, F, H1, JourneyPath, Moment, Muted, Pill, Row, st, T, TimelineItem, Today, Toggle } from "./src/ui";
 
 // DEV ONLY: synthetic seed people. Real passwordless sign-in replaces this screen.
 const DEV_PEOPLE = [
@@ -136,7 +136,7 @@ function SignIn({ onSignedIn, onDemo }: { onSignedIn: (u: SignedInUser) => void;
     </Frame>
   );
   return (
-    <Frame top={<View style={{ padding: 18, paddingBottom: 6 }}>{plain ? <Text style={{ fontFamily: F.display700, fontSize: 22, letterSpacing: -0.4, color: C.espresso }}>pumpkin</Text> : <Muted>Bayside Fertility · powered by Pumpkin</Muted>}</View>}>
+    <Frame top={<View style={{ padding: 18, paddingBottom: 6 }}>{plain ? <Logo /> : <Muted>Bayside Fertility · powered by Pumpkin</Muted>}</View>}>
       <Today size={38}>Welcome.</Today>
       <Muted>{plain ? "Sign in with your mobile number or email. We'll send a code. No password needed." : "Sign in with the mobile number or email Bayside has for you. We'll send a code. No password needed."}</Muted>
       <Card style={{ gap: 10 }}>

@@ -19,7 +19,7 @@ import Svg, { Circle, Path, Text as SvgText } from "react-native-svg";
 import { auth, type Api, type CaptureInput, type ItemKind, type PendingItem, type ResultGroup, type SignedInUser, type SoloCosts, type SoloMed, type SoloProfile, type SoloStage, type SoloToday } from "./api";
 import { askPermission, remindersSupported, syncReminders } from "./reminders";
 import { deviceName } from "./session";
-import { Button, C, Cap, Card, Chip, Chips, F, H1, Icon, Muted, Pill, st, T, Today, Toggle } from "./ui";
+import { Button, C, Cap, Card, Logo, Chip, Chips, F, H1, Icon, Muted, Pill, st, T, Today, Toggle } from "./ui";
 import { Field } from "./field";
 import { AboutScreen, AliasScreen, QuestionIdeas, SummaryScreen, TalkScreen } from "./yours";
 import { FeedbackScreen, PeopleScreen } from "./people";
@@ -188,7 +188,7 @@ export function SoloApp({ api, onSignOut }: { api: Api; onSignOut: () => void })
   const tabs = isTab ? <Tabs current={screen.name} go={go} badge={today.toCheck} /> : undefined;
   const top = isTab
     ? <View style={{ paddingHorizontal: 18, paddingTop: 16, paddingBottom: 4, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-        <Text style={{ fontFamily: F.display700, fontSize: 22, letterSpacing: -0.4, color: C.espresso }}>pumpkin</Text>
+        <Logo />
         <Pressable testID="feeling-unwell" onPress={() => go({ name: "urgent", crisis: false })} style={{ flexDirection: "row", gap: 6, alignItems: "center", backgroundColor: C.alertSoft, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12, minHeight: 40 }}>
           <Icon name="alert" color={C.red} size={18} /><T style={{ fontFamily: F.sans600, color: C.red, fontSize: 13.5 }}>Feeling unwell?</T>
         </Pressable>
