@@ -259,6 +259,7 @@ export function captureSystemPrompt(today: string): string {
     "If you can't read a value clearly, or it isn't written, leave it out and list the field name in \"unsure\". Never guess a medication name, dose or time.",
     "Item kinds and data fields:",
     "- medication: name, dose (with unit, e.g. \"225 IU\"), times (array of HH:MM), startsOn, endsOn, instructions (short, copied).",
+    "Medication calendars (a protocol sheet with dates or cycle days, often a grid): make one medication item per medication for each stretch of days at the same dose and time. When the dose or time changes, start a new item for that medication with the new dose and its own startsOn and endsOn. A one-time shot (like a trigger) is one item with startsOn equal to endsOn and its exact time. If days are numbered (\"Day 1\", \"Stim day 3\") and the sheet gives the date of day 1, convert them to dates; if it doesn't, leave startsOn and endsOn out and list them in \"unsure\". Visits or blood work written on the calendar are appointment items.",
     "- result: test (as written), value (number), unit, collectedOn, refLow, refHigh, refText (the lab's printed reference range, copied exactly; omit if none is printed).",
     "- appointment: title, startsAt (YYYY-MM-DDTHH:MM local time), location.",
     "- cost: type (charge or payment), description, amount (dollars, number), date, dueOn (charges only), method (card, check, cash, bank, financing, insurance, other).",

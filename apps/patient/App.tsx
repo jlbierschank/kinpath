@@ -8,7 +8,8 @@ import { BricolageGrotesque_600SemiBold, BricolageGrotesque_700Bold } from "@exp
 import { InstrumentSans_400Regular, InstrumentSans_500Medium, InstrumentSans_600SemiBold, InstrumentSans_700Bold } from "@expo-google-fonts/instrument-sans";
 import Svg, { Path } from "react-native-svg";
 import { Api, auth, type Auth, type SignedInUser, type NextCycle, type Dose, type Feeling, type Graduation, type KeepsakeId, type ResultHow, type Guide, type Invite, type PartnerHome, type Relationship, type SendResult, type Shareable, type SupportPerson, type Today as TodayData } from "./src/api";
-import { askPermission, remindersSupported, syncReminders } from "./src/reminders";
+import { askPermission, onDoseAction, remindersSupported, snoozeDose, syncReminders } from "./src/reminders";
+import { tick } from "./src/swipe";
 import { CostsCard, CostsScreen, PartnerCostsCard, ReceiptScreen } from "./src/money";
 import { SignupFlow, SoloApp } from "./src/solo";
 import { TestBanner, useAppInfo } from "./src/appinfo";
@@ -220,6 +221,11 @@ function Signed({ api, initials, onSignOut, demo }: { api: Api; initials: string
     catch (e) { setError((e as Error).message); }
   }, [api, refreshAlerts]);
   useEffect(() => { void load(); }, [load]);
+  // Log it / Snooze tapped on a dose reminder.
+  useEffect(() => onDoseAction(async (x) => {
+    if (x.action === "log") { for (const id of x.doseIds) await api.logDose(id).catch(() => null); tick(); setScreen({ name: "home" }); setNotice("Logged."); void load(); }
+    else if (x.action === "snooze") { const at = await snoozeDose(x.doseIds, x.title, x.body); setScreen({ name: "home" }); setNotice(at ? `We'll remind you again at ${clock(at.toISOString())}.` : "Snoozed."); }
+  }), [api, load]);
 
   if (error) return <Frame><Today size={34}>Can't reach Pumpkin</Today><Muted>{error}</Muted><Button label="Try again" onPress={load} /></Frame>;
   if (!data) return <Frame><Muted>Loading…</Muted></Frame>;

@@ -2,7 +2,7 @@ import { HandoffError, planReminders } from "@kinpath/core";
 import {
   addAppointment, addCapture, addCost, addMedication, addQuestion, addResult, askMyClinic, captureFile, deleteAppointment, deleteCost, deleteMyAccount, deleteQuestion,
   deleteResult, dismissItem, exportMyData, getReminderPrefs, itemsToCheck, newCalendarLink, SAMPLES, saveItem, setQuestionAsked, soloCosts, soloMeds, soloProfile,
-  soloResults, soloToday, stopCalendarLink, stopMedication, updateSoloProfile, visitQuestions, financePartners,
+  soloResults, soloToday, stopCalendarLink, stopMedication, setMedSupply, updateSoloProfile, visitQuestions, financePartners,
   patientSharing, aboutMe, addTenderDate, deleteTenderDate, questionIdeas, saveAbout, setAlias, setQuiet, visitSummary, withdrawAboutConsent,
 } from "@kinpath/db";
 import { getDb } from "@/lib/db";
@@ -69,6 +69,7 @@ export async function POST(req: Request, ctx: Ctx) {
       case "dismiss-item": return dismissItem(db, s, pid, str("id"));
       case "add-med": return addMedication(db, s, pid, obj("data") as never);
       case "stop-med": return stopMedication(db, s, pid, str("id"));
+      case "supply": return setMedSupply(db, s, pid, str("medication"), b.doses === null || b.doses === undefined || b.doses === "" ? null : Number(b.doses));
       case "add-result": return addResult(db, s, pid, obj("data") as never);
       case "delete-result": return deleteResult(db, s, pid, str("id"));
       case "add-appointment": return addAppointment(db, s, pid, obj("data") as never);

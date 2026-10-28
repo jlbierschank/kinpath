@@ -2,6 +2,7 @@
  * Account screens shared by patients and support people: the notification inbox, notification
  * settings, and sign-in devices.
  */
+import { SwipeRow } from "./swipe";
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
@@ -43,7 +44,8 @@ export function InboxScreen({ api, t, open, changed }: { api: Api; t: Tx; open: 
       <Card pad={false}>
         {items.length === 0 && <View style={[st.row, { borderTopWidth: 0 }]}><Muted>{t("Nothing yet.", "Nada todavía.")}</Muted></View>}
         {items.map((n, i) => (
-          <Pressable key={n.id} testID="notification" onPress={async () => { await api.markNotificationsRead([n.id]); changed(); open(n); }} style={[st.row, i === 0 && { borderTopWidth: 0 }]}>
+          <SwipeRow key={n.id} surface={C.paper} radius={0} right={n.read ? undefined : { label: t("Mark read", "Marcar leído"), bg: C.sage, fg: C.sageInk, run: async () => { await api.markNotificationsRead([n.id]); changed(); await load(); } }}>
+          <Pressable testID="notification" onPress={async () => { await api.markNotificationsRead([n.id]); changed(); open(n); }} style={[st.row, i === 0 && { borderTopWidth: 0 }]}>
             <View style={{ flexDirection: "row", gap: 10, alignItems: "center", flex: 1 }}>
               <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: n.read ? "transparent" : C.lavInk }} />
               <View style={{ flex: 1 }}>
@@ -52,8 +54,10 @@ export function InboxScreen({ api, t, open, changed }: { api: Api; t: Tx; open: 
               </View>
             </View>
           </Pressable>
+          </SwipeRow>
         ))}
       </Card>
+      {unread > 0 ? <Muted style={{ fontSize: 12.5, textAlign: "center" }}>{t("Tip: swipe right to mark one read.", "Consejo: desliza a la derecha para marcar como leído.")}</Muted> : null}
       {unread > 0 && <Button testID="mark-all-read" kind="line" label={t("Mark all read", "Marcar todo como leído")} onPress={async () => { await api.markNotificationsRead("all"); changed(); await load(); }} />}
     </>
   );

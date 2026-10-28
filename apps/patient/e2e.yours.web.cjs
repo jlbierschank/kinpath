@@ -12,7 +12,7 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localho
   const byId = id => p.locator(`[data-testid="${id}"]`);
   const text = s => p.getByText(s, { exact: false });
   const sees = async (s, t = 10000) => { try { await text(s).first().waitFor({ timeout: t }); return true; } catch { return false; } };
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', month: '2-digit', day: '2-digit' }).format(new Date()); // MM-DD
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); // YYYY-MM-DD for the date picker
   { const w = await b.newPage(); await w.goto(SERVER + '/'); await w.click('button:has-text("Reset demo data")'); await w.waitForTimeout(1500); await w.close(); }
 
   await p.goto(APP + '/');

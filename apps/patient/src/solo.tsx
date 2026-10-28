@@ -16,11 +16,13 @@ import * as DocumentPicker from "expo-document-picker";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import Svg, { Circle, Path, Text as SvgText } from "react-native-svg";
-import { auth, type Api, type CaptureInput, type ItemKind, type PendingItem, type ResultGroup, type SignedInUser, type SoloCosts, type SoloMed, type SoloProfile, type SoloStage, type SoloToday } from "./api";
-import { askPermission, remindersSupported, syncReminders } from "./reminders";
-import { deviceName } from "./session";
+import { auth, type Api, type CaptureInput, type ItemKind, type PendingItem, type Refill, type ResultGroup, type SignedInUser, type SoloCosts, type SoloMed, type SoloProfile, type SoloStage, type SoloToday } from "./api";
+import { askPermission, onDoseAction, remindersSupported, snoozeDose, syncReminders } from "./reminders";
+import { SwipeRow, tick } from "./swipe";
+import { deviceName, loadPref, savePref } from "./session";
 import { AppearanceCard, Button, C, isDark, Cap, Card, Logo, Chip, Chips, F, H1, Icon, Muted, Pill, st, T, Today, Toggle } from "./ui";
 import { Field } from "./field";
+import { DateField, niceDate, niceTime, TimeField, TimesField } from "./datefield";
 import { AboutScreen, AliasScreen, QuestionIdeas, SummaryScreen, TalkScreen } from "./yours";
 import { FeedbackScreen, PeopleScreen } from "./people";
 import { TestBanner } from "./appinfo";
@@ -182,7 +184,7 @@ export function SignupFlow({ onSignedIn, onBack }: { onSignedIn: (u: SignedInUse
 // ---------- the app ----------
 
 type Tab = "today" | "record" | "add" | "costs" | "more";
-type Screen = { name: Tab } | { name: "check" } | { name: "urgent"; crisis: boolean } | { name: "say" } | { name: "type" } | { name: "by-hand"; kind: ItemKind } | { name: "original"; captureId: string; text?: string } | { name: "about" } | { name: "talk" } | { name: "alias" } | { name: "summary" } | { name: "people" } | { name: "feedback" };
+type Screen = { name: Tab } | { name: "check" } | { name: "urgent"; crisis: boolean } | { name: "say" } | { name: "type" } | { name: "by-hand"; kind: ItemKind } | { name: "original"; captureId: string; text?: string } | { name: "about" } | { name: "talk" } | { name: "alias" } | { name: "summary" } | { name: "people" } | { name: "feedback" } | { name: "edit-today" };
 
 export function SoloApp({ api, onSignOut }: { api: Api; onSignOut: () => void }) {
   const [screen, setScreen] = useState<Screen>({ name: "today" });
@@ -191,11 +193,21 @@ export function SoloApp({ api, onSignOut }: { api: Api; onSignOut: () => void })
   const [notice, setNotice] = useState<string | null>(null);
   const reduce = useReduceMotion();
   const [welcome, setWelcome] = useState(() => { const w = welcomeNext; welcomeNext = false; return w; });
+  const tl = useTodayLayout();
   const load = useCallback(async () => {
     try { const d = await api.soloToday(); setToday(d); setError(null); void syncReminders(d.reminders).catch(() => 0); }
     catch (e) { setError((e as Error).message); }
   }, [api]);
   useEffect(() => { void load(); }, [load]);
+  // Log it / Snooze tapped on a dose reminder.
+  useEffect(() => onDoseAction(async (a) => {
+    if (a.action === "log") {
+      try { for (const id of a.doseIds) await api.logDose(id).catch(() => null); tick(); setScreen({ name: "today" }); setNotice("Logged."); } finally { void load(); }
+    } else if (a.action === "snooze") {
+      const at = await snoozeDose(a.doseIds, a.title, a.body);
+      setScreen({ name: "today" }); setNotice(at ? `We'll remind you again at ${clock(at.toISOString())}.` : "Snoozed.");
+    } else setScreen({ name: "today" });
+  }), [api, load]);
   const ready = today !== null;
   useEffect(() => { if (!welcome || !ready) return; const t = setTimeout(() => setWelcome(false), 2600); return () => clearTimeout(t); }, [welcome, ready]);
   const go = (s: Screen) => { setNotice(null); setScreen(s); };
@@ -224,7 +236,8 @@ export function SoloApp({ api, onSignOut }: { api: Api; onSignOut: () => void })
     <View style={{ flex: 1 }}>
     <Frame top={top} tabs={tabs}>
       {notice ? <RiseIn key={notice}><View testID="solo-notice" style={{ backgroundColor: C.sage, borderRadius: 16, padding: 14 }}><T style={{ fontFamily: F.sans600, color: C.sageInk, fontSize: 15 }}>{notice}</T></View></RiseIn> : null}
-      {screen.name === "today" && <TodayScreen d={today} api={api} go={go} reload={load} />}
+      {screen.name === "today" && tl.loaded && <TodayScreen d={today} api={api} go={go} reload={load} layout={tl.layout} notice={setNotice} />}
+      {screen.name === "edit-today" && <EditTodayScreen stage={today.profile.stage} layout={tl.layout} save={tl.save} done={() => home("Today is set up your way.")} />}
       {screen.name === "add" && <AddScreen api={api} profile={today.profile} go={go} done={afterCapture} />}
       {screen.name === "say" && <SayScreen api={api} done={afterCapture} />}
       {screen.name === "type" && <TypeScreen api={api} done={afterCapture} />}
@@ -271,15 +284,59 @@ function Tabs({ current, go, badge }: { current: string; go: (s: Screen) => void
   );
 }
 
-// ---------- Today ----------
+// ---------- Today: a "Right now" card, then tiles in the order she chose ----------
 
-function TodayScreen({ d, api, go, reload }: { d: SoloToday; api: Api; go: (s: Screen) => void; reload: () => Promise<void> }) {
+export type TileId = "meds" | "check" | "coming" | "numbers" | "payment" | "refill" | "add" | "yours" | "clinic";
+export const TILE_INFO: Record<TileId, { label: string; locked?: boolean }> = {
+  meds: { label: "Tonight's meds", locked: true },
+  check: { label: "Ready to check", locked: true },
+  coming: { label: "Coming up" },
+  numbers: { label: "Your latest numbers" },
+  payment: { label: "Next payment" },
+  refill: { label: "Refills" },
+  add: { label: "Got something new?" },
+  yours: { label: "Make Pumpkin yours" },
+  clinic: { label: "Your clinic on Pumpkin" },
+};
+/** Pumpkin's starting order for each stage; she can change it in Edit Today. */
+export function defaultOrder(stage: SoloStage): TileId[] {
+  switch (stage) {
+    case "just_starting": return ["check", "add", "coming", "yours", "payment", "meds", "numbers", "refill", "clinic"];
+    case "two_week_wait": return ["coming", "meds", "check", "add", "payment", "refill", "numbers", "yours", "clinic"];
+    case "after_hard_result": return ["coming", "check", "add", "numbers", "payment", "meds", "refill", "yours", "clinic"];
+    case "between_cycles": return ["check", "coming", "add", "payment", "numbers", "meds", "refill", "yours", "clinic"];
+    default: return ["meds", "check", "coming", "numbers", "refill", "add", "payment", "yours", "clinic"];
+  }
+}
+export type TodayLayout = { order: TileId[]; hidden: TileId[] };
+const LAYOUT_KEY = "today-layout";
+export function useTodayLayout() {
+  const [layout, setLayout] = useState<TodayLayout | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => { void loadPref<TodayLayout>(LAYOUT_KEY).then((l) => { setLayout(l); setLoaded(true); }); }, []);
+  const save = (l: TodayLayout | null) => { setLayout(l); void savePref(LAYOUT_KEY, l); };
+  return { layout, loaded, save };
+}
+/** Her saved order, with any tile added since then placed where the stage default puts it. Locked tiles never hide. */
+export function orderFor(stage: SoloStage, layout: TodayLayout | null): { order: TileId[]; hidden: Set<TileId> } {
+  const def = defaultOrder(stage);
+  if (!layout) return { order: def, hidden: new Set() };
+  const order = layout.order.filter((t) => t in TILE_INFO);
+  for (const t of def) if (!order.includes(t)) order.splice(Math.min(def.indexOf(t), order.length), 0, t);
+  return { order, hidden: new Set(layout.hidden.filter((t) => !TILE_INFO[t]?.locked)) };
+}
+
+function TodayScreen({ d, api, go, reload, layout, notice }: { d: SoloToday; api: Api; go: (s: Screen) => void; reload: () => Promise<void>; layout: TodayLayout | null; notice: (m: string) => void }) {
   const p = d.profile;
   // The next day's doses (the next 30 hours), so the 8 pm dose stays visible after tonight's is done.
   const soon = d.schedule.upcoming.filter((x) => new Date(x.scheduledFor).getTime() - Date.now() < 30 * 3600_000);
   const missed = d.schedule.missed.filter((x) => Date.now() - new Date(x.scheduledFor).getTime() < 36 * 3600_000);
   const [logging, setLogging] = useState<string | null>(null);
   const log = async (id: string) => { setLogging(id); try { await api.logDose(id); setJustLogged(id); await reload(); } finally { setLogging(null); } };
+  const snooze = async (x: { id: string; scheduledFor: string }) => {
+    const at = await snoozeDose([x.id], "Dose reminder", `It's time for your ${clock(x.scheduledFor)} dose.`);
+    notice(at ? `We'll remind you again at ${clock(at.toISOString())}.` : "Reminders work in the phone app.");
+  };
   const hard = p.stage === "after_hard_result";
   const f = d.feel;
   const quiet = f.quiet, gentle = f.tender?.mode === "gentle";
@@ -290,7 +347,122 @@ function TodayScreen({ d, api, go, reload }: { d: SoloToday; api: Api; go: (s: S
   useEffect(() => { setShown(!d.about.revealResults); }, [d.about.revealResults]);
   const [resuming, setResuming] = useState(false);
   const resume = async () => { setResuming(true); try { await api.setQuiet({ pauseDays: null, onBreak: false }); await reload(); } finally { setResuming(false); } };
-  const dueSoon = d.nextDue && (d.about.costCheckins === "always" || (Date.parse(`${d.nextDue.dueOn}T12:00:00`) - Date.now()) / 86400_000 <= 7);
+  const daysTo = (ymd: string) => (Date.parse(`${ymd}T12:00:00`) - Date.now()) / 86400_000;
+  const dueSoon = !!d.nextDue && (d.about.costCheckins === "always" || daysTo(d.nextDue.dueOn) <= 7);
+  const refills = d.refills.filter((r) => r.daysLeft !== null && r.daysLeft <= 5);
+
+  // ----- what matters most right now -----
+  const nextDose = soon.find((x) => !x.takenAt);
+  const minsToDose = nextDose ? (new Date(nextDose.scheduledFor).getTime() - Date.now()) / 60000 : Infinity;
+  const visit = d.appointments.find((a) => { const h = (new Date(a.startsAt).getTime() - Date.now()) / 3600_000; return h > 0 && h < 20; });
+  const freshResult = d.latestResults.find((r) => daysTo(r.on) > -2);
+  let nowId: TileId | null = null; let nowWhy = "";
+  if (!quiet && !f.onBreak) {
+    if (missed.length) { nowId = "meds"; nowWhy = "A dose isn't logged yet"; }
+    else if (nextDose && minsToDose <= 180) { nowId = "meds"; nowWhy = minsToDose <= 0 ? "It's time" : `In ${minsToDose < 60 ? `${Math.max(1, Math.round(minsToDose))} min` : `${Math.round(minsToDose / 60)} h`}`; }
+    else if (d.toCheck > 0 && !hard) { nowId = "check"; nowWhy = "Waiting for you to check"; }
+    else if (visit) { nowId = "coming"; nowWhy = new Date(visit.startsAt).toDateString() === new Date().toDateString() ? "Today" : "Tomorrow"; }
+    else if (freshResult && !hard) { nowId = "numbers"; nowWhy = "New since yesterday"; }
+    else if (refills.some((r) => (r.daysLeft ?? 9) <= 2) && !hard) { nowId = "refill"; nowWhy = "Running low"; }
+    else if (d.nextDue && daysTo(d.nextDue.dueOn) <= 3 && !hard && p.stage !== "two_week_wait") { nowId = "payment"; nowWhy = "Due soon"; }
+  }
+
+  const doseRow = (x: (typeof soon)[number]) => {
+    const row = (
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10, paddingVertical: 4 }}>
+        <View style={{ flex: 1 }}>
+          <T style={{ fontFamily: F.display, fontSize: 20, color: C.onFill }}>{`${new Date(x.scheduledFor).toDateString() === new Date().toDateString() ? "" : "Tomorrow "}${clock(x.scheduledFor)}`}</T>
+          <T style={{ color: C.fillMuted, fontSize: 15 }}>{`${x.medication} ${x.dose}`}</T>
+          {!x.takenAt && remindersSupported && minsToDose < 24 * 60 && x === nextDose ? <Pressable testID={`snooze-${x.id}`} onPress={() => snooze(x)} style={{ minHeight: 32, justifyContent: "center", alignSelf: "flex-start" }}><T style={{ color: C.fillMuted, fontSize: 13.5, textDecorationLine: "underline" }}>Snooze 15 min</T></Pressable> : null}
+        </View>
+        {x.takenAt ? (justLogged === x.id && !calm
+          ? <View testID={`logged-${x.id}`} style={{ flexDirection: "row", gap: 6, alignItems: "center", backgroundColor: C.sage, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 12 }}><DrawCheck size={18} /><T style={{ fontFamily: F.sans600, color: C.sageInk, fontSize: 13.5 }}>Done</T></View>
+          : <Pill tone="sage" label="Done" />) : <Pressable testID={`log-${x.id}`} onPress={() => log(x.id)} style={{ backgroundColor: C.marigold, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 16, minHeight: 44, justifyContent: "center" }}><T style={{ fontFamily: F.sans700, color: C.onMarigold }}>{logging === x.id ? "Saving…" : "Log it"}</T></Pressable>}
+      </View>
+    );
+    if (x.takenAt) return <View key={x.id}>{row}</View>;
+    return (
+      <SwipeRow key={x.id} testID={`swipe-${x.id}`} surface={C.fill} radius={12}
+        right={{ label: "Log it", bg: C.sage, fg: C.sageInk, run: () => log(x.id) }}
+        left={remindersSupported ? { label: "Snooze 15 min", bg: C.lav, fg: C.lavInk, run: () => snooze(x) } : undefined}>
+        {row}
+      </SwipeRow>
+    );
+  };
+
+  const tiles: Record<TileId, ReactNode> = {
+    meds: soon.length > 0 || missed.length > 0 ? (
+      <View style={[st.dark, { gap: 12 }]}>
+        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><Icon name="medication" color={C.marigoldOnFill} /><T style={{ fontFamily: F.sans700, color: C.marigoldOnFill, fontSize: 13, letterSpacing: 0.6 }}>MEDS</T></View>
+        {missed.map((x) => (
+          <View key={x.id} style={{ gap: 6 }}>
+            <T style={{ color: C.onFill, fontSize: 15.5 }}>{`${x.medication} ${x.dose} · was due ${clock(x.scheduledFor)}`}</T>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <Pressable testID={`late-${x.id}`} onPress={() => log(x.id)} style={{ backgroundColor: C.onFill, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 16 }}><T style={{ fontFamily: F.sans700, color: C.fill }}>{logging === x.id ? "Saving…" : "I took it"}</T></Pressable>
+              {p.afterHoursPhone ? <Pressable onPress={() => Linking.openURL(telOf(p.afterHoursPhone!))} style={{ borderColor: C.onFill, borderWidth: 1.5, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 16 }}><T style={{ fontFamily: F.sans600, color: C.onFill }}>Not sure? Call your clinic</T></Pressable> : null}
+            </View>
+          </View>
+        ))}
+        {soon.map(doseRow)}
+        {nextDose && !calm ? <T style={{ fontSize: 12.5, color: C.fillMuted }}>{remindersSupported ? "Tip: swipe right to log, left to snooze." : "Tip: swipe right to log."}</T> : null}
+      </View>
+    ) : null,
+    check: d.toCheck > 0 && !quiet ? (
+      <Pressable testID="to-check" onPress={() => go({ name: "check" })} style={{ backgroundColor: C.lav, borderRadius: 22, padding: 18, gap: 4 }}>
+        <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="check" color={C.lavInk} /><T style={{ fontFamily: F.sans700, color: C.lavInk, fontSize: 13, letterSpacing: 0.6 }}>READY TO CHECK</T></View>
+        <T style={{ fontFamily: F.display, fontSize: 22, lineHeight: 26 }}>{d.toCheck === 1 ? "1 thing Pumpkin read for you" : `${d.toCheck} things Pumpkin read for you`}</T>
+        <T style={{ fontSize: 15 }}>Check each one before it goes in your record.</T>
+      </Pressable>
+    ) : null,
+    coming: d.appointments.length > 0 ? (
+      <Card style={{ gap: 8 }}>
+        <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="calendar" /><T style={{ fontFamily: F.sans700, fontSize: 13, letterSpacing: 0.6 }}>COMING UP</T></View>
+        {d.appointments.slice(0, 2).map((a) => <View key={a.id}><T style={{ fontFamily: F.sans600, fontSize: 15.5 }}>{a.title}</T><Muted style={{ fontSize: 14 }}>{`${when(a.startsAt)}${a.location ? ` · ${a.location}` : ""}`}</Muted></View>)}
+        {d.openQuestions > 0 ? <Pressable onPress={() => go({ name: "record" })}><T style={{ color: C.lavInk, fontFamily: F.sans600, paddingVertical: 6 }}>{`${d.openQuestions} question${d.openQuestions === 1 ? "" : "s"} to ask at your visit`}</T></Pressable> : null}
+        {nowId === "coming" ? <Button testID="now-summary" kind="line" label="Open my visit summary" onPress={() => go({ name: "summary" })} /> : null}
+      </Card>
+    ) : null,
+    numbers: d.latestResults.length > 0 && !quiet ? (shown ? (
+      <Pressable onPress={() => go({ name: "record" })} style={[st.card, { padding: 16, gap: 8 }]}>
+        <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="lab" /><T style={{ fontFamily: F.sans700, fontSize: 13, letterSpacing: 0.6 }}>YOUR LATEST NUMBERS</T></View>
+        {d.latestResults.map((r) => <View key={r.key} style={{ flexDirection: "row", justifyContent: "space-between" }}><T style={{ fontSize: 15 }}>{r.name}</T><T style={{ fontFamily: F.sans600, fontSize: 15 }}>{`${r.value} ${r.unit} · ${dayLabel(r.on)}`}</T></View>)}
+        <T style={{ color: C.lavInk, fontFamily: F.sans600 }}>See what each test measures</T>
+      </Pressable>
+    ) : (
+      <Pressable testID="reveal-results" onPress={() => setShown(true)} style={[st.card, { padding: 16, gap: 6 }]}>
+        <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="lab" /><T style={{ fontFamily: F.sans700, fontSize: 13, letterSpacing: 0.6 }}>YOUR NUMBERS</T></View>
+        <T style={{ fontSize: 15.5 }}>Your latest numbers are here when you're ready.</T>
+        <T style={{ color: C.lavInk, fontFamily: F.sans600 }}>Show me</T>
+      </Pressable>
+    )) : null,
+    payment: d.nextDue && dueSoon && !quiet ? (
+      <Pressable testID="next-payment" onPress={() => go({ name: "costs" })} style={{ backgroundColor: C.clay, borderRadius: 22, padding: 18, flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+        <View style={{ flex: 1 }}><View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><Icon name="wallet" color={C.clayInk} /><T style={{ fontFamily: F.sans700, color: C.clayInk, fontSize: 13, letterSpacing: 0.6 }}>NEXT PAYMENT</T></View><T style={{ fontSize: 15 }}>{`Due ${dayLabel(d.nextDue.dueOn)}`}</T></View>
+        <T style={{ fontFamily: F.display, fontSize: 26 }}>{money(d.nextDue.amountCents)}</T>
+      </Pressable>
+    ) : null,
+    refill: refills.length > 0 && !quiet ? <RefillTile refills={refills} go={go} /> : null,
+    add: !quiet ? (
+      <Card style={{ gap: 10 }}>
+        <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="pen" /><T style={{ fontFamily: F.display, fontSize: 21 }}>Got something new?</T></View>
+        <T style={{ fontSize: 15, lineHeight: 21 }}>Snap your med calendar, a lab report or a payment plan. Or just say it. Pumpkin sorts it out, and you check it.</T>
+        <Button testID="today-add" kind="esp" label="Add something" onPress={() => go({ name: "add" })} />
+      </Card>
+    ) : null,
+    yours: d.about.stepsLeft.length > 0 && !quiet && !gentle && !hard ? (
+      <Pressable testID="make-yours" onPress={() => go({ name: "about" })} style={[st.card, { padding: 16, gap: 6 }]}>
+        <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="heart" /><T style={{ fontFamily: F.display, fontSize: 20 }}>Make Pumpkin yours</T></View>
+        <T style={{ fontSize: 15 }}>{d.about.stepsLeft.includes("name") ? "Tell us what to call you, and a little about how you're building your family." : "A few optional questions so Pumpkin talks to you the way you'd like."}</T>
+        <T style={{ color: C.lavInk, fontFamily: F.sans600 }}>{`${5 - d.about.stepsLeft.length} of 5 done`}</T>
+      </Pressable>
+    ) : null,
+    clinic: quiet || gentle ? null : !p.askedClinicAt ? <AskClinicCard api={api} profile={p} reload={reload} /> : (
+      <View style={{ backgroundColor: C.sage, borderRadius: 22, padding: 16 }}><T style={{ color: C.sageInk, fontFamily: F.sans600, fontSize: 15 }}>{`You asked ${p.clinicName ?? "your clinic"} to join. When they do, your nurse can see what you've logged, if you choose to share it.`}</T></View>
+    ),
+  };
+  const { order, hidden } = orderFor(p.stage, layout);
+  const rest = order.filter((t) => t !== nowId && !hidden.has(t) && tiles[t]);
+
   return (
     <>
       <View style={{ gap: 4 }}>
@@ -319,84 +491,102 @@ function TodayScreen({ d, api, go, reload }: { d: SoloToday; api: Api; go: (s: S
         <Card style={{ gap: 6 }}><T style={{ fontFamily: F.display, fontSize: 22, lineHeight: 26 }}>{`We're so sorry, ${p.firstName}.`}</T><T style={{ fontSize: 15.5, lineHeight: 22 }}>Take the time you need. Your record is here whenever you want it, and so are your questions for your next visit.</T></Card>
       ) : null}
 
-      {d.toCheck > 0 && !quiet ? (
-        <Pressable testID="to-check" onPress={() => go({ name: "check" })} style={{ backgroundColor: C.lav, borderRadius: 22, padding: 18, gap: 4 }}>
-          <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="check" color={C.lavInk} /><T style={{ fontFamily: F.sans700, color: C.lavInk, fontSize: 13, letterSpacing: 0.6 }}>READY TO CHECK</T></View>
-          <T style={{ fontFamily: F.display, fontSize: 22, lineHeight: 26 }}>{d.toCheck === 1 ? "1 thing Pumpkin read for you" : `${d.toCheck} things Pumpkin read for you`}</T>
-          <T style={{ fontSize: 15 }}>Check each one before it goes in your record.</T>
-        </Pressable>
-      ) : null}
-
-      {(soon.length > 0 || missed.length > 0) && (
-        <View style={[st.dark, { gap: 12 }]}>
-          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><Icon name="medication" color={C.marigoldOnFill} /><T style={{ fontFamily: F.sans700, color: C.marigoldOnFill, fontSize: 13, letterSpacing: 0.6 }}>MEDS</T></View>
-          {missed.map((x) => (
-            <View key={x.id} style={{ gap: 6 }}>
-              <T style={{ color: C.onFill, fontSize: 15.5 }}>{`${x.medication} ${x.dose} · was due ${clock(x.scheduledFor)}`}</T>
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                <Pressable testID={`late-${x.id}`} onPress={() => log(x.id)} style={{ backgroundColor: C.onFill, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 16 }}><T style={{ fontFamily: F.sans700, color: C.fill }}>{logging === x.id ? "Saving…" : "I took it"}</T></Pressable>
-                {p.afterHoursPhone ? <Pressable onPress={() => Linking.openURL(telOf(p.afterHoursPhone!))} style={{ borderColor: C.onFill, borderWidth: 1.5, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 16 }}><T style={{ fontFamily: F.sans600, color: C.onFill }}>Not sure? Call your clinic</T></Pressable> : null}
-              </View>
-            </View>
-          ))}
-          {soon.map((x) => (
-            <View key={x.id} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-              <View style={{ flex: 1 }}><T style={{ fontFamily: F.display, fontSize: 20, color: C.onFill }}>{`${new Date(x.scheduledFor).toDateString() === new Date().toDateString() ? "" : "Tomorrow "}${clock(x.scheduledFor)}`}</T><T style={{ color: C.fillMuted, fontSize: 15 }}>{`${x.medication} ${x.dose}`}</T></View>
-              {x.takenAt ? (justLogged === x.id && !calm
-                ? <View testID={`logged-${x.id}`} style={{ flexDirection: "row", gap: 6, alignItems: "center", backgroundColor: C.sage, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 12 }}><DrawCheck size={18} /><T style={{ fontFamily: F.sans600, color: C.sageInk, fontSize: 13.5 }}>Done</T></View>
-                : <Pill tone="sage" label="Done" />) : <Pressable testID={`log-${x.id}`} onPress={() => log(x.id)} style={{ backgroundColor: C.marigold, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 16, minHeight: 44, justifyContent: "center" }}><T style={{ fontFamily: F.sans700, color: C.onMarigold }}>{logging === x.id ? "Saving…" : "Log it"}</T></Pressable>}
-            </View>
-          ))}
+      {nowId && tiles[nowId] ? (
+        <View testID="now" style={{ gap: 6 }}>
+          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.marigold }} />
+            <T testID="now-why" style={{ fontFamily: F.sans700, fontSize: 13, letterSpacing: 0.6, color: C.stone }}>{`RIGHT NOW · ${nowWhy.toUpperCase()}`}</T>
+          </View>
+          {tiles[nowId]}
         </View>
-      )}
-
-      {!quiet && <Card style={{ gap: 10 }}>
-        <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="pen" /><T style={{ fontFamily: F.display, fontSize: 21 }}>Got something new?</T></View>
-        <T style={{ fontSize: 15, lineHeight: 21 }}>Snap your med instructions, a lab report or a payment plan. Or just say it. Pumpkin sorts it out, and you check it.</T>
-        <Button testID="today-add" kind="esp" label="Add something" onPress={() => go({ name: "add" })} />
-      </Card>}
-
-      {d.appointments.length > 0 && (
-        <Card style={{ gap: 8 }}>
-          <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="calendar" /><T style={{ fontFamily: F.sans700, fontSize: 13, letterSpacing: 0.6 }}>COMING UP</T></View>
-          {d.appointments.slice(0, 2).map((a) => <View key={a.id}><T style={{ fontFamily: F.sans600, fontSize: 15.5 }}>{a.title}</T><Muted style={{ fontSize: 14 }}>{`${when(a.startsAt)}${a.location ? ` · ${a.location}` : ""}`}</Muted></View>)}
-          {d.openQuestions > 0 ? <Pressable onPress={() => go({ name: "record" })}><T style={{ color: C.lavInk, fontFamily: F.sans600, paddingVertical: 6 }}>{`${d.openQuestions} question${d.openQuestions === 1 ? "" : "s"} to ask at your visit`}</T></Pressable> : null}
-        </Card>
-      )}
-
-      {d.nextDue && dueSoon && !quiet ? (
-        <Pressable testID="next-payment" onPress={() => go({ name: "costs" })} style={{ backgroundColor: C.clay, borderRadius: 22, padding: 18, flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-          <View style={{ flex: 1 }}><View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><Icon name="wallet" color={C.clayInk} /><T style={{ fontFamily: F.sans700, color: C.clayInk, fontSize: 13, letterSpacing: 0.6 }}>NEXT PAYMENT</T></View><T style={{ fontSize: 15 }}>{`Due ${dayLabel(d.nextDue.dueOn)}`}</T></View>
-          <T style={{ fontFamily: F.display, fontSize: 26 }}>{money(d.nextDue.amountCents)}</T>
-        </Pressable>
       ) : null}
-
-      {d.latestResults.length > 0 && !quiet && (shown ? (
-        <Pressable onPress={() => go({ name: "record" })} style={[st.card, { padding: 16, gap: 8 }]}>
-          <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="lab" /><T style={{ fontFamily: F.sans700, fontSize: 13, letterSpacing: 0.6 }}>YOUR LATEST NUMBERS</T></View>
-          {d.latestResults.map((r) => <View key={r.key} style={{ flexDirection: "row", justifyContent: "space-between" }}><T style={{ fontSize: 15 }}>{r.name}</T><T style={{ fontFamily: F.sans600, fontSize: 15 }}>{`${r.value} ${r.unit} · ${dayLabel(r.on)}`}</T></View>)}
-          <T style={{ color: C.lavInk, fontFamily: F.sans600 }}>See what each test measures</T>
-        </Pressable>
-      ) : (
-        <Pressable testID="reveal-results" onPress={() => setShown(true)} style={[st.card, { padding: 16, gap: 6 }]}>
-          <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="lab" /><T style={{ fontFamily: F.sans700, fontSize: 13, letterSpacing: 0.6 }}>YOUR NUMBERS</T></View>
-          <T style={{ fontSize: 15.5 }}>Your latest numbers are here when you're ready.</T>
-          <T style={{ color: C.lavInk, fontFamily: F.sans600 }}>Show me</T>
-        </Pressable>
-      ))}
-
-      {d.about.stepsLeft.length > 0 && !quiet && !gentle && !hard ? (
-        <Pressable testID="make-yours" onPress={() => go({ name: "about" })} style={[st.card, { padding: 16, gap: 6 }]}>
-          <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="heart" /><T style={{ fontFamily: F.display, fontSize: 20 }}>Make Pumpkin yours</T></View>
-          <T style={{ fontSize: 15 }}>{d.about.stepsLeft.includes("name") ? "Tell us what to call you, and a little about how you're building your family." : "A few optional questions so Pumpkin talks to you the way you'd like."}</T>
-          <T style={{ color: C.lavInk, fontFamily: F.sans600 }}>{`${5 - d.about.stepsLeft.length} of 5 done`}</T>
-        </Pressable>
-      ) : null}
-
-      {quiet || gentle ? null : !p.askedClinicAt ? <AskClinicCard api={api} profile={p} reload={reload} /> : (
-        <View style={{ backgroundColor: C.sage, borderRadius: 22, padding: 16 }}><T style={{ color: C.sageInk, fontFamily: F.sans600, fontSize: 15 }}>{`You asked ${p.clinicName ?? "your clinic"} to join. When they do, your nurse can see what you've logged, if you choose to share it.`}</T></View>
-      )}
+      {rest.map((t) => <View key={t} testID={`tile-${t}`}>{tiles[t]}</View>)}
+      {!quiet ? <Pressable testID="edit-today" onPress={() => go({ name: "edit-today" })} style={{ alignSelf: "center", minHeight: 44, justifyContent: "center" }}><T style={{ color: C.stone, fontFamily: F.sans600, textDecorationLine: "underline" }}>Edit Today</T></Pressable> : null}
     </>
+  );
+}
+
+/** Reorder, hide and show the tiles on Today. Tonight's meds and things to check always stay. */
+function EditTodayScreen({ stage, layout, save, done }: { stage: SoloStage; layout: TodayLayout | null; save: (l: TodayLayout | null) => void; done: () => void }) {
+  const cur = orderFor(stage, layout);
+  const [order, setOrder] = useState<TileId[]>(cur.order);
+  const [hidden, setHidden] = useState<Set<TileId>>(cur.hidden);
+  const move = (i: number, by: number) => setOrder((o) => { const n = [...o]; const j = i + by; if (j < 0 || j >= n.length) return o; [n[i], n[j]] = [n[j]!, n[i]!]; return n; });
+  const arrow = (dir: "up" | "down", onPress: () => void, disabled: boolean, label: string) => (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={{ width: 40, height: 40, borderRadius: 12, borderWidth: 1, borderColor: C.line, alignItems: "center", justifyContent: "center", opacity: disabled ? 0.35 : 1 }}>
+      <Svg width={16} height={16} viewBox="0 0 24 24"><Path d={dir === "up" ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"} stroke={C.ink} strokeWidth={2.2} fill="none" strokeLinecap="round" strokeLinejoin="round" /></Svg>
+    </Pressable>
+  );
+  return (
+    <>
+      <Today size={34}>Edit Today</Today>
+      <Muted style={{ fontSize: 15 }}>Put what matters most to you at the top. Whatever needs you right now still shows first, and the urgent help button is always there.</Muted>
+      <Card pad={false}>
+        {order.map((t, i) => {
+          const info = TILE_INFO[t]; const off = hidden.has(t);
+          return (
+            <View key={t} testID={`edit-${t}`} style={[st.row, i === 0 && { borderTopWidth: 0 }, { gap: 8 }]}>
+              <View style={{ flex: 1 }}>
+                <T style={{ fontFamily: F.sans600, fontSize: 15, color: off ? C.stone : C.ink }}>{info.label}</T>
+                {info.locked ? <Muted style={{ fontSize: 12.5 }}>Always shown</Muted> : null}
+              </View>
+              {info.locked ? null : <Toggle testID={`show-${t}`} value={!off} onChange={(v) => setHidden((h) => { const n = new Set(h); if (v) n.delete(t); else n.add(t); return n; })} />}
+              {arrow("up", () => move(i, -1), i === 0, `Move ${info.label} up`)}
+              {arrow("down", () => move(i, 1), i === order.length - 1, `Move ${info.label} down`)}
+            </View>
+          );
+        })}
+      </Card>
+      <Button testID="edit-save" kind="esp" label="Save" onPress={() => { save({ order, hidden: [...hidden] }); done(); }} />
+      <Button testID="edit-reset" kind="plain" label="Go back to Pumpkin's order" onPress={() => { save(null); done(); }} />
+    </>
+  );
+}
+
+// ---------- refills ----------
+
+const refillLine = (r: Refill) => r.dosesLeft === null ? "Not counted yet"
+  : r.enough ? `${r.dosesLeft} left. Enough to finish this medication.`
+  : r.daysLeft !== null && r.daysLeft <= 1 ? `${r.dosesLeft} left. Runs out ${niceDate(r.runOutOn!)}. Order today.`
+  : `${r.dosesLeft} left. Order more by ${niceDate(r.orderBy!)}.`;
+
+/** On Today when something runs out within 5 days. Counting only; her pharmacy and nurse handle the rest. */
+function RefillTile({ refills, go }: { refills: Refill[]; go: (s: Screen) => void }) {
+  return (
+    <Pressable testID="refill-tile" onPress={() => go({ name: "record" })} style={[st.card, { padding: 16, gap: 8 }]}>
+      <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="medication" /><T style={{ fontFamily: F.sans700, fontSize: 13, letterSpacing: 0.6 }}>REFILLS</T></View>
+      {refills.map((r) => <View key={r.medication}><T style={{ fontFamily: F.sans600, fontSize: 15.5 }}>{r.medication}</T><Muted style={{ fontSize: 14.5 }}>{refillLine(r)}</Muted></View>)}
+      <T style={{ color: C.lavInk, fontFamily: F.sans600 }}>Update my counts</T>
+    </Pressable>
+  );
+}
+
+/** In her record: how many doses she has of each medication, so Pumpkin can say when to reorder. */
+function SupplyCard({ api, refills, reload }: { api: Api; refills: Refill[]; reload: () => Promise<void> }) {
+  const [edit, setEdit] = useState<string | null>(null);
+  const [n, setN] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const save = async (med: string, doses: number | null) => { setErr(null); try { await api.setSupply(med, doses); setEdit(null); await reload(); } catch (e) { setErr((e as Error).message); } };
+  return (
+    <View testID="supply" style={[st.card, { padding: 14, gap: 10 }]}>
+      <T style={{ fontFamily: F.sans600, fontSize: 15.5 }}>How much do you have?</T>
+      <Muted style={{ fontSize: 13.5 }}>Count doses, not boxes. Pumpkin subtracts each one you log and tells you when to reorder.</Muted>
+      {refills.map((r) => (
+        <View key={r.medication} style={{ gap: 6, borderTopWidth: 1, borderTopColor: C.lineSoft, paddingTop: 8 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <View style={{ flex: 1 }}><T style={{ fontFamily: F.sans600, fontSize: 15 }}>{r.medication}</T><Muted style={{ fontSize: 13.5 }}>{refillLine(r)}</Muted></View>
+            {edit === r.medication ? null : <Pressable testID={`count-${r.medication}`} onPress={() => { setEdit(r.medication); setN(r.dosesLeft === null ? "" : String(r.dosesLeft)); }} style={{ minHeight: 44, justifyContent: "center" }}><T style={{ color: C.lavInk, fontFamily: F.sans600 }}>{r.dosesLeft === null ? "Count" : "Update"}</T></Pressable>}
+          </View>
+          {edit === r.medication ? (
+            <View style={{ flexDirection: "row", gap: 8, alignItems: "flex-end" }}>
+              <View style={{ flex: 1 }}><Field testID="supply-count" label="Doses on hand" value={n} onChange={setN} keyboard="numeric" placeholder="6" /></View>
+              <View style={{ width: 96 }}><Button testID="supply-save" kind="esp" label="Save" disabled={!/^\d{1,4}$/.test(n.trim())} onPress={() => save(r.medication, Number(n.trim()))} /></View>
+            </View>
+          ) : null}
+        </View>
+      ))}
+      {err ? <T style={{ color: C.red }}>{err}</T> : null}
+    </View>
   );
 }
 
@@ -486,6 +676,10 @@ function AddScreen({ api, profile, go, done }: { api: Api; profile: SoloProfile;
     <>
       <Today size={34}>Add something</Today>
       <Muted style={{ fontSize: 15 }}>Pumpkin reads it and sorts it into meds, results, visits and costs. Nothing goes in your record until you check it.</Muted>
+      <View style={{ backgroundColor: C.softLav, borderRadius: 16, padding: 14, gap: 2 }}>
+        <T style={{ fontFamily: F.sans600, color: C.lavDeep, fontSize: 15 }}>Got a meds calendar from your clinic?</T>
+        <T style={{ color: C.lavDeep, fontSize: 14 }}>Snap it. Pumpkin sets up every dose, dose change and reminder for you to check.</T>
+      </View>
       {profile.aiReads.on && profile.aiReads.limit !== null ? (
         <View testID="ai-reads" style={{ backgroundColor: profile.aiReads.left === 0 ? C.clay : C.oat, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: C.line }}>
           <T style={{ fontFamily: F.sans600, fontSize: 14.5, color: profile.aiReads.left === 0 ? C.clayInk : C.espresso }}>{profile.aiReads.left === 0
@@ -496,7 +690,7 @@ function AddScreen({ api, profile, go, done }: { api: Api; profile: SoloProfile;
       ) : null}
       {busy ? <View style={{ backgroundColor: C.lav, borderRadius: 16, padding: 14, flexDirection: "row", gap: 10, alignItems: "center" }}><BrushSketch /><T style={{ color: C.lavInk, fontFamily: F.sans600, flex: 1 }}>Reading it now. This can take a few seconds.</T></View> : null}
       {error ? <T testID="add-error" style={{ color: C.red, fontSize: 15 }}>{error}</T> : null}
-      {Platform.OS !== "web" ? <Option id="camera" icon="doc" title="Take a photo" sub="Instruction sheets, lab reports, receipts" onPress={() => photo(true)} /> : null}
+      {Platform.OS !== "web" ? <Option id="camera" icon="doc" title="Take a photo" sub="Your meds calendar, lab reports, receipts" onPress={() => photo(true)} /> : null}
       <Option id="photo" icon="doc" title={Platform.OS === "web" ? "Upload a photo or screenshot" : "Choose a photo or screenshot"} sub="A portal screenshot works too" onPress={() => photo(false)} />
       <Option id="pdf" icon="doc" title="Upload a PDF" sub="Lab results, payment plans, consent packets" onPress={pdf} />
       <Option id="say" icon="message" title="Say it" sub={'"Gonal-f 225 at 8 tonight, starting tomorrow"'} onPress={() => go({ name: "say" })} />
@@ -587,9 +781,34 @@ function CheckScreen({ api, go, done }: { api: Api; go: (s: Screen) => void; don
     <>
       <Today size={34}>Check what Pumpkin read</Today>
       <Muted style={{ fontSize: 15 }}>Compare each one with what you sent. Fix anything that's off. Pumpkin copies what's written; it doesn't decide what anything means.</Muted>
+      <ScheduleSummary items={items} />
       {saved > 0 ? <RiseIn key={saved}><View style={{ backgroundColor: C.sage, borderRadius: 14, padding: 12, flexDirection: "row", gap: 8, alignItems: "center" }}><DrawCheck size={18} /><T style={{ fontFamily: F.sans600, color: C.sageInk }}>{saved === 1 ? "Added to your record." : `${saved} added to your record.`}</T></View></RiseIn> : null}
       {items.map((it) => <ItemCard key={it.id} item={it} api={api} go={go} onDone={(kept) => { if (kept) setSaved((n) => n + 1); setItems((xs) => xs!.filter((x) => x.id !== it.id)); }} />)}
     </>
+  );
+}
+
+/** When a meds calendar comes in: the whole schedule at a glance before she checks each piece. */
+function ScheduleSummary({ items }: { items: PendingItem[] }) {
+  const d = (k: string, x: PendingItem) => (typeof x.data[k] === "string" ? (x.data[k] as string) : "");
+  const meds = items.filter((i) => i.kind === "medication").sort((x, y) => (d("startsOn", x) || "9").localeCompare(d("startsOn", y) || "9") || d("name", x).localeCompare(d("name", y)));
+  if (meds.length < 2) return null;
+  const days = meds.flatMap((m) => [d("startsOn", m), d("endsOn", m)]).filter(Boolean).sort();
+  const visits = items.filter((i) => i.kind === "appointment").length;
+  return (
+    <View testID="schedule-summary" style={[st.card, { padding: 16, gap: 10 }]}>
+      <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="calendar" /><T style={{ fontFamily: F.sans700, fontSize: 13, letterSpacing: 0.6 }}>YOUR SCHEDULE</T></View>
+      <T style={{ fontSize: 15 }}>{`${meds.length} medication steps${days.length ? `, ${niceDate(days[0]!)} to ${niceDate(days[days.length - 1]!)}` : ""}${visits ? `, and ${visits} visit${visits === 1 ? "" : "s"}` : ""}. Once you add them, every dose gets a reminder.`}</T>
+      {meds.map((m) => (
+        <View key={m.id} style={{ flexDirection: "row", gap: 10 }}>
+          <View style={{ width: 4, borderRadius: 2, backgroundColor: C.lavInk }} />
+          <View style={{ flex: 1 }}>
+            <T style={{ fontFamily: F.sans600, fontSize: 14.5 }}>{`${d("name", m)} ${d("dose", m)}`}</T>
+            <Muted style={{ fontSize: 13.5 }}>{[((m.data.times as string[] | undefined) ?? []).map(niceTime).join(", "), d("startsOn", m) ? (d("startsOn", m) === d("endsOn", m) ? niceDate(d("startsOn", m)) : `${niceDate(d("startsOn", m))} to ${d("endsOn", m) ? niceDate(d("endsOn", m)) : "?"}`) : "Dates to check"].filter(Boolean).join(" · ")}</Muted>
+          </View>
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -637,10 +856,10 @@ function ItemFields({ kind, data, unsure, onChange }: { kind: ItemKind; data: Re
     <>
       <Field testID="f-name" label="Medication" value={s("name")} onChange={(v) => set("name", v)} check={chk("name")} />
       <Field testID="f-dose" label="Dose" value={s("dose")} onChange={(v) => set("dose", v)} check={chk("dose")} placeholder="e.g. 225 IU" />
-      <Field testID="f-times" label="Time each day" value={Array.isArray(data.times) ? (data.times as string[]).join(", ") : ""} onChange={(v) => set("times", v.split(/[,;]\s*/).filter(Boolean))} check={chk("times") || !(data.times as string[] | undefined)?.length} placeholder="20:00" hint="24-hour time, like 20:00 for 8 pm. Separate two times with a comma." />
+      <TimesField testID="f-times" label="Time each day" value={Array.isArray(data.times) ? (data.times as string[]) : []} onChange={(v) => set("times", v)} check={chk("times") || !(data.times as string[] | undefined)?.length} />
       <View style={{ flexDirection: "row", gap: 10 }}>
-        <View style={{ flex: 1 }}><Field testID="f-start" label="First day" value={s("startsOn")} onChange={(v) => set("startsOn", v)} check={chk("startsOn")} placeholder="YYYY-MM-DD" /></View>
-        <View style={{ flex: 1 }}><Field testID="f-end" label="Last day" value={s("endsOn")} onChange={(v) => set("endsOn", v)} check={chk("endsOn")} placeholder="YYYY-MM-DD" /></View>
+        <View style={{ flex: 1 }}><DateField testID="f-start" label="First day" value={s("startsOn")} onChange={(v) => set("startsOn", v)} check={chk("startsOn")} /></View>
+        <View style={{ flex: 1 }}><DateField testID="f-end" label="Last day" value={s("endsOn")} onChange={(v) => set("endsOn", v)} check={chk("endsOn")} /></View>
       </View>
       {s("instructions") ? <Field label="Instructions" value={s("instructions")} onChange={(v) => set("instructions", v)} multiline /> : null}
     </>
@@ -652,7 +871,7 @@ function ItemFields({ kind, data, unsure, onChange }: { kind: ItemKind; data: Re
         <View style={{ flex: 1 }}><Field testID="f-value" label="Number" value={s("value")} onChange={(v) => set("value", v)} check={chk("value")} keyboard="decimal-pad" /></View>
         <View style={{ flex: 1 }}><Field testID="f-unit" label="Unit" value={s("unit")} onChange={(v) => set("unit", v)} check={chk("unit")} placeholder="pg/mL" /></View>
       </View>
-      <Field testID="f-on" label="Date of the test" value={s("collectedOn")} onChange={(v) => set("collectedOn", v)} check={chk("collectedOn")} placeholder="YYYY-MM-DD" />
+      <DateField testID="f-on" label="Date of the test" value={s("collectedOn")} onChange={(v) => set("collectedOn", v)} check={chk("collectedOn")} />
       <Field label="Lab's reference range (as printed)" value={s("refText")} onChange={(v) => set("refText", v)} check={chk("refText")} placeholder="Optional, e.g. 27-433 pg/mL" />
     </>
   );
@@ -662,8 +881,8 @@ function ItemFields({ kind, data, unsure, onChange }: { kind: ItemKind; data: Re
       <>
         <Field testID="f-title" label="What it's for" value={s("title")} onChange={(v) => set("title", v)} check={chk("title")} />
         <View style={{ flexDirection: "row", gap: 10 }}>
-          <View style={{ flex: 1 }}><Field testID="f-date" label="Date" value={d ?? ""} onChange={(v) => set("startsAt", `${v}T${t ?? ""}`)} check={chk("startsAt")} placeholder="YYYY-MM-DD" /></View>
-          <View style={{ flex: 1 }}><Field testID="f-time" label="Time" value={t ?? ""} onChange={(v) => set("startsAt", `${d ?? ""}T${v}`)} check={chk("startsAt")} placeholder="07:30" /></View>
+          <View style={{ flex: 1 }}><DateField testID="f-date" label="Date" value={d ?? ""} onChange={(v) => set("startsAt", `${v}T${t ?? ""}`)} check={chk("startsAt")} /></View>
+          <View style={{ flex: 1 }}><TimeField testID="f-time" label="Time" value={t ?? ""} onChange={(v) => set("startsAt", `${d ?? ""}T${v}`)} check={chk("startsAt")} /></View>
         </View>
         <Field label="Where" value={s("location")} onChange={(v) => set("location", v)} placeholder="Optional" />
       </>
@@ -680,8 +899,8 @@ function ItemFields({ kind, data, unsure, onChange }: { kind: ItemKind; data: Re
         <Field testID="f-desc" label="What it's for" value={s("description")} onChange={(v) => set("description", v)} check={chk("description")} />
         <Field testID="f-amount" label="Amount ($)" value={s("amount")} onChange={(v) => set("amount", v)} check={chk("amount")} keyboard="decimal-pad" />
         <View style={{ flexDirection: "row", gap: 10 }}>
-          <View style={{ flex: 1 }}><Field testID="f-date" label={payment ? "Date paid" : "Date of the bill"} value={s("date")} onChange={(v) => set("date", v)} check={chk("date")} placeholder="YYYY-MM-DD" /></View>
-          {!payment ? <View style={{ flex: 1 }}><Field testID="f-due" label="Due" value={s("dueOn")} onChange={(v) => set("dueOn", v)} placeholder="YYYY-MM-DD" /></View> : null}
+          <View style={{ flex: 1 }}><DateField testID="f-date" label={payment ? "Date paid" : "Date of the bill"} value={s("date")} onChange={(v) => set("date", v)} check={chk("date")} /></View>
+          {!payment ? <View style={{ flex: 1 }}><DateField testID="f-due" label="Due" value={s("dueOn")} onChange={(v) => set("dueOn", v)} /></View> : null}
         </View>
         {payment ? <Chips>{["card", "bank", "check", "cash", "financing", "other"].map((m) => <Chip key={m} label={m[0]!.toUpperCase() + m.slice(1)} selected={data.method === m} onPress={() => set("method", m)} />)}</Chips> : null}
       </>
@@ -812,12 +1031,13 @@ function RecordScreen({ api, d, go, reload }: { api: Api; d: SoloToday; go: (s: 
       <Section icon="medication" title="Meds" add="medication">
         {meds.length ? meds.map((m) => (
           <View key={m.id} style={[st.card, { padding: 14, gap: 4 }]}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between" }}><T style={{ fontFamily: F.sans600, fontSize: 15.5 }}>{`${m.medication} ${m.dose}`}</T><T style={{ fontSize: 15 }}>{m.time}</T></View>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}><T style={{ fontFamily: F.sans600, fontSize: 15.5 }}>{`${m.medication} ${m.dose}`}</T><T style={{ fontSize: 15 }}>{niceTime(m.time)}</T></View>
             <Muted style={{ fontSize: 13.5 }}>{`${dayLabel(m.startsOn)}${m.endsOn && m.endsOn !== m.startsOn ? ` to ${dayLabel(m.endsOn)}` : ""}${m.nextAt ? ` · next ${when(m.nextAt)}` : ""}`}</Muted>
             {m.instructions ? <T style={{ fontSize: 14 }}>{m.instructions}</T> : null}
             {m.mine ? <Pressable onPress={async () => { await api.removeMine("stop-med", m.id); await load(); await reload(); }}><Muted style={{ fontSize: 13, textDecorationLine: "underline" }}>Stop this medication</Muted></Pressable> : null}
           </View>
         )) : <Muted style={{ fontSize: 15 }}>No meds yet. Snap your instruction sheet to add them.</Muted>}
+        {d.refills.length ? <SupplyCard api={api} refills={d.refills} reload={reload} /> : null}
       </Section>
       <Section icon="lab" title="Results" add="result">
         {results.length ? results.map((g) => <ResultCard key={g.key} g={g} api={api} reload={() => void load()} waitForMe={d.about.revealResults} />) : <Muted style={{ fontSize: 15 }}>No results yet. A portal screenshot works.</Muted>}

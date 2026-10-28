@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   addCapture, addMedication, addResult, asActor, calendarFeed, deleteMyAccount, dismissItem, exportMyData, finishSignup, IDS, itemsToCheck, letIn, migrate,
   newCalendarLink, openDb, receiveForwardedEmail, requestSignInCode, requestSignup, saveItem, seed, sessionFromToken, soloCosts, soloMeds, soloResults, soloToday,
-  stopMedication, verifySignup, askMyClinic, AIServiceError, type Db, type Extractor,
+  stopMedication, verifySignup, askMyClinic, AIServiceError, setMedSupply, logDose, type Db, type Extractor,
 } from "../src";
 
 let db: Db;
@@ -86,6 +86,23 @@ describe("meds, results and costs she keeps herself", () => {
     expect((await soloMeds(db, alex, IDS.alex)).map((m) => m.medication)).toEqual(["Follistim", "Menopur"]);
     await stopMedication(db, alex, IDS.alex, id);
     expect((await db.query(`SELECT 1 FROM dose_logs WHERE med_order_id = $1 AND canceled_at IS NULL`, [id])).rows).toHaveLength(0);
+  });
+
+  it("refill countdown: doses left from her count minus what she logs, and the day she'd run out", async () => {
+    // Just after midnight each day, starting today: today's dose is already due, five more to come.
+    await addMedication(db, alex, IDS.alex, { name: "Menopur", dose: "75 IU", times: ["00:01"], startsOn: await localDay(0), endsOn: await localDay(5) });
+    const before = (await soloToday(db, alex, IDS.alex)).refills.find((r) => r.medication === "Menopur")!;
+    expect(before).toMatchObject({ dosesLeft: null, perDay: 1 }); // not counted yet: no guess
+    const r = (await setMedSupply(db, alex, IDS.alex, "menopur", 3)).find((x) => x.medication === "Menopur")!;
+    expect(r.dosesLeft).toBe(3);
+    expect(r.enough).toBe(false);
+    expect(r.runOutOn).toBe(await localDay(4)); // doses on days 1-3 covered, day 4 isn't
+    const first = (await db.query<{ id: string }>(`SELECT d.id FROM dose_logs d JOIN med_orders o ON o.id = d.med_order_id WHERE o.medication = 'Menopur' AND o.patient_id = $1 ORDER BY d.scheduled_for LIMIT 1`, [IDS.alex])).rows[0]!.id;
+    await logDose(db, alex, first);
+    expect((await soloToday(db, alex, IDS.alex)).refills.find((x) => x.medication === "Menopur")!.dosesLeft).toBe(2);
+    expect((await setMedSupply(db, alex, IDS.alex, "Menopur", 10)).find((x) => x.medication === "Menopur")).toMatchObject({ enough: true, runOutOn: null });
+    await expect(setMedSupply(db, alex, IDS.alex, "Menopur", -1)).rejects.toThrow(/how many doses/);
+    await expect(setMedSupply(db, maya, IDS.maya, "Gonal-f", 3)).rejects.toThrow();
   });
 
   it("results show the lab's own range and what the test measures, never a verdict", async () => {

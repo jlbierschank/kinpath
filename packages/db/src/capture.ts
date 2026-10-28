@@ -72,6 +72,18 @@ export const SAMPLES: Record<string, { label: string; description: string; items
       { kind: "appointment", data: { title: "Monitoring visit: ultrasound and blood work", startsAt: `${addDays(d, 3)}T07:30`, location: "Sample Fertility Center" }, unsure: [] },
     ],
   },
+  "protocol-calendar": {
+    label: "Meds calendar", description: "A sample stimulation calendar with a dose change and a trigger shot",
+    items: (d) => [
+      { kind: "medication", data: { name: "Gonal-f", dose: "225 IU", times: ["20:00"], startsOn: d, endsOn: addDays(d, 3), instructions: "Inject under the skin of your belly." }, unsure: [] },
+      { kind: "medication", data: { name: "Gonal-f", dose: "150 IU", times: ["20:00"], startsOn: addDays(d, 4), endsOn: addDays(d, 8) }, unsure: [] },
+      { kind: "medication", data: { name: "Menopur", dose: "75 IU", times: ["20:00"], startsOn: d, endsOn: addDays(d, 8), instructions: "Mix with the diluent provided." }, unsure: [] },
+      { kind: "medication", data: { name: "Cetrotide", dose: "0.25 mg", times: ["08:00"], startsOn: addDays(d, 5), endsOn: addDays(d, 8) }, unsure: [] },
+      { kind: "medication", data: { name: "Ovidrel", dose: "250 mcg", times: ["21:30"], startsOn: addDays(d, 9), endsOn: addDays(d, 9), instructions: "Trigger shot. Take at exactly this time." }, unsure: [] },
+      { kind: "appointment", data: { title: "Monitoring visit: ultrasound and blood work", startsAt: `${addDays(d, 4)}T07:30`, location: "Sample Fertility Center" }, unsure: [] },
+      { kind: "appointment", data: { title: "Monitoring visit: ultrasound and blood work", startsAt: `${addDays(d, 7)}T07:30`, location: "Sample Fertility Center" }, unsure: [] },
+    ],
+  },
   "lab-report": {
     label: "Lab results", description: "A sample lab report with reference ranges",
     items: (d) => [

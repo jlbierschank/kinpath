@@ -105,8 +105,10 @@ export interface SoloToday {
   latestResults: { key: string; name: string; value: number; unit: string; on: string }[];
   nextDue: { dueOn: string; amountCents: number; description: string } | null; balanceCents: number;
   openQuestions: number;
+  refills: Refill[];
   reminders: PlannedReminder[]; prefs: ReminderPrefs;
 }
+export interface Refill { medication: string; dosesLeft: number | null; perDay: number; enough: boolean; runOutOn: string | null; orderBy: string | null; daysLeft: number | null; countedAt: string | null }
 export interface SoloMed { id: string; medication: string; dose: string; time: string; startsOn: string; endsOn: string | null; instructions: string | null; mine: boolean; nextAt: string | null }
 export interface ResultGroup { key: string; name: string; unit: string; measures: string | null; inTreatment: string | null; reviewed: boolean; points: { id: string; value: number; unit: string; on: string; refLow: number | null; refHigh: number | null; refText: string | null; mine: boolean }[] }
 export interface SoloCosts { entries: { id: string; kind: "charge" | "payment" | "adjustment" | "refund"; description: string; amountCents: number; occurredOn: string; dueOn: string | null; method: string | null; captureId: string | null; mine: boolean }[]; balanceCents: number; paidCents: number; paidThisYearCents: number; year: string; nextDue: { dueOn: string; amountCents: number; description: string } | null }
@@ -142,6 +144,7 @@ export class Api {
   signOut = () => this.call<{ ok: boolean }>("/api/auth/signout", { method: "POST", body: {} }).catch(() => ({ ok: false }));
   today = () => this.call<Today>("/api/patient/today");
   guide = (medication: string) => this.call<Guide>(`/api/patient/guides/${encodeURIComponent(medication)}`);
+  setSupply = (medication: string, doses: number | null) => this.call<Refill[]>("/api/solo/supply", { method: "POST", body: { medication, doses } });
   logDose = (id: string) => this.call<{ ok: boolean }>(`/api/patient/doses/${id}/log`, { method: "POST", body: {} });
   reportMissed = (id: string, note: string) => this.call<SendResult>(`/api/patient/doses/${id}/missed`, { method: "POST", body: { note } });
   sendMessage = (text: string) => this.call<SendResult>("/api/patient/messages", { method: "POST", body: { text } });

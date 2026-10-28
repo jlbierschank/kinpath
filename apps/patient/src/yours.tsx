@@ -8,6 +8,7 @@ import { CONDITIONS, FAMILY_PATHS, PARTNER_TITLES, PRONOUNS } from "@kinpath/cor
 import type { About, Api, VisitSummary } from "./api";
 import { Button, C, Card, Chip, Chips, F, Icon, Muted, T, Today, Toggle } from "./ui";
 import { Field } from "./field";
+import { DateField } from "./datefield";
 
 const Section = ({ icon, title, sub, children, testID }: { icon: Parameters<typeof Icon>[0]["name"]; title: string; sub?: string; children: ReactNode; testID?: string }) => (
   <Card testID={testID} style={{ gap: 12 }}>
@@ -133,15 +134,15 @@ export function TalkScreen({ api, done }: { api: Api; done: (msg: string) => voi
   const [a, setA] = useState<About | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  const [date, setDate] = useState(""); const [label, setLabel] = useState(""); const [mode, setMode] = useState<"quiet" | "gentle">("quiet");
+  const [date, setDate] = useState(""); const [everyYear, setEveryYear] = useState(true); const [label, setLabel] = useState(""); const [mode, setMode] = useState<"quiet" | "gentle">("quiet");
   useEffect(() => { api.about().then(setA).catch((e: Error) => setErr(e.message)); }, [api]);
   if (!a) return err ? <T style={{ color: C.red }}>{err}</T> : <ActivityIndicator color={C.espresso} />;
   const act = async (fn: () => Promise<About>, m: string) => { setErr(null); setMsg(null); try { setA(await fn()); setMsg(m); } catch (e) { setErr((e as Error).message); } };
   const set = (patch: Partial<About>) => act(() => api.saveAbout(patch, { step: "talk" }), "Saved.");
   const addDate = () => {
-    const m = /^(?:(\d{4})-)?(\d{1,2})-(\d{1,2})$/.exec(date.trim());
-    if (!m) { setErr("Use MM-DD for every year (like 05-10), or YYYY-MM-DD for one year."); return; }
-    void act(() => api.addTenderDate({ year: m[1] ? Number(m[1]) : null, month: Number(m[2]), day: Number(m[3]), label, mode }), "Added. Pumpkin will be quieter that day.").then(() => { setDate(""); setLabel(""); });
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date.trim());
+    if (!m) { setErr("Pick a date."); return; }
+    void act(() => api.addTenderDate({ year: everyYear ? null : Number(m[1]), month: Number(m[2]), day: Number(m[3]), label, mode }), "Added. Pumpkin will be quieter that day.").then(() => { setDate(""); setLabel(""); });
   };
   return (
     <>
@@ -173,7 +174,11 @@ export function TalkScreen({ api, done }: { api: Api; done: (msg: string) => voi
             <Pressable onPress={() => act(() => api.deleteTenderDate(t.id), "Removed.")} style={{ minHeight: 44, justifyContent: "center" }}><Muted style={{ textDecorationLine: "underline" }}>Remove</Muted></Pressable>
           </View>
         ))}
-        <Field testID="quiet-date" label="Date" value={date} onChange={setDate} placeholder="05-10 (every year) or 2027-05-10" />
+        <DateField testID="quiet-date" label="Date" value={date} onChange={setDate} />
+        <Chips>
+          <Chip testID="date-every-year" label="Every year" selected={everyYear} onPress={() => setEveryYear(true)} />
+          <Chip testID="date-once" label="Just this once" selected={!everyYear} onPress={() => setEveryYear(false)} />
+        </Chips>
         <Field testID="quiet-label" label="A note for you (optional, private)" value={label} onChange={setLabel} />
         <Chips>
           <Chip testID="mode-quiet" label="Quiet" selected={mode === "quiet"} onPress={() => setMode("quiet")} />

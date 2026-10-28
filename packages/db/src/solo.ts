@@ -460,8 +460,9 @@ export async function soloToday(db: Db, actor: Actor, patientId: string, now = n
     const appts = await tx.query<{ id: string; starts_at: Date; title: string; location: string | null; source: string }>(
       `SELECT id, starts_at, title, location, source FROM appointments WHERE patient_id = $1 AND status = 'booked' AND starts_at > now() - interval '2 hours' ORDER BY starts_at LIMIT 5`, [patientId]);
     const feel = await todayFeel(tx, patientId);
+    const refills = await medRefills(tx, patientId, now);
     return {
-      profile, schedule, feel,
+      profile, schedule, feel, refills,
       about: { displayName: about.displayName, pronouns: about.pronouns, tone: about.tone, revealResults: about.revealResults, costCheckins: about.costCheckins, stepsLeft: about.stepsLeft, partnerTitle: about.partnerTitle },
       toCheck: pend.rows[0]!.n, reading: reading.rows[0]!.n,
       appointments: appts.rows.map((a) => ({ id: a.id, startsAt: new Date(a.starts_at).toISOString(), title: a.title, location: a.location, mine: a.source === "patient" })),
@@ -469,6 +470,58 @@ export async function soloToday(db: Db, actor: Actor, patientId: string, now = n
       nextDue: costs.nextDue, balanceCents: costs.balanceCents,
       openQuestions: questions.filter((q) => !q.asked).length,
     };
+  });
+}
+
+// ---------- refill countdown ----------
+
+export interface Refill { medication: string; dosesLeft: number | null; perDay: number; enough: boolean; runOutOn: string | null; orderBy: string | null; daysLeft: number | null; countedAt: string | null }
+/**
+ * For each active medication: how many doses she has left (from the count she entered minus what she
+ * has logged since), and the day she'd run out on her schedule. Plain counting, never dose advice.
+ */
+export async function medRefills(tx: Tx, patientId: string, now = new Date()): Promise<Refill[]> {
+  const meds = await tx.query<{ medication: string; per_day: number; ends: string | null; doses: number | null; counted_at: Date | null }>(
+    `SELECT min(m.medication) AS medication, count(*)::int AS per_day, max(m.ends_on)::text AS ends, s.doses, s.counted_at
+       FROM med_orders m LEFT JOIN med_supplies s ON s.patient_id = m.patient_id AND lower(s.medication) = lower(m.medication)
+      WHERE m.patient_id = $1 AND m.status = 'active' GROUP BY lower(m.medication), s.doses, s.counted_at ORDER BY 1`, [patientId]);
+  const tz = (await tx.query<{ tz: string }>(`SELECT c.timezone AS tz FROM patients p JOIN clinics c ON c.id = p.clinic_id WHERE p.id = $1`, [patientId])).rows[0]?.tz ?? "America/New_York";
+  const ymdOf = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  const out: Refill[] = [];
+  for (const m of meds.rows) {
+    if (m.doses === null || !m.counted_at) { out.push({ medication: m.medication, dosesLeft: null, perDay: m.per_day, enough: false, runOutOn: null, orderBy: null, daysLeft: null, countedAt: null }); continue; }
+    const taken = await tx.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM dose_logs d JOIN med_orders o ON o.id = d.med_order_id
+        WHERE o.patient_id = $1 AND lower(o.medication) = lower($2) AND d.taken_at > $3`, [patientId, m.medication, m.counted_at]);
+    const left = Math.max(0, m.doses - taken.rows[0]!.n);
+    const future = (await tx.query<{ at: Date }>(
+      `SELECT d.scheduled_for AS at FROM dose_logs d JOIN med_orders o ON o.id = d.med_order_id
+        WHERE o.patient_id = $1 AND lower(o.medication) = lower($2) AND o.status = 'active' AND d.taken_at IS NULL AND d.canceled_at IS NULL AND d.scheduled_for > $3
+        ORDER BY d.scheduled_for`, [patientId, m.medication, now])).rows.map((r) => new Date(r.at));
+    let runOut: Date | null = null; let enough = false;
+    if (left < future.length) runOut = future[left]!;
+    else if (m.ends) enough = true;
+    else {
+      const from = future.length ? future[future.length - 1]! : now;
+      runOut = new Date(from.getTime() + Math.floor((left - future.length) / Math.max(1, m.per_day)) * 86400_000 + 86400_000);
+    }
+    const daysLeft = runOut ? Math.max(0, Math.floor((runOut.getTime() - now.getTime()) / 86400_000)) : null;
+    out.push({ medication: m.medication, dosesLeft: left, perDay: m.per_day, enough, runOutOn: runOut ? ymdOf(runOut) : null,
+      orderBy: runOut ? ymdOf(new Date(Math.max(now.getTime(), runOut.getTime() - 2 * 86400_000))) : null, daysLeft, countedAt: new Date(m.counted_at).toISOString() });
+  }
+  return out;
+}
+/** She counts what she has on hand (doses, not boxes). Clearing it stops the countdown for that medication. */
+export async function setMedSupply(db: Db, actor: Actor, patientId: string, medication: string, doses: number | null) {
+  const name = medication.trim().slice(0, 120);
+  if (!name) throw new HandoffError("Which medication?");
+  if (doses !== null && (!Number.isInteger(doses) || doses < 0 || doses > 1000)) throw new HandoffError("Enter how many doses you have, like 6.");
+  return asActor(db, actor, async (tx) => {
+    await requirePersonal(tx);
+    await tx.query(`DELETE FROM med_supplies WHERE patient_id = $1 AND lower(medication) = lower($2)`, [patientId, name]);
+    if (doses !== null) await tx.query(`INSERT INTO med_supplies (clinic_id, patient_id, medication, doses) VALUES ($1,$2,$3,$4)`, [actor.clinicId, patientId, name, doses]);
+    await audit(tx, actor, "patient.set_med_supply", patientId, { counted: doses !== null });
+    return medRefills(tx, patientId);
   });
 }
 

@@ -22,3 +22,15 @@ export async function clearSession() {
   try { if (Platform.OS === "web") globalThis.localStorage?.removeItem(KEY); else await SecureStore.deleteItemAsync(KEY); } catch { /* nothing stored */ }
 }
 export const deviceName = () => (Platform.OS === "ios" ? "iPhone app" : Platform.OS === "android" ? "Android app" : "Web preview");
+
+/** Small per-device settings (layout of Today and the like). Not secret; survives sign-out. */
+export async function loadPref<T>(key: string): Promise<T | null> {
+  try {
+    const raw = Platform.OS === "web" ? globalThis.localStorage?.getItem(`kinpath.${key}`) ?? null : await SecureStore.getItemAsync(`kinpath.${key}`);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch { return null; }
+}
+export async function savePref(key: string, value: unknown) {
+  const raw = JSON.stringify(value);
+  try { if (Platform.OS === "web") globalThis.localStorage?.setItem(`kinpath.${key}`, raw); else await SecureStore.setItemAsync(`kinpath.${key}`, raw); } catch { /* kept for this session */ }
+}
