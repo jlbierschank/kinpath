@@ -22,8 +22,9 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localho
 
   // Add it yourself: an appointment.
   await byId('solo-tab-add').click();
-  ok(await byId('add-hand-appointment').waitFor({ timeout: 10000 }).then(() => true, () => false), 'Add has an Appointment option');
-  await byId('add-hand-appointment').click();
+  ok(await byId('plus-menu').waitFor({ timeout: 5000 }).then(() => true, () => false) && await byId('menu-camera').count() === 1, 'The + menu opens, with Camera first');
+  ok(await byId('menu-appointment').count() === 1, 'The + menu has Appointment');
+  await byId('menu-appointment').click();
   const inside = async (id) => { const box = await byId(id).boundingBox(); const card = await byId(id).locator('xpath=ancestor::div[contains(@style,"border-radius")][1]').boundingBox(); return box && box.x + box.width <= 320 && (!card || box.x + box.width <= card.x + card.width + 1); };
   ok(await inside('f-date') && await inside('f-time'), 'Date and time fields fit a 320px-wide phone');
   await byId('f-title').fill('Saline ultrasound');
@@ -49,9 +50,26 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localho
   await p.waitForTimeout(800);
   ok((await fetch(url)).status === 404, 'Stopping it ends their feed');
 
+  // Medication names suggest as she types, forgiving spelling.
+  await byId('solo-tab-add').click(); await byId('menu-medication').click();
+  await byId('f-name').fill('folistim');
+  await byId('med-suggestions').waitFor({ timeout: 5000 });
+  ok((await byId('med-suggestions').innerText()).includes('Follistim AQ'), 'Misspelled "folistim" suggests Follistim AQ');
+  await byId('med-suggest-0').click();
+  ok(await byId('f-name').inputValue() === 'Follistim AQ' && await byId('med-suggestions').count() === 0, 'Tapping a suggestion fills the name');
+  await byId('sheet-close').filter({ visible: true }).last().click(); await p.waitForTimeout(400);
+
+  // Camera from the + menu: the photo goes straight to Pumpkin to read.
+  await byId('solo-tab-add').click();
+  const [chooser] = await Promise.all([p.waitForEvent('filechooser'), byId('menu-camera').click()]);
+  ok(await chooser.element().getAttribute('capture') === 'environment', 'Camera opens the back camera on a phone');
+  await chooser.setFiles({ name: 'label.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') });
+  ok(await byId('add-say').filter({ visible: true }).waitFor({ timeout: 15000 }).then(() => true, () => false), 'The Add sheet opens to read the photo');
+  while (await byId('sheet-close').filter({ visible: true }).count()) { await byId('sheet-close').filter({ visible: true }).last().click(); await p.waitForTimeout(400); }
+
   // Voice: a recognizer that never starts doesn't freeze the screen.
   await byId('solo-tab-add').click();
-  await byId('add-say').click();
+  await byId('menu-say').click();
   await byId('say-start').click();
   ok(await sees("Speech didn't start", 12000), 'Voice that never starts lets go with a plain message');
   await byId('say-text').fill('Blood work Thursday at 7:30 am');

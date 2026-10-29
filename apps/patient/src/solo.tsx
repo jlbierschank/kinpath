@@ -33,6 +33,8 @@ import { CalendarShareCard } from "./calshare";
 import { AppLockSetting } from "./privacy";
 import { ItemAction, useUndo } from "./undo";
 import { addVisitToCalendar, nativeCalendar } from "./nativecal";
+import { PlusMenu, type PlusItem } from "./plusmenu";
+import { MedNameField } from "./medname";
 import { ConsultKitScreen, nextTest, obDue, ObHandoffScreen, TestCalendarScreen, testCalendarOn } from "./kits";
 import { CONSULT_BRING, OB_RECORDS } from "@kinpath/core";
 import { BrushSketch, DrawCheck, DrawPumpkin, PulseOnce, RiseIn, useReduceMotion } from "./motion";
@@ -294,7 +296,29 @@ function Notice() {
 /** The top of the tabs (drawn once by the tab layout): the logo, a calm way to get help, and Add. */
 export function TabTop() {
   const { go } = useSoloNav();
+  const { setNotice } = useSolo();
   const narrow = useWindowDimensions().width < 370;
+  const [menu, setMenu] = useState(false);
+  // Pickers must open straight from the tap (browsers block them otherwise); then the Add sheet reads it.
+  const read = (pick: () => Promise<CaptureInput | null>) => { void pick().then((input) => { if (input) { pendingCapture = input; go({ name: "add" }); } }).catch((e: Error) => setNotice(e.message)); };
+  const hand = (kind: ItemKind) => () => go({ name: "by-hand", kind });
+  const sections: { title?: string; items: PlusItem[] }[] = [
+    { title: "Pumpkin reads it for you", items: [
+      { id: "camera", label: "Camera", icon: "camera", tint: [C.clay, C.clayInk], onPress: () => read(() => pickPhoto(true)) },
+      { id: "photos", label: "Photos", icon: "doc", tint: [C.lav, C.lavInk], onPress: () => read(() => pickPhoto(false)) },
+      { id: "pdf", label: "PDF", icon: "doc", tint: [C.sage, C.sageInk], onPress: () => read(pickPdf) },
+      { id: "say", label: "Say it", icon: "message", tint: [C.softLav, C.lavInk], onPress: () => go({ name: "say" }) },
+      { id: "type", label: "Type it", icon: "pen", tint: [C.oat, C.espresso], onPress: () => go({ name: "type" }) },
+    ] },
+    { title: "Add it yourself", items: [
+      { id: "medication", label: "Medication", icon: "medication", tint: [C.lav, C.lavInk], onPress: hand("medication") },
+      { id: "appointment", label: "Appointment", icon: "calendar", tint: [C.sage, C.sageInk], onPress: hand("appointment") },
+      { id: "result", label: "Test result", icon: "lab", tint: [C.softLav, C.lavInk], onPress: hand("result") },
+      { id: "cost", label: "Cost", icon: "wallet", tint: [C.clay, C.clayInk], onPress: hand("cost") },
+      { id: "question", label: "Question", icon: "message", tint: [C.oat, C.espresso], onPress: hand("question") },
+    ] },
+    { items: [{ id: "more", label: "More ways to add", icon: "sliders", tint: [C.oat, C.stone], onPress: () => go({ name: "add" }) }] },
+  ];
   return (
     <View style={{ paddingHorizontal: 18, paddingTop: 12, paddingBottom: 4, flexDirection: "row", justifyContent: "space-between", alignItems: "center", width: "100%", maxWidth: 480, alignSelf: "center" }}>
       <Logo width={narrow ? 100 : 124} />
@@ -303,11 +327,12 @@ export function TabTop() {
         style={{ flexDirection: "row", gap: 6, alignItems: "center", borderWidth: 1, borderColor: C.line, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12, minHeight: 44 }}>
         <Icon name="alert" color={C.red} size={18} /><T style={{ fontFamily: F.sans600, color: C.ink, fontSize: 13.5 }}>{narrow ? "Unwell?" : "Feeling unwell?"}</T>
       </Pressable>
-      <Pressable testID="solo-tab-add" accessibilityRole="button" accessibilityLabel="Add something" onPress={() => go({ name: "add" })}
+      <Pressable testID="solo-tab-add" accessibilityRole="button" accessibilityLabel="Add something" accessibilityState={{ expanded: menu }} onPress={() => setMenu(true)}
         style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: C.fill, alignItems: "center", justifyContent: "center" }}>
         <Svg width={20} height={20} viewBox="0 0 24 24"><Path d="M12 5v14M5 12h14" stroke={C.onFill} strokeWidth={2.4} strokeLinecap="round" /></Svg>
       </Pressable>
       </View>
+      <PlusMenu open={menu} onClose={() => setMenu(false)} sections={sections} />
     </View>
   );
 }
@@ -860,6 +885,30 @@ async function blobToBase64(uri: string): Promise<string> {
   });
 }
 
+/** Take or choose a photo (a med calendar, a lab report, a medicine bottle). Null if she cancels. */
+export async function pickPhoto(camera: boolean): Promise<CaptureInput | null> {
+  if (camera && Platform.OS !== "web") {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) throw new Error("Pumpkin needs camera access to take a photo. You can turn it on in your phone's Settings, or choose a photo instead.");
+  }
+  const opts: ImagePicker.ImagePickerOptions = { mediaTypes: ["images"], base64: true, quality: 0.7, preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible, cameraType: ImagePicker.CameraType.back };
+  // On a phone's browser, the camera option opens the camera directly.
+  const r = camera ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts);
+  if (r.canceled || !r.assets[0]) return null;
+  const a = r.assets[0];
+  const base64 = a.base64 ?? (a.uri.startsWith("data:") ? a.uri.replace(/^data:[^,]*,/, "") : await blobToBase64(a.uri));
+  const mime = a.mimeType && a.mimeType !== "image/heic" ? a.mimeType : "image/jpeg";
+  return { kind: "photo", mime, base64, filename: a.fileName ?? "Photo" };
+}
+export async function pickPdf(): Promise<CaptureInput | null> {
+  const r = await DocumentPicker.getDocumentAsync({ type: ["application/pdf"], copyToCacheDirectory: true, multiple: false });
+  if (r.canceled || !r.assets[0]) return null;
+  const a = r.assets[0];
+  return { kind: "pdf", mime: "application/pdf", base64: await blobToBase64(a.uri), filename: a.name };
+}
+/** A photo or PDF picked from the + menu, waiting for the Add sheet to read it. */
+let pendingCapture: CaptureInput | null = null;
+
 function AddScreen({ api, profile, go, done }: { api: Api; profile: SoloProfile; go: (s: Screen) => void; done: (r: { status: string; urgent: "urgent" | "crisis" | null; items: number; problem: string | null }) => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -874,25 +923,10 @@ function AddScreen({ api, profile, go, done }: { api: Api; profile: SoloProfile;
       done(await api.capture(i));
     } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
   };
-  const photo = (camera: boolean) => send("photo", async () => {
-    if (camera && Platform.OS !== "web") {
-      const perm = await ImagePicker.requestCameraPermissionsAsync();
-      if (!perm.granted) throw new Error("Pumpkin needs camera access to take a photo. You can turn it on in your phone's Settings, or choose a photo instead.");
-    }
-    const opts: ImagePicker.ImagePickerOptions = { mediaTypes: ["images"], base64: true, quality: 0.7, preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible };
-    const r = camera && Platform.OS !== "web" ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts);
-    if (r.canceled || !r.assets[0]) return null;
-    const a = r.assets[0];
-    const base64 = a.base64 ?? (a.uri.startsWith("data:") ? a.uri.replace(/^data:[^,]*,/, "") : await blobToBase64(a.uri));
-    const mime = a.mimeType && a.mimeType !== "image/heic" ? a.mimeType : "image/jpeg";
-    return { kind: "photo", mime, base64, filename: a.fileName ?? "Photo" };
-  });
-  const pdf = () => send("pdf", async () => {
-    const r = await DocumentPicker.getDocumentAsync({ type: ["application/pdf"], copyToCacheDirectory: true, multiple: false });
-    if (r.canceled || !r.assets[0]) return null;
-    const a = r.assets[0];
-    return { kind: "pdf", mime: "application/pdf", base64: await blobToBase64(a.uri), filename: a.name };
-  });
+  const photo = (camera: boolean) => send("photo", () => pickPhoto(camera));
+  const pdf = () => send("pdf", pickPdf);
+  // Something picked from the + menu: read it now, with the reading state showing here.
+  useEffect(() => { const p = pendingCapture; pendingCapture = null; if (p) void send(p.kind === "pdf" ? "pdf" : "photo", async () => p); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const Option = ({ id, icon, title, sub, onPress }: { id: string; icon: Parameters<typeof Icon>[0]["name"]; title: string; sub: string; onPress: () => void }) => (
     <Pressable testID={`add-${id}`} onPress={onPress} disabled={!!busy} style={[st.card, { padding: 16, flexDirection: "row", gap: 14, alignItems: "center", opacity: busy && busy !== id ? 0.5 : 1 }]}>
       <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: C.oat, alignItems: "center", justifyContent: "center" }}><Icon name={icon} size={26} /></View>
@@ -1135,7 +1169,7 @@ function ItemFields({ kind, data, unsure, onChange }: { kind: ItemKind; data: Re
   const chk = (k: string) => unsure.includes(k) || (["dose", "startsAt"].includes(k) && !s(k));
   if (kind === "medication") return (
     <>
-      <Field testID="f-name" label="Medication" value={s("name")} onChange={(v) => set("name", v)} check={chk("name")} />
+      <MedNameField testID="f-name" label="Medication" value={s("name")} onChange={(v) => set("name", v)} check={chk("name")} />
       <Field testID="f-dose" label="Dose" value={s("dose")} onChange={(v) => set("dose", v)} check={chk("dose")} placeholder="e.g. 225 IU" />
       <TimesField testID="f-times" label="Time each day" value={Array.isArray(data.times) ? (data.times as string[]) : []} onChange={(v) => set("times", v)} check={chk("times") || !(data.times as string[] | undefined)?.length} />
       <View style={{ flexDirection: "row", gap: 10 }}>

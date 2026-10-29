@@ -124,7 +124,8 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localho
   ok(await sees('Today is lighter now'), 'Moved to her OB');
   await byId('back').filter({ visible: true }).click();
   await sees("You're with your OB now");
-  ok(await byId('next-payment').count() === 0 && await byId('tile-numbers').count() === 0, 'Light Today: no payments or numbers');
+  let light = false; for (let i = 0; i < 20 && !light; i++) { light = await byId('next-payment').count() === 0 && await byId('tile-numbers').count() === 0; if (!light) await p.waitForTimeout(250); }
+  ok(light, 'Light Today: no payments or numbers');
   ok(await byId('tile-meds').count() + await byId('now').count() > 0 || await sees('MEDS', 2000), 'Light Today: meds stay');
   await shot('kits-6-light');
 

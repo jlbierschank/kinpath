@@ -11,3 +11,4 @@ export * from "./solo";
 export * from "./about";
 export * from "./voice";
 export * from "./kit";
+export * from "./meds";

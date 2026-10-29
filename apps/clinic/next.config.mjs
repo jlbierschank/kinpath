@@ -13,7 +13,7 @@ const security = [
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
   ...(prod ? [
     { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
-    { key: "Content-Security-Policy", value: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" },
+    { key: "Content-Security-Policy", value: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" },
   ] : []),
 ];
 
