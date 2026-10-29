@@ -47,9 +47,12 @@ function Picker({ mode, value, onChange, label, check, testID, hint, placeholder
     const input = createElement("input", {
       type: mode, value: parsed ? value.slice(0, mode === "date" ? 10 : 5) : "", "data-testid": testID, "aria-label": label,
       onChange: (e: { target: { value: string } }) => onChange(e.target.value),
-      style: { boxSizing: "border-box", width: "100%", minHeight: 48, padding: "10px 12px", borderRadius: 14, border: `1.5px solid ${border}`, background: C.field, color: C.ink, fontFamily: F.sans, fontSize: 16 },
+      // iPhone Safari gives date and time inputs a built-in minimum width that overflows narrow cards;
+      // dropping its native styling lets them fit the card like any other field.
+      style: { boxSizing: "border-box", display: "block", width: "100%", minWidth: 0, maxWidth: "100%", minHeight: 48, margin: 0, padding: "10px 12px", borderRadius: 14, border: `1.5px solid ${border}`,
+        background: C.field, color: value ? C.ink : C.stone, fontFamily: F.sans, fontSize: 16, textAlign: "left", WebkitAppearance: "none", appearance: "none", colorScheme: isDark() ? "dark" : "light" },
     });
-    return <View style={{ gap: 4 }}><Label label={label} check={check} />{input}{shown ? <Muted style={{ fontSize: 13 }}>{shown}</Muted> : null}{hint ? <Muted style={{ fontSize: 13 }}>{hint}</Muted> : null}</View>;
+    return <View style={{ gap: 4 }}><Label label={label} check={check} /><View style={{ width: "100%", overflow: "hidden", borderRadius: 14 }}>{input}</View>{shown ? <Muted style={{ fontSize: 13 }}>{shown}</Muted> : null}{hint ? <Muted style={{ fontSize: 13 }}>{hint}</Muted> : null}</View>;
   }
 
   const initial = parsed ?? (mode === "time" ? fromHm("20:00")! : new Date());

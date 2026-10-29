@@ -551,7 +551,9 @@ const icsTime = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{
 /** The feed itself (read by her calendar app, no sign-in). Titles say only "Appointment" unless she chose detail. */
 export async function calendarFeed(db: Db, token: string): Promise<string | null> {
   if (!/^[A-Za-z0-9_-]{20,}$/.test(token)) return null;
-  const p = await db.query<{ patient_id: string; calendar_detail: boolean }>(`SELECT patient_id, calendar_detail FROM personal_profiles WHERE calendar_token_hash = $1`, [sha256(token)]);
+  const p = await db.query<{ patient_id: string; calendar_detail: boolean }>(
+    `SELECT patient_id, calendar_detail FROM personal_profiles WHERE calendar_token_hash = $1
+     UNION ALL SELECT patient_id, detail FROM calendar_shares WHERE token_hash = $1 AND revoked_at IS NULL LIMIT 1`, [sha256(token)]);
   const prof = p.rows[0];
   if (!prof) return null;
   const a = await db.query<{ id: string; starts_at: Date; title: string; location: string | null; updated_at: Date }>(
@@ -566,6 +568,36 @@ export async function calendarFeed(db: Db, token: string): Promise<string | null
   }
   lines.push("END:VCALENDAR");
   return lines.join("\r\n") + "\r\n";
+}
+
+/** Her visits on someone else's calendar: one link per person, each stoppable on its own. */
+export async function shareCalendar(db: Db, actor: Actor, patientId: string, input: { label: string; detail?: boolean }) {
+  const label = input.label.trim();
+  if (!label || label.length > 60) throw new HandoffError("Add who this is for, like their first name.");
+  const token = newToken();
+  const id = await asActor(db, actor, async (tx) => {
+    await requirePersonal(tx);
+    const live = (await tx.query<{ n: number }>(`SELECT count(*)::int AS n FROM calendar_shares WHERE patient_id = $1 AND revoked_at IS NULL`, [patientId])).rows[0]!.n;
+    if (live >= 10) throw new HandoffError("You can share with up to 10 people. Stop one to add another.");
+    const r = await tx.query<{ id: string }>(`INSERT INTO calendar_shares (clinic_id, patient_id, label, token_hash, detail) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+      [actor.clinicId, patientId, label, sha256(token), !!input.detail]);
+    await audit(tx, actor, "patient.calendar_shared", patientId, { detail: !!input.detail });
+    return r.rows[0]!.id;
+  });
+  return { id, token };
+}
+export async function calendarShares(db: Db, actor: Actor, patientId: string) {
+  return asActor(db, actor, async (tx) => {
+    const r = await tx.query<{ id: string; label: string; detail: boolean; created_at: Date }>(`SELECT id, label, detail, created_at FROM calendar_shares WHERE patient_id = $1 AND revoked_at IS NULL ORDER BY created_at`, [patientId]);
+    return r.rows.map((x) => ({ id: x.id, label: x.label, detail: x.detail, createdAt: new Date(x.created_at).toISOString() }));
+  });
+}
+export async function stopCalendarShare(db: Db, actor: Actor, patientId: string, id: string) {
+  await asActor(db, actor, async (tx) => {
+    const r = await tx.query(`UPDATE calendar_shares SET revoked_at = now() WHERE id = $1 AND patient_id = $2 AND revoked_at IS NULL RETURNING id`, [id, patientId]);
+    if (!r.rows[0]) throw new HandoffError("That calendar link is already stopped.");
+    await audit(tx, actor, "patient.calendar_share_stopped", patientId, {});
+  });
 }
 
 // ---------- download everything, or delete everything ----------

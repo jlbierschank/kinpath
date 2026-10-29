@@ -69,3 +69,22 @@ describe("the summary she shares with her OB", () => {
     await expect(createPersonalShare(db, maya, IDS.maya, { recipient: "Dr. X", includeResults: true, includeMeds: true })).rejects.toThrow();
   });
 });
+
+describe("her visits on someone else's calendar", () => {
+  it("gives each person their own link, hides details by default, and stops one without the others", async () => {
+    const { addAppointment, calendarFeed, calendarShares, shareCalendar, stopCalendarShare } = await import("../src");
+    await addAppointment(db, alex, IDS.alex, { title: "Saline ultrasound", startsAt: `${await localDay(3)}T09:00` });
+    const jordan = await shareCalendar(db, alex, IDS.alex, { label: "Jordan" });
+    const mom = await shareCalendar(db, alex, IDS.alex, { label: "Mom", detail: true });
+    const j = await calendarFeed(db, jordan.token);
+    expect(j).toMatch(/SUMMARY:Appointment/);
+    expect(j).not.toMatch(/Saline/);
+    expect(await calendarFeed(db, mom.token)).toMatch(/SUMMARY:Saline ultrasound/);
+    await stopCalendarShare(db, alex, IDS.alex, jordan.id);
+    expect(await calendarFeed(db, jordan.token)).toBeNull();
+    expect(await calendarFeed(db, mom.token)).not.toBeNull();
+    expect((await calendarShares(db, alex, IDS.alex)).map((s) => s.label)).toEqual(["Mom"]);
+    await expect(shareCalendar(db, alex, IDS.alex, { label: " " })).rejects.toThrow(/who this is for/);
+    await expect(shareCalendar(db, maya, IDS.maya, { label: "Jordan" })).rejects.toThrow();
+  });
+});

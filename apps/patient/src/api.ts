@@ -203,6 +203,9 @@ export class Api {
   addByHand = (kind: ItemKind, data: Record<string, unknown>) => this.call<{ id: string }>(`/api/solo/${{ medication: "add-med", result: "add-result", appointment: "add-appointment", cost: "add-cost", question: "add-question" }[kind]}`, { method: "POST", body: kind === "question" ? { text: data.text } : { data } });
   removeMine = (kind: "stop-med" | "delete-result" | "delete-appointment" | "delete-cost" | "delete-question", id: string) => this.call<unknown>(`/api/solo/${kind}`, { method: "POST", body: { id } });
   setQuestionAsked = (id: string, asked: boolean) => this.call<unknown>("/api/solo/question-asked", { method: "POST", body: { id, asked } });
+  calendarShares = () => this.call<{ id: string; label: string; detail: boolean; createdAt: string }[]>("/api/solo/calendar-shares");
+  shareCalendar = (label: string, detail: boolean) => this.call<{ id: string; url: string; webcal: string }>("/api/solo/calendar-share", { method: "POST", body: { label, detail } });
+  stopCalendarShare = (id: string) => this.call<unknown>("/api/solo/calendar-share-stop", { method: "POST", body: { id } });
   calendarLink = (detail: boolean) => this.call<{ url: string; webcal: string }>("/api/solo/calendar", { method: "POST", body: { detail } });
   calendarOff = () => this.call<unknown>("/api/solo/calendar-off", { method: "POST", body: {} });
   about = () => this.call<About>("/api/solo/about");

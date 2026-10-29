@@ -3,7 +3,7 @@ import {
   addAppointment, addCapture, addCost, addMedication, addQuestion, addResult, askMyClinic, captureFile, deleteAppointment, deleteCost, deleteMyAccount, deleteQuestion,
   deleteResult, dismissItem, exportMyData, getReminderPrefs, itemsToCheck, newCalendarLink, SAMPLES, saveItem, setQuestionAsked, soloCosts, soloMeds, soloProfile,
   soloResults, soloToday, stopCalendarLink, stopMedication, setMedSupply, updateSoloProfile, visitQuestions, financePartners,
-  patientSharing, saveKit, setMedLastDay, createPersonalShare, personalShares, stopSummaryShare, aboutMe, addTenderDate, deleteTenderDate, questionIdeas, saveAbout, setAlias, setQuiet, visitSummary, withdrawAboutConsent,
+  patientSharing, shareCalendar, calendarShares, stopCalendarShare, saveKit, setMedLastDay, createPersonalShare, personalShares, stopSummaryShare, aboutMe, addTenderDate, deleteTenderDate, questionIdeas, saveAbout, setAlias, setQuiet, visitSummary, withdrawAboutConsent,
 } from "@kinpath/db";
 import { getDb } from "@/lib/db";
 import { handle, preflight } from "@/lib/api";
@@ -47,6 +47,7 @@ export async function GET(req: Request, ctx: Ctx) {
       case "visit-summary": return visitSummary(db, s, pid);
       case "sharing": return patientSharing(db, s, pid);
       case "shares": return personalShares(db, s, pid);
+      case "calendar-shares": return calendarShares(db, s, pid);
       default: throw new HandoffError("Not found.");
     }
   });
@@ -86,6 +87,12 @@ export async function POST(req: Request, ctx: Ctx) {
         return { url, webcal: url.replace(/^https?:/, "webcal:") };
       }
       case "calendar-off": return stopCalendarLink(db, s, pid);
+      case "calendar-share": {
+        const { id, token } = await shareCalendar(db, s, pid, { label: str("label"), detail: b.detail === true });
+        const url = `${await baseUrl()}/api/integrations/calendar/${token}`;
+        return { id, url, webcal: url.replace(/^https?:/, "webcal:") };
+      }
+      case "calendar-share-stop": return stopCalendarShare(db, s, pid, str("id"));
       case "delete-account": return deleteMyAccount(db, s, str("confirm"));
       case "about": return saveAbout(db, s, pid, obj("patch") as never, { consent: b.consent === true, step: (str("step") || undefined) as never });
       case "about-withdraw": return withdrawAboutConsent(db, s, pid);

@@ -8,7 +8,7 @@
  *   measures (never a verdict), visits with a calendar feed, costs with receipts, questions for her visit.
  * - Without a nurse on Pumpkin, urgent symptoms go to her clinic's after-hours line or 911.
  */
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, Image, Linking, Platform, Pressable, ScrollView, Share, Text, TextInput, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
@@ -27,6 +27,7 @@ import { DateField, niceDate, niceTime, TimeField, TimesField } from "./datefiel
 import { AboutScreen, AliasScreen, QuestionIdeas, SummaryScreen, TalkScreen } from "./yours";
 import { FeedbackScreen, PeopleScreen } from "./people";
 import { TestBanner } from "./appinfo";
+import { CalendarShareCard } from "./calshare";
 import { ConsultKitScreen, nextTest, obDue, ObHandoffScreen, TestCalendarScreen, testCalendarOn } from "./kits";
 import { CONSULT_BRING, OB_RECORDS } from "@kinpath/core";
 import { BrushSketch, DrawCheck, DrawPumpkin, PulseOnce, RiseIn, useReduceMotion } from "./motion";
@@ -825,6 +826,14 @@ function AddScreen({ api, profile, go, done }: { api: Api; profile: SoloProfile;
       <Option id="pdf" icon="doc" title="Upload a PDF" sub="Lab results, payment plans, consent packets" onPress={pdf} />
       <Option id="say" icon="message" title="Say it" sub={'"Gonal-f 225 at 8 tonight, starting tomorrow"'} onPress={() => go({ name: "say" })} />
       <Option id="type" icon="pen" title="Type it" sub="A quick note, a number, a question" onPress={() => go({ name: "type" })} />
+      <View testID="add-yourself" style={{ gap: 8 }}>
+        <T style={{ fontFamily: F.sans600, fontSize: 15 }}>Or add it yourself</T>
+        <Chips>
+          {([["appointment", "Appointment"], ["medication", "Medication"], ["result", "Test result"], ["cost", "Cost"], ["question", "Question"]] as [ItemKind, string][]).map(([k, label]) => (
+            <Chip key={k} testID={`add-hand-${k}`} label={label} onPress={() => go({ name: "by-hand", kind: k })} />
+          ))}
+        </Chips>
+      </View>
       <Card style={{ gap: 6 }}>
         <T style={{ fontFamily: F.sans600, fontSize: 15 }}>Forward an email</T>
         <Muted style={{ fontSize: 14 }}>Send appointment emails, results and payment plans to your private address. They'll show up here to check.</Muted>
@@ -841,36 +850,81 @@ function AddScreen({ api, profile, go, done }: { api: Api; profile: SoloProfile;
   );
 }
 
-type SpeechRec = { start: () => void; stop: () => void; onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null; onend: (() => void) | null; interimResults: boolean; continuous: boolean; lang: string };
+type SpeechResult = ArrayLike<{ transcript: string }> & { isFinal: boolean };
+type SpeechRec = {
+  start: () => void; stop: () => void; abort: () => void;
+  onresult: ((e: { resultIndex: number; results: ArrayLike<SpeechResult> }) => void) | null;
+  onend: (() => void) | null; onerror: ((e: { error: string }) => void) | null; onstart: (() => void) | null;
+  interimResults: boolean; continuous: boolean; lang: string;
+};
+const IOS_WEB = Platform.OS === "web" && typeof navigator !== "undefined" && /iPhone|iPad|iPod/.test(navigator.userAgent);
+/**
+ * The browser's speech recognition, where it works well. Not in an iPhone home-screen web app,
+ * where Safari's version can hang after the microphone prompt; the keyboard's microphone works there.
+ */
 function speech(): (new () => SpeechRec) | null {
   if (Platform.OS !== "web") return null;
-  const w = globalThis as unknown as { SpeechRecognition?: new () => SpeechRec; webkitSpeechRecognition?: new () => SpeechRec };
+  const w = globalThis as unknown as { SpeechRecognition?: new () => SpeechRec; webkitSpeechRecognition?: new () => SpeechRec; navigator?: { standalone?: boolean }; matchMedia?: (q: string) => { matches: boolean } };
+  const standalone = w.navigator?.standalone === true || !!w.matchMedia?.("(display-mode: standalone)").matches;
+  if (standalone && IOS_WEB) return null;
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
+const SPEECH_ERRORS: Record<string, string> = {
+  "not-allowed": "Pumpkin can't use the microphone. Allow it in your browser settings, or use the microphone on your keyboard.",
+  "service-not-allowed": "Speech isn't available in this browser. Use the microphone on your keyboard instead.",
+  "no-speech": "We didn't hear anything. Tap Start talking and try again.",
+  "audio-capture": "We couldn't find a microphone. Use the microphone on your keyboard instead.",
+  "network": "Speech needs an internet connection. Use the microphone on your keyboard instead.",
+};
 
 function SayScreen({ api, done }: { api: Api; done: (r: { status: string; urgent: "urgent" | "crisis" | null; items: number; problem: string | null }) => void }) {
   const [text, setText] = useState("");
-  const [listening, setListening] = useState<SpeechRec | null>(null);
+  const [listening, setListening] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const Rec = useMemo(speech, []);
+  const [Rec, setRec] = useState(speech);
+  const rec = useRef<SpeechRec | null>(null);
+  const watchdog = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const frame = useRef<number | null>(null);
+  const clearWatch = () => { if (watchdog.current) clearTimeout(watchdog.current); watchdog.current = null; };
+  const stop = () => { clearWatch(); const r = rec.current; rec.current = null; setListening(false); try { r?.stop(); } catch { /* already stopped */ } };
+  // Never leave the microphone running after she leaves the screen.
+  useEffect(() => () => { clearWatch(); try { rec.current?.abort(); } catch { /* ignore */ } if (frame.current !== null) cancelAnimationFrame(frame.current); }, []);
   const listen = () => {
     if (!Rec) return;
-    const r = new Rec(); r.lang = "en-US"; r.interimResults = true; r.continuous = true;
+    setError(null);
+    let r: SpeechRec;
+    try { r = new Rec(); } catch { setRec(null); return; }
+    r.lang = "en-US"; r.interimResults = true;
+    // Continuous listening is unreliable in Safari; there each tap captures one stretch of speech.
+    r.continuous = !IOS_WEB;
     const base = text ? `${text.trim()}\n` : "";
-    r.onresult = (e) => { let s = ""; for (let i = 0; i < e.results.length; i++) s += e.results[i]![0]!.transcript; setText(base + s.trim()); };
-    r.onend = () => setListening(null);
-    r.start(); setListening(r);
+    let finals = ""; let latest = "";
+    r.onstart = () => clearWatch();
+    r.onresult = (e) => {
+      clearWatch();
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) { const x = e.results[i]!; if (x.isFinal) finals += `${x[0]!.transcript} `; else interim += x[0]!.transcript; }
+      latest = base + `${finals}${interim}`.trim();
+      // One update per frame, so a fast stream of words can't lock up the screen.
+      if (frame.current === null) frame.current = requestAnimationFrame(() => { frame.current = null; setText(latest); });
+    };
+    r.onerror = (e) => { if (e.error !== "aborted") setError(SPEECH_ERRORS[e.error] ?? "Speech stopped. Use the microphone on your keyboard instead."); if (e.error === "service-not-allowed") setRec(null); stop(); };
+    r.onend = () => { clearWatch(); if (rec.current === r) { rec.current = null; setListening(false); } };
+    rec.current = r; setListening(true);
+    try { r.start(); } catch { stop(); setError("Speech didn't start. Use the microphone on your keyboard instead."); return; }
+    // If nothing starts within 8 seconds of the microphone prompt, let go so the screen never sticks.
+    watchdog.current = setTimeout(() => { stop(); setError("Speech didn't start. Use the microphone on your keyboard instead."); }, 8000);
   };
   return (
     <>
       <Today size={34}>Say it</Today>
       <Muted style={{ fontSize: 15 }}>{Rec ? "Tap Start talking and say it like you'd tell a friend. One thing per sentence works best." : "Tap the microphone on your keyboard and talk. One thing per sentence works best."}</Muted>
       <Card style={{ gap: 10 }}>
-        {Rec ? <Button testID="say-start" kind={listening ? "line" : "esp"} label={listening ? "Stop" : "Start talking"} onPress={() => (listening ? listening.stop() : listen())} /> : null}
+        {Rec ? <Button testID="say-start" kind={listening ? "line" : "esp"} label={listening ? "Stop" : "Start talking"} onPress={() => (listening ? stop() : listen())} /> : null}
         <TextInput testID="say-text" value={text} onChangeText={setText} multiline placeholder={"Menopur 75 units at 8 pm starting tomorrow.\nBlood work Thursday at 7:30 am."} placeholderTextColor={C.stone} style={[st.input, { minHeight: 140, fontSize: 16, borderColor: C.espresso }]} />
         {error ? <T style={{ color: C.red }}>{error}</T> : null}
-        <Button testID="say-send" label={busy ? "Reading…" : "Sort it out"} disabled={busy || !text.trim()} onPress={async () => { listening?.stop(); setBusy(true); setError(null); try { done(await api.capture({ kind: "voice", text })); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }} />
+        <Button testID="say-send" label={busy ? "Reading…" : "Sort it out"} disabled={busy || !text.trim()} onPress={async () => { stop(); setBusy(true); setError(null); try { done(await api.capture({ kind: "voice", text })); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }} />
       </Card>
     </>
   );
@@ -1070,6 +1124,16 @@ function ByHandScreen({ api, kind, done }: { api: Api; kind: ItemKind; done: (ms
   const [data, setData] = useState<Record<string, unknown>>(BLANK[kind]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  // After a visit: offer to put visits on someone else's calendar too.
+  if (saved) return (
+    <>
+      <Today size={32}>Visit saved</Today>
+      <Muted style={{ fontSize: 15 }}>It's in your record and on Today. If you've linked your own calendar, it shows up there too.</Muted>
+      <CalendarShareCard api={api} testID="byhand-calshare" />
+      <Button testID="byhand-done" kind="line" label="Done" onPress={() => done("Saved.")} />
+    </>
+  );
   return (
     <>
       <Today size={32}>{`Add ${kind === "question" ? "a question" : kind === "appointment" ? "an appointment" : kind === "cost" ? "a cost" : kind === "result" ? "a result" : "a medication"}`}</Today>
@@ -1078,7 +1142,7 @@ function ByHandScreen({ api, kind, done }: { api: Api; kind: ItemKind; done: (ms
         {error ? <T testID="byhand-error" style={{ color: C.red }}>{error}</T> : null}
         <Button testID="byhand-save" label={busy ? "Saving…" : "Save"} disabled={busy} onPress={async () => {
           setBusy(true); setError(null);
-          try { await api.addByHand(kind, { ...data, value: data.value === "" ? undefined : Number(data.value), amount: data.amount === "" ? undefined : Number(String(data.amount).replace(/[$,]/g, "")) }); done("Saved."); }
+          try { await api.addByHand(kind, { ...data, value: data.value === "" ? undefined : Number(data.value), amount: data.amount === "" ? undefined : Number(String(data.amount).replace(/[$,]/g, "")) }); (kind === "appointment" ? setSaved(true) : done("Saved.")); }
           catch (e) { setError((e as Error).message); } finally { setBusy(false); }
         }} />
       </Card>
@@ -1273,6 +1337,7 @@ function MoreScreen({ api, profile, reload, onSignOut, go }: { api: Api; profile
         </> : null}
         {profile.calendarOn ? <Pressable onPress={() => act(() => api.calendarOff(), "Calendar link turned off.")}><Muted style={{ textDecorationLine: "underline" }}>Turn off my calendar link</Muted></Pressable> : null}
       </Card>
+      <CalendarShareCard api={api} />
       {remindersSupported ? <Card style={{ gap: 8 }}><T style={{ fontFamily: F.sans600, fontSize: 15 }}>Dose reminders</T><Muted style={{ fontSize: 14 }}>A reminder 15 minutes before each dose. The lock screen says only "You have a reminder."</Muted><Button kind="line" label="Turn on reminders and test" onPress={() => act(async () => { if (!(await askPermission())) throw new Error("Reminders are off. Turn them on in your phone's Settings, under Pumpkin."); await sendTestReminder(); }, "Reminders are on. A test one will ring in a few seconds.")} /></Card> : null}
       <AppearanceCard />
       <Card style={{ gap: 10 }}>
