@@ -12,6 +12,7 @@ import { HandoffError, triage, type ClinicTerm } from "@kinpath/core";
 import { asActor, audit, type Actor, type Db } from "./client";
 import { sendPatientMessage } from "./loop";
 import { alertPatient, notify, patientInfo, supportPeople } from "./notify";
+import { openPersonalLink, type PersonalSummary } from "./kit";
 
 type Staff = Actor & { name: string };
 const hash = (token: string) => createHash("sha256").update(token).digest("hex");
@@ -121,6 +122,7 @@ export interface SharedSummary {
 /** Opening the link (no sign-in). Returns null for a wrong, stopped or expired link. */
 export async function openSummary(db: Db, token: string): Promise<SharedSummary | null> {
   if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) return null;
+  if ((await db.query<{ kind: string }>(`SELECT kind FROM summary_shares WHERE token_hash = $1`, [hash(token)])).rows[0]?.kind === "personal") return null;
   const r = await db.query<{ s: SharedSummary | null }>(`SELECT kp_open_summary($1) AS s`, [hash(token)]);
   const s = r.rows[0]?.s ?? null;
   if (s) {
@@ -128,6 +130,15 @@ export async function openSummary(db: Db, token: string): Promise<SharedSummary 
     if (pid) await alertPatient(db, pid, "summary_opened", `${s.recipient} opened your summary.`);
   }
   return s;
+}
+
+/** Any summary link: clinic mode (graduation) or her own record. */
+export async function openAnySummary(db: Db, token: string): Promise<({ kind: "clinic" } & SharedSummary) | PersonalSummary | null> {
+  if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) return null;
+  const kind = (await db.query<{ kind: string }>(`SELECT kind FROM summary_shares WHERE token_hash = $1`, [hash(token)])).rows[0]?.kind;
+  if (kind === "personal") return openPersonalLink(db, token);
+  const s = await openSummary(db, token);
+  return s ? { kind: "clinic", ...s } : null;
 }
 
 /** She chooses when Jordan and the others hear the news. */

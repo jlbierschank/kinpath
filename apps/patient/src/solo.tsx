@@ -27,6 +27,8 @@ import { DateField, niceDate, niceTime, TimeField, TimesField } from "./datefiel
 import { AboutScreen, AliasScreen, QuestionIdeas, SummaryScreen, TalkScreen } from "./yours";
 import { FeedbackScreen, PeopleScreen } from "./people";
 import { TestBanner } from "./appinfo";
+import { ConsultKitScreen, nextTest, obDue, ObHandoffScreen, TestCalendarScreen, testCalendarOn } from "./kits";
+import { CONSULT_BRING, OB_RECORDS } from "@kinpath/core";
 import { BrushSketch, DrawCheck, DrawPumpkin, PulseOnce, RiseIn, useReduceMotion } from "./motion";
 
 /** Set when someone has just finished signing up, so the app greets them once. */
@@ -178,7 +180,7 @@ export function SignupFlow({ onSignedIn, onBack }: { onSignedIn: (u: SignedInUse
 // ---------- the app ----------
 
 type Tab = "today" | "record" | "add" | "costs" | "more";
-type Screen = { name: Tab } | { name: "check" } | { name: "urgent"; crisis: boolean } | { name: "say" } | { name: "type" } | { name: "by-hand"; kind: ItemKind } | { name: "original"; captureId: string; text?: string } | { name: "about" } | { name: "talk" } | { name: "alias" } | { name: "summary" } | { name: "people" } | { name: "feedback" } | { name: "edit-today" };
+type Screen = { name: Tab } | { name: "check" } | { name: "urgent"; crisis: boolean } | { name: "say" } | { name: "type" } | { name: "by-hand"; kind: ItemKind } | { name: "original"; captureId: string; text?: string } | { name: "about" } | { name: "talk" } | { name: "alias" } | { name: "summary" } | { name: "people" } | { name: "feedback" } | { name: "edit-today" } | { name: "consult" } | { name: "tests" } | { name: "ob" };
 
 export function SoloApp({ api, onSignOut }: { api: Api; onSignOut: () => void }) {
   const [screen, setScreen] = useState<Screen>({ name: "today" });
@@ -248,6 +250,10 @@ export function SoloApp({ api, onSignOut }: { api: Api; onSignOut: () => void })
       {screen.name === "summary" && <SummaryScreen api={api} />}
       {screen.name === "people" && <PeopleScreen api={api} />}
       {screen.name === "feedback" && <FeedbackScreen api={api} done={(m) => { setScreen({ name: "more" }); setNotice(m); }} />}
+      {screen.name === "consult" && <ConsultKitScreen api={api} initial={today.kit} reload={() => void load()} openTests={() => go({ name: "tests" })} openRecord={() => go({ name: "record" })}
+        onUrgent={(crisis) => setScreen({ name: "urgent", crisis })} onCapture={async (text) => { try { afterCapture(await api.capture({ kind: "text", text })); } catch (e) { setNotice((e as Error).message); } }} />}
+      {screen.name === "tests" && <TestCalendarScreen api={api} initial={today.kit} reload={() => void load()} />}
+      {screen.name === "ob" && <ObHandoffScreen api={api} initial={today.kit} reload={() => void load()} notice={setNotice} />}
       {screen.name === "urgent" && <Urgent profile={today.profile} crisis={screen.crisis} back={() => home()} api={api} reload={load} />}
     </Frame>
     {welcome && !reduce ? (
@@ -281,7 +287,7 @@ function Tabs({ current, go, badge }: { current: string; go: (s: Screen) => void
 
 // ---------- Today: a "Right now" card, then tiles in the order she chose ----------
 
-export type TileId = "meds" | "check" | "coming" | "numbers" | "payment" | "refill" | "add" | "yours" | "clinic" | "reminders" | "result";
+export type TileId = "meds" | "check" | "coming" | "numbers" | "payment" | "refill" | "add" | "yours" | "clinic" | "reminders" | "result" | "consult" | "tests" | "ob";
 export const TILE_INFO: Record<TileId, { label: string; locked?: boolean }> = {
   meds: { label: "Tonight's meds", locked: true },
   reminders: { label: "Turn on reminders", locked: true },
@@ -294,6 +300,9 @@ export const TILE_INFO: Record<TileId, { label: string; locked?: boolean }> = {
   add: { label: "Got something new?" },
   yours: { label: "Make Pumpkin yours" },
   clinic: { label: "Your clinic on Pumpkin" },
+  consult: { label: "Your first-consult kit" },
+  tests: { label: "Your test calendar" },
+  ob: { label: "Getting ready for your OB" },
 };
 /** Pumpkin's starting order for each stage; she can change it in Edit Today. */
 export function defaultOrder(stage: SoloStage): TileId[] {
@@ -304,8 +313,8 @@ export function defaultOrder(stage: SoloStage): TileId[] {
 function stageOrder(stage: SoloStage): TileId[] {
   switch (stage) {
     case "trying": return ["check", "coming", "add", "numbers", "yours", "payment", "meds", "refill", "clinic"];
-    case "just_starting": return ["check", "coming", "add", "numbers", "payment", "yours", "meds", "refill", "clinic"];
-    case "pregnant": return ["meds", "coming", "numbers", "check", "refill", "add", "payment", "yours", "clinic"];
+    case "just_starting": return ["check", "consult", "tests", "coming", "add", "numbers", "payment", "yours", "meds", "refill", "clinic"];
+    case "pregnant": return ["meds", "ob", "coming", "numbers", "check", "refill", "add", "payment", "yours", "clinic"];
     case "storage": return ["payment", "check", "coming", "add", "numbers", "meds", "refill", "yours", "clinic"];
     case "two_week_wait": return ["coming", "meds", "check", "add", "payment", "refill", "numbers", "yours", "clinic"];
     case "after_hard_result": return ["coming", "check", "add", "numbers", "payment", "meds", "refill", "yours", "clinic"];
@@ -421,7 +430,30 @@ function TodayScreen({ d, api, go, reload, layout, notice, prefs, setPrefs }: { 
     );
   };
 
+  // Pregnant and moved to her OB: Today stays light (meds until their last day, visits, and the OB card).
+  const light = p.stage === "pregnant" && !!d.kit.ob.movedOn;
+  const LIGHT_KEEP: TileId[] = ["meds", "reminders", "check", "coming", "ob"];
+  const kitNext = nextTest(d.kit.tests);
+  const ob = obDue(d.kit.ob);
+  const kitCard = (testID: string, icon: Parameters<typeof Icon>[0]["name"], title: string, line: string, sub: string, to: Screen) => (
+    <Pressable testID={testID} onPress={() => go(to)} style={[st.card, { padding: 16, gap: 6 }]}>
+      <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name={icon} /><T style={{ fontFamily: F.display, fontSize: 20, flex: 1 }}>{title}</T></View>
+      <T style={{ fontSize: 15 }}>{line}</T>
+      <T style={{ color: C.lavInk, fontFamily: F.sans600 }}>{sub}</T>
+    </Pressable>
+  );
   const tiles: Record<TileId, ReactNode> = {
+    consult: p.stage === "just_starting" && !quiet ? kitCard("consult-tile", "pen", "Your first-consult kit",
+      d.kit.consult.on ? `Your consult: ${niceDate(d.kit.consult.on)}. ${d.kit.consult.bring.length} of ${CONSULT_BRING.length} things to bring are ready.` : "What a first visit covers, what to bring and your questions, in one place.",
+      d.kit.consult.notes ? "Open your notes" : "Open the kit", { name: "consult" }) : null,
+    tests: p.stage === "just_starting" && testCalendarOn && !quiet ? kitCard("tests-tile", "calendar", "Your test calendar",
+      kitNext ? `Next: ${kitNext.test.name} · ${kitNext.text}` : "Every test is done or off your list.",
+      d.kit.tests.day1 || d.kit.tests.irregular ? "See all tests" : "Add your cycle day 1 to see dates", { name: "tests" }) : null,
+    ob: p.stage === "pregnant" && !hard ? (light
+      ? <Pressable testID="ob-tile" onPress={() => go({ name: "ob" })} style={{ backgroundColor: C.sage, borderRadius: 22, padding: 16, gap: 4 }}><T style={{ color: C.sageInk, fontFamily: F.sans600, fontSize: 15 }}>You're with your OB now. Your record and summary stay here.</T>{ob.due ? <Muted style={{ fontSize: 13.5 }}>{`Estimated due date ${niceDate(ob.due)}`}</Muted> : null}</Pressable>
+      : kitCard("ob-tile", "heart", "Getting ready for your OB",
+        ob.due ? `Estimated due date ${niceDate(ob.due)}${ob.weeks ? ` · ${ob.weeks.weeks} weeks ${ob.weeks.days} days` : ""}. ${d.kit.ob.records.length} of ${OB_RECORDS.length} records ready.` : "Your due date, records to take, when meds stop, and a summary to share.",
+        "Open", { name: "ob" })) : null,
     reminders: (perm === "undetermined" || perm === "denied") && d.schedule.upcoming.length > 0 && !quiet ? (
       <View testID="reminders-tile" style={[st.card, { padding: 16, gap: 8 }]}>
         <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="medication" /><T style={{ fontFamily: F.display, fontSize: 20 }}>Get a reminder for each dose</T></View>
@@ -509,7 +541,7 @@ function TodayScreen({ d, api, go, reload, layout, notice, prefs, setPrefs }: { 
     ) : null,
   };
   const { order, hidden } = orderFor(p.stage, layout);
-  const shownTiles = order.filter((t) => t !== nowId && !hidden.has(t) && tiles[t]);
+  const shownTiles = order.filter((t) => t !== nowId && !hidden.has(t) && tiles[t] && (!light || LIGHT_KEEP.includes(t)));
   // Setup cards: one at a time, and only on a day nothing else needs her (a sent-clinic note shows for its one day).
   const setupOk = (t: TileId) => (t === "clinic" && !!p.askedClinicAt) || (!nowId && !missed.length && d.toCheck === 0);
   const firstSetup = shownTiles.find((t) => SETUP.includes(t) && setupOk(t));
@@ -542,7 +574,7 @@ function TodayScreen({ d, api, go, reload, layout, notice, prefs, setPrefs }: { 
         <Card style={{ gap: 6 }}><T style={{ fontFamily: F.display, fontSize: 22, lineHeight: 26 }}>{`We're so sorry, ${p.firstName}.`}</T><T style={{ fontSize: 15.5, lineHeight: 22 }}>Take the time you need. Your record is here whenever you want it, and so are your questions for your next visit.</T></Card>
       ) : null}
 
-      {nowId && tiles[nowId] ? (
+      {nowId && tiles[nowId] && (!light || LIGHT_KEEP.includes(nowId)) ? (
         <View testID="now" style={{ gap: 6 }}>
           <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.marigold }} />
@@ -1228,7 +1260,7 @@ function MoreScreen({ api, profile, reload, onSignOut, go }: { api: Api; profile
         <Field label="Your clinic" value={clinic} onChange={setClinic} />
         {profile.askedClinicAt ? <T testID="clinic-asked" style={{ fontSize: 13.5, marginTop: -6, color: C.stone }}>{`You asked them to join Pumpkin on ${new Date(profile.askedClinicAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}.`}</T> : null}
         <Field testID="settings-phone" label="Their after-hours nurse line" value={phone} onChange={setPhone} keyboard="phone-pad" hint="Urgent symptoms go here (or 911)." />
-        <Button kind="esp" label="Save" onPress={() => act(() => api.saveSoloProfile({ stage, clinicName: clinic, afterHoursPhone: phone }), "Saved.")} />
+        <Button testID="settings-save" kind="esp" label="Save" onPress={() => act(() => api.saveSoloProfile({ stage, clinicName: clinic, afterHoursPhone: phone }), "Saved.")} />
       </Card>
       <Card style={{ gap: 10 }}>
         <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><Icon name="calendar" /><T style={{ fontFamily: F.sans600, fontSize: 15 }}>Your appointments in your calendar</T></View>

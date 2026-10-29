@@ -3,7 +3,7 @@ import {
   addAppointment, addCapture, addCost, addMedication, addQuestion, addResult, askMyClinic, captureFile, deleteAppointment, deleteCost, deleteMyAccount, deleteQuestion,
   deleteResult, dismissItem, exportMyData, getReminderPrefs, itemsToCheck, newCalendarLink, SAMPLES, saveItem, setQuestionAsked, soloCosts, soloMeds, soloProfile,
   soloResults, soloToday, stopCalendarLink, stopMedication, setMedSupply, updateSoloProfile, visitQuestions, financePartners,
-  patientSharing, aboutMe, addTenderDate, deleteTenderDate, questionIdeas, saveAbout, setAlias, setQuiet, visitSummary, withdrawAboutConsent,
+  patientSharing, saveKit, setMedLastDay, createPersonalShare, personalShares, stopSummaryShare, aboutMe, addTenderDate, deleteTenderDate, questionIdeas, saveAbout, setAlias, setQuiet, visitSummary, withdrawAboutConsent,
 } from "@kinpath/db";
 import { getDb } from "@/lib/db";
 import { handle, preflight } from "@/lib/api";
@@ -46,6 +46,7 @@ export async function GET(req: Request, ctx: Ctx) {
       case "question-ideas": return questionIdeas(db, s, pid);
       case "visit-summary": return visitSummary(db, s, pid);
       case "sharing": return patientSharing(db, s, pid);
+      case "shares": return personalShares(db, s, pid);
       default: throw new HandoffError("Not found.");
     }
   });
@@ -91,6 +92,13 @@ export async function POST(req: Request, ctx: Ctx) {
       case "tender-add": return addTenderDate(db, s, pid, obj("date") as never);
       case "tender-delete": return deleteTenderDate(db, s, pid, str("id"));
       case "quiet": return setQuiet(db, s, pid, { pauseDays: b.pauseDays === undefined ? undefined : (b.pauseDays as number | null), onBreak: typeof b.onBreak === "boolean" ? b.onBreak : undefined });
+      case "kit": return saveKit(db, s, pid, obj("patch"));
+      case "med-last-day": return setMedLastDay(db, s, pid, str("medication"), str("lastDay"));
+      case "share-summary": {
+        const made = await createPersonalShare(db, s, pid, { recipient: str("recipient"), includeResults: b.includeResults === true, includeMeds: b.includeMeds === true });
+        return { id: made.id, expiresAt: made.expiresAt, url: `${await baseUrl()}/summary/${made.token}` };
+      }
+      case "stop-share": return stopSummaryShare(db, s, str("id"));
       case "alias": return setAlias(db, s, pid, { alias: str("alias"), icon: str("icon"), tint: str("tint"), shows: Array.isArray(b.shows) ? (b.shows as string[]) : [] });
       default: throw new HandoffError("Not found.");
     }

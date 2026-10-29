@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { openSummary } from "@kinpath/db";
+import { openAnySummary, type PersonalSummary } from "@kinpath/db";
+import { CONCEPTION, weeksToday } from "@kinpath/core";
 import { getDb } from "@/lib/db";
 import { PrintButton } from "./print";
 
@@ -16,7 +17,7 @@ const OUT: Record<string, string> = { positive: "Positive", negative: "Negative"
 
 export default async function Summary({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const s = await openSummary(await getDb(), token);
+  const s = await openAnySummary(await getDb(), token);
   if (!s) {
     return (
       <div className="card" style={{ maxWidth: 640 }}>
@@ -25,6 +26,7 @@ export default async function Summary({ params }: { params: Promise<{ token: str
       </div>
     );
   }
+  if (s.kind === "personal") return <Personal s={s} />;
   return (
     <div style={{ maxWidth: 760 }}>
       <p className="muted" style={{ margin: 0 }}>{s.clinic} · shared by the patient with {s.recipient}</p>
@@ -59,6 +61,54 @@ export default async function Summary({ params }: { params: Promise<{ token: str
       )}
       {!s.tests && !s.meds && <p className="muted">The patient chose to share her cycle dates only.</p>}
       <p className="muted" style={{ fontSize: 13 }}>Shared by the patient through Pumpkin. This link expires {d(s.expiresAt)}. Each view is recorded. This summary does not replace the clinic&apos;s full records; contact {s.clinic} for them.</p>
+      <PrintButton />
+    </div>
+  );
+}
+
+const BY: Record<string, string> = { you: "Added by the patient", read: "Read from her document, checked by the patient", clinic: "From the clinic's records" };
+const time = (iso: string) => new Date(iso).toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+
+/** A summary of her own record (Pumpkin on your own). Every item says who entered it. */
+function Personal({ s }: { s: PersonalSummary }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const w = s.pregnancy.dueDate ? weeksToday(s.pregnancy.dueDate, today) : null;
+  const how = CONCEPTION.find(([k]) => k === s.pregnancy.how)?.[1];
+  return (
+    <div style={{ maxWidth: 760 }}>
+      <p className="muted" style={{ margin: 0 }}>Shared by the patient with {s.recipient}{s.clinic ? ` · fertility clinic: ${s.clinic}` : ""}</p>
+      <h1 style={{ marginBottom: 4 }}>Pregnancy after fertility treatment: patient summary</h1>
+      <p style={{ marginTop: 0, fontSize: 18 }}><b data-testid="summary-patient">{s.patient}</b></p>
+      <p className="muted" data-testid="summary-note">The patient keeps this record herself in Pumpkin. It is her copy, not the clinic&apos;s official record, and each item says who entered it.</p>
+      <div className="card">
+        <h2 style={{ marginTop: 0 }}>Pregnancy</h2>
+        <div className="row"><span>{how ?? "Transfer or insemination"}</span><b>{d(s.pregnancy.conceivedOn)}</b></div>
+        <div className="row"><span>Estimated due date</span><b data-testid="summary-due">{s.pregnancy.dueDate ? d(s.pregnancy.dueDate) : "Not given"}</b></div>
+        {w && <div className="row"><span>Today</span><b>{w.weeks} weeks {w.days} days</b></div>}
+        <p className="muted" style={{ fontSize: 13, marginBottom: 0 }}>Calculated by Pumpkin from the date the patient entered (ACOG Committee Opinion 700 for transfers). Please confirm with her fertility clinic.</p>
+        {s.pregnancy.ob && <div className="row"><span>OB</span><b>{s.pregnancy.ob}</b></div>}
+      </div>
+      {s.results && (
+        <div className="card">
+          <h2 style={{ marginTop: 0 }}>Test results</h2>
+          {s.results.length === 0 && <span className="muted">None in her record.</span>}
+          {s.results.map((r, i) => <div className="row" key={i}><span>{d(r.on)} · {r.test}<br /><span className="muted" style={{ fontSize: 12.5 }}>{BY[r.by]}</span></span><b>{r.value} {r.unit}</b></div>)}
+        </div>
+      )}
+      {s.meds && (
+        <div className="card">
+          <h2 style={{ marginTop: 0 }}>Medications</h2>
+          {s.meds.length === 0 && <span className="muted">None in her record.</span>}
+          {s.meds.map((m, i) => <div className="row" key={i}><span>{m.medication} · {m.dose} at {m.time}<br /><span className="muted" style={{ fontSize: 12.5 }}>{BY[m.by]}</span></span><span>{m.active ? `Until ${d(m.endsOn)}` : "Stopped"}</span></div>)}
+        </div>
+      )}
+      {s.appointments.length > 0 && (
+        <div className="card">
+          <h2 style={{ marginTop: 0 }}>Visits</h2>
+          {s.appointments.map((a, i) => <div className="row" key={i}><span>{a.title}<br /><span className="muted" style={{ fontSize: 12.5 }}>{BY[a.by]}</span></span><b>{time(a.at)}</b></div>)}
+        </div>
+      )}
+      <p className="muted" style={{ fontSize: 13 }}>For the clinic&apos;s official records, the patient can request a copy from {s.clinic ?? "her fertility clinic"}&apos;s medical records team. This link expires {d(s.expiresAt)}. Each view is recorded, and the patient can stop it anytime.</p>
       <PrintButton />
     </div>
   );

@@ -18,3 +18,4 @@ export * from "./capture";
 export * from "./about";
 export * from "./deliver";
 export * from "./testing";
+export * from "./kit";

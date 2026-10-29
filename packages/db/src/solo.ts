@@ -17,6 +17,7 @@ import { contactOf } from "./patients";
 import { patientSchedule } from "./loop";
 import { aboutMe, todayFeel } from "./about";
 import { tellTeamClinicAsked } from "./testing";
+import { kitOf } from "./kit";
 
 /** What she can send her clinic herself (by email or text). Nothing about her health. */
 export const clinicShareText = (clinicName: string) =>
@@ -168,7 +169,7 @@ export async function finishSignup(db: Db, ticket: string, input: {
 
 // ---------- her own space ----------
 
-async function requirePersonal(tx: Tx) {
+export async function requirePersonal(tx: Tx) {
   const r = await tx.query<{ ok: boolean }>(`SELECT kp_is_personal() AS ok`);
   if (!r.rows[0]?.ok) throw new HandoffError("Your clinic keeps this part of your record. Ask your care team to change it.");
 }
@@ -178,7 +179,7 @@ export async function isPersonalSpace(db: Db, clinicId: string) {
 async function spaceZone(tx: Tx): Promise<string> {
   return (await tx.query<{ timezone: string }>(`SELECT timezone FROM clinics WHERE id = kp_clinic()`)).rows[0]?.timezone ?? "America/New_York";
 }
-async function localToday(tx: Tx): Promise<string> {
+export async function localToday(tx: Tx): Promise<string> {
   return (await tx.query<{ d: string }>(`SELECT to_char(now() AT TIME ZONE (SELECT timezone FROM clinics WHERE id = kp_clinic()), 'YYYY-MM-DD') AS d`)).rows[0]!.d;
 }
 
@@ -461,8 +462,9 @@ export async function soloToday(db: Db, actor: Actor, patientId: string, now = n
       `SELECT id, starts_at, title, location, source FROM appointments WHERE patient_id = $1 AND status = 'booked' AND starts_at > now() - interval '2 hours' ORDER BY starts_at LIMIT 5`, [patientId]);
     const feel = await todayFeel(tx, patientId);
     const refills = await medRefills(tx, patientId, now);
+    const kit = await kitOf(tx, patientId);
     return {
-      profile, schedule, feel, refills,
+      profile, schedule, feel, refills, kit,
       about: { displayName: about.displayName, pronouns: about.pronouns, tone: about.tone, revealResults: about.revealResults, costCheckins: about.costCheckins, stepsLeft: about.stepsLeft, partnerTitle: about.partnerTitle },
       toCheck: pend.rows[0]!.n, reading: reading.rows[0]!.n,
       appointments: appts.rows.map((a) => ({ id: a.id, startsAt: new Date(a.starts_at).toISOString(), title: a.title, location: a.location, mine: a.source === "patient" })),

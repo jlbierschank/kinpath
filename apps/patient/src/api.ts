@@ -5,7 +5,7 @@
  * Signed in with a session token from a one-time code ("Bearer"). Demo builds can also use
  * "Dev <user id>" to pick a synthetic test person; the server refuses that outside demo builds.
  */
-import type { Lang, PlannedReminder, ReminderPrefs } from "@kinpath/core";
+import type { Lang, PlannedReminder, ReminderPrefs, StageKit } from "@kinpath/core";
 
 // "same-origin" is used when the phone app is published as web pages on the clinic server (/phone).
 const RAW_API_URL = process.env.EXPO_PUBLIC_API_URL;
@@ -106,8 +106,10 @@ export interface SoloToday {
   nextDue: { dueOn: string; amountCents: number; description: string } | null; balanceCents: number;
   openQuestions: number;
   refills: Refill[];
+  kit: StageKit;
   reminders: PlannedReminder[]; prefs: ReminderPrefs;
 }
+export interface PersonalShare { id: string; recipient: string; includeResults: boolean; includeMeds: boolean; createdAt: string; expiresAt: string; active: boolean; views: number }
 export interface Refill { medication: string; dosesLeft: number | null; perDay: number; enough: boolean; runOutOn: string | null; orderBy: string | null; daysLeft: number | null; countedAt: string | null }
 export interface SoloMed { id: string; medication: string; dose: string; time: string; startsOn: string; endsOn: string | null; instructions: string | null; mine: boolean; nextAt: string | null }
 export interface ResultGroup { key: string; name: string; unit: string; measures: string | null; inTreatment: string | null; reviewed: boolean; points: { id: string; value: number; unit: string; on: string; refLow: number | null; refHigh: number | null; refText: string | null; mine: boolean }[] }
@@ -184,6 +186,11 @@ export class Api {
   soloSharing = () => this.call<{ partners: SupportPerson[]; notes: Note[]; invites: Invite[] }>("/api/solo/sharing");
   sendFeedback = (body: string, screen?: string, appVersion?: string) => this.call<{ ok: boolean }>("/api/feedback", { method: "POST", body: { body, screen, appVersion } });
   soloMeds = () => this.call<SoloMed[]>("/api/solo/meds");
+  saveKit = (patch: Record<string, unknown>) => this.call<{ kit: StageKit; urgent: "urgent" | "crisis" | null }>("/api/solo/kit", { method: "POST", body: { patch } });
+  setMedLastDay = (medication: string, lastDay: string) => this.call<{ lastDay: string }>("/api/solo/med-last-day", { method: "POST", body: { medication, lastDay } });
+  personalShares = () => this.call<PersonalShare[]>("/api/solo/shares");
+  sharePersonalSummary = (input: { recipient: string; includeResults: boolean; includeMeds: boolean }) => this.call<{ id: string; url: string; expiresAt: string }>("/api/solo/share-summary", { method: "POST", body: input });
+  stopPersonalShare = (id: string) => this.call<unknown>("/api/solo/stop-share", { method: "POST", body: { id } });
   soloResults = () => this.call<ResultGroup[]>("/api/solo/results");
   soloCosts = () => this.call<SoloCosts>("/api/solo/costs");
   questions = () => this.call<{ id: string; question: string; asked: boolean }[]>("/api/solo/questions");
