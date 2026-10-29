@@ -10,7 +10,8 @@ import {
   CONCEPTION, CONSULT_BRING, CONSULT_COVERS, CONSULT_NEXT, dueDate, OB_RECORDS, RECORDS_HOW, testWindow, weeksToday, WORKUP, WORKUP_REVIEWED_BY, WORKUP_SOURCE,
   type Conception, type StageKit, type WorkupTest,
 } from "@kinpath/core";
-import type { Api, PersonalShare, SoloMed } from "./api";
+import type { Api, PersonalShare, ResultGroup, SoloMed } from "./api";
+import { useFocusEffect } from "expo-router";
 import { Button, C, Card, CheckList, ChoiceList, F, Icon, Muted, st, T, Toggle } from "./ui";
 import { DateField, niceDate, TimeField, toYmd } from "./datefield";
 import { Field } from "./field";
@@ -145,9 +146,13 @@ export function nextTest(k: StageKit["tests"]): { test: WorkupTest; text: string
   return first ? { test: first.t, text: whenText(first.t, k) } : left[0] ? { test: left[0], text: "Any day" } : null;
 }
 
-export function TestCalendarScreen({ api, initial, reload }: { api: Api; initial: StageKit; reload: () => void }) {
+export function TestCalendarScreen({ api, initial, reload, addResult, addReport }: { api: Api; initial: StageKit; reload: () => void; addResult: (test: string) => void; addReport: () => void }) {
   const { kit, save, error } = useKit(api, initial, reload);
   const k = kit.tests;
+  // Her results already in Pumpkin, so each test shows what she's added (numbers only, never what they mean).
+  const [results, setResults] = useState<ResultGroup[]>([]);
+  useFocusEffect(useCallback(() => { api.soloResults().then(setResults).catch(() => {}); }, [api]));
+  const latest = (key: string) => results.find((g) => g.key === key)?.points[0];
   const [len, setLen] = useState(String(k.length));
   const shown = WORKUP.filter((t) => !k.hidden.includes(t.id));
   const hidden = WORKUP.filter((t) => k.hidden.includes(t.id));
@@ -166,7 +171,8 @@ export function TestCalendarScreen({ api, initial, reload }: { api: Api; initial
 
       <View style={{ gap: 10 }}>
         {shown.map((t) => {
-          const done = k.done.includes(t.id);
+          const entered = (t.results ?? []).map((r) => ({ ...r, p: latest(r.key) })).filter((r) => r.p);
+          const done = k.done.includes(t.id) || (!!t.results?.length && entered.length > 0);
           return (
             <View key={t.id} testID={`kit-test-${t.id}`} style={[st.card, { padding: 14, gap: 6, opacity: done ? 0.7 : 1 }]}>
               <View style={{ flexDirection: "row", gap: 10, alignItems: "flex-start" }}>
@@ -181,6 +187,15 @@ export function TestCalendarScreen({ api, initial, reload }: { api: Api; initial
               </View>
               <T style={{ fontSize: 14.5, lineHeight: 20 }}>{t.measures}</T>
               {t.note ? <Muted style={{ fontSize: 13.5 }}>{t.note}</Muted> : null}
+              {entered.map((r) => (
+                <View key={r.key} testID={`kit-result-${r.key}`} style={{ flexDirection: "row", justifyContent: "space-between", backgroundColor: C.oat, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 }}>
+                  <T style={{ fontSize: 14.5 }}>{r.test}</T><T style={{ fontFamily: F.sans600, fontSize: 14.5 }}>{`${r.p!.value} ${r.p!.unit} · ${short(r.p!.on)}`}</T>
+                </View>
+              ))}
+              <View style={{ flexDirection: "row", flexWrap: "wrap", columnGap: 16 }}>
+                {(t.results ?? []).map((r) => <Link key={r.key} testID={`kit-add-${r.key}`} label={t.results!.length > 1 ? `Add ${r.test} result` : "Add your result"} onPress={() => addResult(r.test)} />)}
+                <Link testID={`kit-report-${t.id}`} label={t.results?.length ? "Snap the report" : "Add the report"} onPress={addReport} />
+              </View>
               <Link testID={`kit-hide-${t.id}`} label="Not on my list" onPress={() => void save({ tests: { hidden: toggle(k.hidden, t.id) } })} />
             </View>
           );

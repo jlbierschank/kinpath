@@ -4,6 +4,6 @@ import type { ItemKind } from "../../../api";
 
 const KINDS: ItemKind[] = ["medication", "result", "appointment", "cost", "question"];
 export default function Route() {
-  const { kind } = useLocalSearchParams<{ kind: string }>();
-  return <SoloScreen screen={{ name: "by-hand", kind: KINDS.includes(kind as ItemKind) ? (kind as ItemKind) : "appointment" }} />;
+  const { kind, test, back } = useLocalSearchParams<{ kind: string; test?: string; back?: string }>();
+  return <SoloScreen screen={{ name: "by-hand", kind: KINDS.includes(kind as ItemKind) ? (kind as ItemKind) : "appointment", test, back: back === "1" }} />;
 }

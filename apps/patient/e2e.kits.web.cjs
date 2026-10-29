@@ -62,6 +62,16 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localho
   ok((await byId('kit-when-amh').innerText()) === 'Any day', 'Any-day tests say so');
   await byId('kit-done-amh').click();
   ok(await byId('kit-done-amh').getByText('Done').count() === 1, 'Marks a test done');
+  // Add a result right from the test: the form opens with the test filled in, then comes back here.
+  await byId('kit-add-progesterone').click();
+  await byId('f-test').filter({ visible: true }).waitFor();
+  ok(await byId('f-test').filter({ visible: true }).inputValue() === 'Progesterone', 'Add result opens with the test name filled in');
+  await byId('f-value').filter({ visible: true }).fill('14.2'); await byId('f-unit').filter({ visible: true }).fill('ng/mL');
+  await byId('byhand-save').filter({ visible: true }).click();
+  await byId('kit-result-progesterone').filter({ visible: true }).waitFor({ timeout: 10000 });
+  ok(/14\.2 ng\/mL/.test(await byId('kit-result-progesterone').filter({ visible: true }).innerText()), 'Back on the test calendar, the result shows on its test');
+  ok(await byId('kit-done-progesterone').filter({ visible: true }).getByText('Done').count() === 1, 'A test with a result counts as done');
+  ok(await byId('kit-report-hsg').count() === 1, 'Tests without a number offer to add the report');
   await byId('kit-hide-semen').click();
   ok(await byId('kit-test-semen').count() === 0 && await sees('Not on your list: Semen analysis'), 'Hides a test that is not on her list');
   await byId('kit-unhide').click();

@@ -249,7 +249,7 @@ function UsefulThing({ a, set }: { a: FirstRunAnswers; set: (p: Partial<FirstRun
     );
     case "after_hard_result": return (
       <>
-        <Head title="We're so sorry" sub="You don't have to decide anything today." />
+        <Head title="Pumpkin will be gentle" sub="Whatever happened, you don't have to decide anything today." />
         <Card style={{ gap: 8 }} testID="fr-hard">
           <T style={{ fontSize: 15, lineHeight: 21 }}>Pumpkin will keep things quiet: no pregnancy content, no money nudges, no setup cards. Your follow-up visit and the people you choose stay close.</T>
         </Card>

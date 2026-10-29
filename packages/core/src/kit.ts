@@ -57,16 +57,17 @@ export const CONSULT_NEXT: [string, string, string][] = [
  * DRAFT: needs sign-off from the clinical reviewers before it shows outside demo builds.
  */
 export type TestWhen = { kind: "days"; from: number; to: number; label: string } | { kind: "luteal"; label: string } | { kind: "any"; label: string };
-export interface WorkupTest { id: string; name: string; measures: string; when: TestWhen; note?: string }
+/** `results`: the numbers she can enter for it (test name as labs print it, and Pumpkin's key for it). */
+export interface WorkupTest { id: string; name: string; measures: string; when: TestWhen; note?: string; results?: { test: string; key: string }[] }
 export const WORKUP_REVIEWED_BY: string | null = null;
 export const WORKUP_SOURCE = "Typical timing from the American Society for Reproductive Medicine (2021), UCSF Health and the World Health Organization (2021). Your clinic's own instructions come first.";
 export const WORKUP: WorkupTest[] = [
-  { id: "fsh", name: "FSH and estradiol blood test", measures: "Hormones that show how the ovaries respond at the start of a cycle.", when: { kind: "days", from: 2, to: 4, label: "Cycle day 2 to 4" } },
+  { id: "fsh", name: "FSH and estradiol blood test", measures: "Hormones that show how the ovaries respond at the start of a cycle.", when: { kind: "days", from: 2, to: 4, label: "Cycle day 2 to 4" }, results: [{ test: "FSH", key: "fsh" }, { test: "Estradiol", key: "estradiol" }] },
   { id: "afc", name: "Antral follicle count", measures: "An ultrasound that counts the small follicles on the ovaries.", when: { kind: "days", from: 2, to: 4, label: "Early in your cycle, often with the blood test" } },
   { id: "hsg", name: "HSG or saline ultrasound", measures: "Looks at the inside of the uterus, and with an HSG, whether the tubes are open.", when: { kind: "days", from: 6, to: 12, label: "After bleeding stops, before ovulation" }, note: "Your clinic gives the exact day." },
-  { id: "progesterone", name: "Progesterone blood test", measures: "Shows whether ovulation happened this cycle.", when: { kind: "luteal", label: "About a week before your next period" } },
-  { id: "amh", name: "AMH blood test", measures: "A hormone made by small follicles. It's one estimate of egg supply.", when: { kind: "any", label: "Any day" } },
-  { id: "blood", name: "Other blood work", measures: "Often thyroid, prolactin, blood type and infection screening.", when: { kind: "any", label: "Any day" } },
+  { id: "progesterone", name: "Progesterone blood test", measures: "Shows whether ovulation happened this cycle.", when: { kind: "luteal", label: "About a week before your next period" }, results: [{ test: "Progesterone", key: "progesterone" }] },
+  { id: "amh", name: "AMH blood test", measures: "A hormone made by small follicles. It's one estimate of egg supply.", when: { kind: "any", label: "Any day" }, results: [{ test: "AMH", key: "amh" }] },
+  { id: "blood", name: "Other blood work", measures: "Often thyroid, prolactin, blood type and infection screening.", when: { kind: "any", label: "Any day" }, results: [{ test: "TSH", key: "tsh" }, { test: "Prolactin", key: "prolactin" }] },
   { id: "carrier", name: "Genetic carrier screening", measures: "A blood or saliva test for genes that could be passed on to a child.", when: { kind: "any", label: "Any day" } },
   { id: "semen", name: "Semen analysis", measures: "Sperm count, movement and shape.", when: { kind: "any", label: "Any day" }, note: "If sperm is coming from a partner. The clinic says how many days to wait beforehand, usually 2 to 7." },
 ];

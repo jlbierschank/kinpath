@@ -11,7 +11,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useFocusEffect, useIsFocused, useRouter, type Href } from "expo-router";
 import { WebSheet } from "./websheet";
-import { ActivityIndicator, Image, Linking, Platform, Pressable, ScrollView, Share, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Animated, Image, Linking, Platform, Pressable, ScrollView, Share, Text, TextInput, useWindowDimensions, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
@@ -189,7 +189,7 @@ export function SignupFlow({ onSignedIn, onBack }: { onSignedIn: (u: SignedInUse
 // ---------- the app ----------
 
 type Tab = "today" | "record" | "add" | "costs" | "more";
-type Screen = { name: Tab } | { name: "check" } | { name: "urgent"; crisis: boolean } | { name: "say" } | { name: "type" } | { name: "by-hand"; kind: ItemKind } | { name: "original"; captureId: string; text?: string } | { name: "about" } | { name: "talk" } | { name: "alias" } | { name: "summary" } | { name: "people" } | { name: "feedback" } | { name: "edit-today" } | { name: "consult" } | { name: "tests" } | { name: "ob" };
+type Screen = { name: Tab } | { name: "check" } | { name: "urgent"; crisis: boolean } | { name: "say" } | { name: "type" } | { name: "by-hand"; kind: ItemKind; test?: string; back?: boolean } | { name: "original"; captureId: string; text?: string } | { name: "about" } | { name: "talk" } | { name: "alias" } | { name: "summary" } | { name: "people" } | { name: "feedback" } | { name: "edit-today" } | { name: "consult" } | { name: "tests" } | { name: "ob" };
 
 // ---------- the app shell: shared state, and one route per screen (Expo Router) ----------
 
@@ -209,7 +209,7 @@ export function hrefFor(s: Screen): Href {
   switch (s.name) {
     case "today": case "record": case "add": case "costs": case "more": return TAB_PATH[s.name] as Href;
     case "urgent": return { pathname: "/urgent", params: s.crisis ? { crisis: "1" } : {} } as Href;
-    case "by-hand": return `/by-hand/${s.kind}` as Href;
+    case "by-hand": return { pathname: "/by-hand/[kind]", params: { kind: s.kind, ...(s.test ? { test: s.test } : {}), ...(s.back ? { back: "1" } : {}) } } as Href;
     case "original": return { pathname: "/original/[id]", params: { id: s.captureId, ...(s.text ? { text: s.text } : {}) } } as Href;
     default: return `/${s.name}` as Href;
   }
@@ -275,15 +275,20 @@ function SoloEffects() {
     } else toToday();
   }), [api, load, toToday, setNotice]);
   const ready = today !== null;
-  useEffect(() => { if (!welcome || !ready) return; const t = setTimeout(() => setWelcome(false), 2600); return () => clearTimeout(t); }, [welcome, ready]);
+  // Let the drawing and the words settle (about 4.5 seconds), then fade into Today instead of cutting.
+  const fade = useRef(new Animated.Value(1)).current;
+  const leave = useCallback(() => { Animated.timing(fade, { toValue: 0, duration: 650, useNativeDriver: Platform.OS !== "web" }).start(() => setWelcome(false)); }, [fade]);
+  useEffect(() => { if (!welcome || !ready) return; const t = setTimeout(leave, 4500); return () => clearTimeout(t); }, [welcome, ready, leave]);
   if (!welcome || reduce || !today) return null;
   return (
-    <Pressable testID="welcome" accessibilityRole="button" accessibilityLabel="Welcome to Pumpkin. Tap to continue." onPress={() => setWelcome(false)}
-      style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: C.oat, alignItems: "center", justifyContent: "center", gap: 18, padding: 24, zIndex: 100 }}>
+    <Animated.View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, opacity: fade }}>
+    <Pressable testID="welcome" accessibilityRole="button" accessibilityLabel="Welcome to Pumpkin. Tap to continue." onPress={leave}
+      style={{ flex: 1, backgroundColor: C.oat, alignItems: "center", justifyContent: "center", gap: 18, padding: 24 }}>
       <DrawPumpkin size={150} />
       <RiseIn delay={900}><Today size={30}>{`Welcome, ${today.about.displayName}.`}</Today></RiseIn>
       <RiseIn delay={1200}><Muted style={{ fontSize: 15.5, textAlign: "center" }}>Your record is ready. It's yours to keep.</Muted></RiseIn>
     </Pressable>
+    </Animated.View>
   );
 }
 
@@ -294,13 +299,18 @@ function Notice() {
 }
 
 /** The top of the tabs (drawn once by the tab layout): the logo, a calm way to get help, and Add. */
-export function TabTop() {
+/** Pick a photo or PDF straight from the tap (browsers block pickers otherwise), then the Add sheet reads it. */
+function useReadPicked() {
   const { go } = useSoloNav();
   const { setNotice } = useSolo();
+  return (pick: () => Promise<CaptureInput | null>) => { void pick().then((input) => { if (input) { pendingCapture = input; go({ name: "add" }); } }).catch((e: Error) => setNotice(e.message)); };
+}
+
+export function TabTop() {
+  const { go } = useSoloNav();
   const narrow = useWindowDimensions().width < 370;
   const [menu, setMenu] = useState(false);
-  // Pickers must open straight from the tap (browsers block them otherwise); then the Add sheet reads it.
-  const read = (pick: () => Promise<CaptureInput | null>) => { void pick().then((input) => { if (input) { pendingCapture = input; go({ name: "add" }); } }).catch((e: Error) => setNotice(e.message)); };
+  const read = useReadPicked();
   const hand = (kind: ItemKind) => () => go({ name: "by-hand", kind });
   const sections: { title?: string; items: PlusItem[] }[] = [
     { title: "Pumpkin reads it for you", items: [
@@ -341,6 +351,7 @@ export function TabTop() {
 export function SoloScreen({ screen }: { screen: Screen }) {
   const { api, today, error, load, onSignOut, setNotice, layout: tl, prefs: tp } = useSolo();
   const { go, home, back, afterCapture } = useSoloNav();
+  const read = useReadPicked();
   const sheet = SHEETS.has(screen.name);
   const tab = screen.name === "today" || screen.name === "record" || screen.name === "costs" || screen.name === "more";
   // A plain function, not a component, so screens keep their state when Today reloads.
@@ -358,7 +369,7 @@ export function SoloScreen({ screen }: { screen: Screen }) {
       {screen.name === "type" && <TypeScreen api={api} done={afterCapture} />}
       {screen.name === "check" && <CheckScreen api={api} go={go} done={(n) => home(n)} />}
       {screen.name === "original" && <OriginalScreen api={api} captureId={screen.captureId} text={screen.text} />}
-      {screen.name === "by-hand" && <ByHandScreen api={api} kind={screen.kind} done={(msg) => home(msg, { name: screen.kind === "cost" ? "costs" : "record" })} />}
+      {screen.name === "by-hand" && <ByHandScreen api={api} kind={screen.kind} test={screen.test} done={(msg) => { if (screen.back) { void load(); back(); setNotice(msg); } else home(msg, { name: screen.kind === "cost" ? "costs" : "record" }); }} />}
       {screen.name === "record" && <RecordScreen api={api} d={today} go={go} reload={load} />}
       {screen.name === "costs" && <CostsScreen api={api} go={go} />}
       {screen.name === "more" && <MoreScreen api={api} profile={today.profile} reload={load} onSignOut={onSignOut} go={go} />}
@@ -370,7 +381,7 @@ export function SoloScreen({ screen }: { screen: Screen }) {
       {screen.name === "feedback" && <FeedbackScreen api={api} done={(m) => home(m, { name: "more" })} />}
       {screen.name === "consult" && <ConsultKitScreen api={api} initial={today.kit} reload={() => void load()} openTests={() => go({ name: "tests" })} openRecord={() => go({ name: "record" })}
         onUrgent={(crisis) => go({ name: "urgent", crisis })} onCapture={async (text) => { try { afterCapture(await api.capture({ kind: "text", text })); } catch (e) { setNotice((e as Error).message); } }} />}
-      {screen.name === "tests" && <TestCalendarScreen api={api} initial={today.kit} reload={() => void load()} />}
+      {screen.name === "tests" && <TestCalendarScreen api={api} initial={today.kit} reload={() => void load()} addResult={(test) => go({ name: "by-hand", kind: "result", test, back: true })} addReport={() => read(() => pickPhoto(false))} />}
       {screen.name === "ob" && <ObHandoffScreen api={api} initial={today.kit} reload={() => void load()} notice={setNotice} />}
       {screen.name === "urgent" && <Urgent profile={today.profile} crisis={screen.crisis} back={() => home()} api={api} reload={load} />}
     </>
@@ -1251,8 +1262,8 @@ const BLANK: Record<ItemKind, Record<string, unknown>> = {
   cost: { type: "charge", description: "", amount: "", date: "", dueOn: "" },
   question: { text: "" },
 };
-function ByHandScreen({ api, kind, done }: { api: Api; kind: ItemKind; done: (msg: string) => void }) {
-  const [data, setData] = useState<Record<string, unknown>>(BLANK[kind]);
+function ByHandScreen({ api, kind, test, done }: { api: Api; kind: ItemKind; test?: string; done: (msg: string) => void }) {
+  const [data, setData] = useState<Record<string, unknown>>(() => ({ ...BLANK[kind], ...(kind === "result" && test ? { test } : {}) }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
