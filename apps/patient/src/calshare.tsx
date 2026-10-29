@@ -33,6 +33,7 @@ export function CalendarShareCard({ api, testID = "calshare" }: { api: Api; test
         <View style={{ gap: 8, backgroundColor: C.softLav, borderRadius: 14, padding: 12 }}>
           <T style={{ fontFamily: F.sans600, fontSize: 15 }}>{`Send this link to ${made.label}`}</T>
           <Text testID={`${testID}-url`} selectable numberOfLines={2} style={{ fontFamily: F.sans500, fontSize: 13.5, color: C.lavInk }}>{made.url}</Text>
+          {copied ? <T style={{ fontSize: 13, fontFamily: F.sans600, color: C.sageInk }}>Copied.</T> : null}
           <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
             <Button kind="line" label={copied ? "Copied" : "Copy link"} onPress={async () => { await Clipboard.setStringAsync(made.url); setCopied(true); }} />
             <Button testID={`${testID}-send`} kind="line" label={Platform.OS === "web" ? "Text or email it" : "Send it"} onPress={() => {

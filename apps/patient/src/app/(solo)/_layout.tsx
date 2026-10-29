@@ -3,7 +3,7 @@ import { Redirect, Stack } from "expo-router";
 import type { ComponentProps } from "react";
 import { useWho } from "../../../App";
 import { SoloProvider } from "../../solo";
-import { C } from "../../ui";
+import { C, useTheme } from "../../ui";
 
 /** Adding things opens as a sheet: the system's on iPhone and Android, Pumpkin's own on the web. */
 type Options = NonNullable<ComponentProps<typeof Stack.Screen>["options"]>;
@@ -12,6 +12,7 @@ const SHEET: Options = Platform.OS === "web"
   : { presentation: "formSheet", sheetAllowedDetents: [0.75, 1], sheetGrabberVisible: true, sheetCornerRadius: 22, contentStyle: { backgroundColor: C.oat } };
 
 export default function SoloLayout() {
+  useTheme();
   const { who, api, signOut } = useWho();
   if (!who || !api || who.partner || who.space !== "personal") return <Redirect href="/" />;
   return (

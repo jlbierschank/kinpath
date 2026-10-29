@@ -346,10 +346,10 @@ export function SummaryScreen({ api }: { api: Api }) {
 
 // ---------- ideas for her next visit ----------
 
-export function QuestionIdeas({ api, added }: { api: Api; added: () => void }) {
-  const [ideas, setIdeas] = useState<string[]>([]);
+export function QuestionIdeas({ api, added, initial }: { api: Api; added: () => void; initial?: string[] }) {
+  const [ideas, setIdeas] = useState<string[]>(initial ?? []);
   const load = useCallback(() => { api.questionIdeas().then(setIdeas).catch(() => {}); }, [api]);
-  useEffect(load, [load]);
+  useEffect(() => { if (initial) setIdeas(initial); else load(); }, [initial, load]);
   if (!ideas.length) return null;
   return (
     <View testID="question-ideas" style={{ gap: 8 }}>

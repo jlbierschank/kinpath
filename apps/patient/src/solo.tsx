@@ -22,7 +22,7 @@ import { Api, auth, type CaptureInput, type ItemKind, type PendingItem, type Ref
 import { askPermission, onDoseAction, reminderPermission, remindersSupported, sendTestReminder, snoozeDose, syncReminders, type ReminderPermission } from "./reminders";
 import { SwipeRow, tick } from "./swipe";
 import { deviceName, loadPref, savePref } from "./session";
-import { AppearanceCard, Button, C, ChoiceList, isDark, Cap, Card, Logo, Chip, Chips, F, H1, Icon, Muted, Pill, st, T, Today, Toggle } from "./ui";
+import { AppearanceCard, useTheme, Button, C, ChoiceList, isDark, Cap, Card, Logo, Chip, Chips, F, H1, Icon, Muted, Pill, st, T, Today, Toggle } from "./ui";
 import { Field } from "./field";
 import { applyFirstRun, FirstRun, STAGES, type FirstRunAnswers } from "./firstrun";
 import { DateField, niceDate, niceTime, TimeField, TimesField } from "./datefield";
@@ -307,6 +307,7 @@ function useReadPicked() {
 }
 
 export function TabTop() {
+  useTheme();
   const { go } = useSoloNav();
   const narrow = useWindowDimensions().width < 370;
   const [menu, setMenu] = useState(false);
@@ -339,6 +340,7 @@ export function TabTop() {
 
 /** One screen of the on-your-own app, rendered by its route file. */
 export function SoloScreen({ screen }: { screen: Screen }) {
+  useTheme(); // screens stay mounted in the background, so each one repaints when light or dark changes
   const { api, today, error, load, onSignOut, setNotice, layout: tl, prefs: tp } = useSolo();
   const { go, home, back, afterCapture } = useSoloNav();
   const read = useReadPicked();
@@ -1011,15 +1013,16 @@ type SpeechRec = {
   interimResults: boolean; continuous: boolean; lang: string;
 };
 const IOS_WEB = Platform.OS === "web" && typeof navigator !== "undefined" && /iPhone|iPad|iPod/.test(navigator.userAgent);
+/** iPhone, iPad or Mac in a browser: webcal links open the Calendar app. */
+const APPLE_WEB = Platform.OS === "web" && typeof navigator !== "undefined" && /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
 /**
- * The browser's speech recognition, where it works well. Not in an iPhone home-screen web app,
- * where Safari's version can hang after the microphone prompt; the keyboard's microphone works there.
+ * The browser's speech recognition (Safari and Chrome, including the home-screen app). If it never starts,
+ * a watchdog lets go after 8 seconds; if the browser refuses it, the keyboard's microphone is offered.
+ * The phone app uses the keyboard's microphone until native speech is added with the App Store build.
  */
 function speech(): (new () => SpeechRec) | null {
   if (Platform.OS !== "web") return null;
   const w = globalThis as unknown as { SpeechRecognition?: new () => SpeechRec; webkitSpeechRecognition?: new () => SpeechRec; navigator?: { standalone?: boolean }; matchMedia?: (q: string) => { matches: boolean } };
-  const standalone = w.navigator?.standalone === true || !!w.matchMedia?.("(display-mode: standalone)").matches;
-  if (standalone && IOS_WEB) return null;
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 const SPEECH_ERRORS: Record<string, string> = {
@@ -1029,6 +1032,32 @@ const SPEECH_ERRORS: Record<string, string> = {
   "audio-capture": "We couldn't find a microphone. Use the microphone on your keyboard instead.",
   "network": "Speech needs an internet connection. Use the microphone on your keyboard instead.",
 };
+
+const MicGlyph = ({ size = 30, color }: { size?: number; color: string }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden importantForAccessibility="no">
+    <Path d="M12 3.5a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0v-5a3 3 0 0 1 3-3z" fill={color} />
+    <Path d="M6.5 11.5a5.5 5.5 0 0 0 11 0M12 17v3.5M9 20.5h6" stroke={color} strokeWidth={1.9} fill="none" strokeLinecap="round" />
+  </Svg>
+);
+/** The big round record button: espresso to start, lavender with a soft pulse while listening. */
+function MicButton({ listening, onPress }: { listening: boolean; onPress: () => void }) {
+  const reduce = useReduceMotion();
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!listening || reduce) { pulse.setValue(0); return; }
+    const loop = Animated.loop(Animated.sequence([Animated.timing(pulse, { toValue: 1, duration: 900, useNativeDriver: Platform.OS !== "web" }), Animated.timing(pulse, { toValue: 0, duration: 900, useNativeDriver: Platform.OS !== "web" })]));
+    loop.start(); return () => loop.stop();
+  }, [listening, reduce, pulse]);
+  return (
+    <View style={{ width: 112, height: 112, alignItems: "center", justifyContent: "center" }}>
+      {listening ? <Animated.View style={{ position: "absolute", width: 112, height: 112, borderRadius: 56, backgroundColor: C.lav, opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.8] }), transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }) }] }} /> : null}
+      <Pressable testID="say-start" accessibilityRole="button" accessibilityLabel={listening ? "Stop listening" : "Start talking"} onPress={onPress}
+        style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: listening ? C.lavInk : C.fill, alignItems: "center", justifyContent: "center" }}>
+        {listening ? <View style={{ width: 26, height: 26, borderRadius: 6, backgroundColor: C.lav }} /> : <MicGlyph size={34} color={C.onFill} />}
+      </Pressable>
+    </View>
+  );
+}
 
 function SayScreen({ api, done }: { api: Api; done: (r: { status: string; urgent: "urgent" | "crisis" | null; items: number; problem: string | null }) => void }) {
   const [text, setText] = useState("");
@@ -1072,9 +1101,19 @@ function SayScreen({ api, done }: { api: Api; done: (r: { status: string; urgent
   return (
     <>
       <Today size={34}>Say it</Today>
-      <Muted style={{ fontSize: 15 }}>{Rec ? "Tap Start talking and say it like you'd tell a friend. One thing per sentence works best." : "Tap the microphone on your keyboard and talk. One thing per sentence works best."}</Muted>
+      <Muted style={{ fontSize: 15 }}>Say it like you'd tell a friend. One thing per sentence works best.</Muted>
+      {Rec ? (
+        <View style={{ alignItems: "center", gap: 10, paddingVertical: 8 }}>
+          <MicButton listening={listening} onPress={() => (listening ? stop() : listen())} />
+          <T testID="say-status" style={{ fontFamily: F.sans600, fontSize: 15, color: listening ? C.lavInk : C.ink }}>{listening ? "Listening. Tap to stop." : "Tap to talk"}</T>
+        </View>
+      ) : (
+        <View testID="say-keyboard" style={{ flexDirection: "row", gap: 12, alignItems: "center", backgroundColor: C.softLav, borderRadius: 16, padding: 14 }}>
+          <MicGlyph size={26} color={C.lavInk} />
+          <T style={{ flex: 1, fontSize: 15, color: C.lavInk }}>Tap the box below, then the microphone on your keyboard, and talk.</T>
+        </View>
+      )}
       <Card style={{ gap: 10 }}>
-        {Rec ? <Button testID="say-start" kind={listening ? "line" : "esp"} label={listening ? "Stop" : "Start talking"} onPress={() => (listening ? stop() : listen())} /> : null}
         <TextInput testID="say-text" value={text} onChangeText={setText} multiline placeholder={"Menopur 75 units at 8 pm starting tomorrow.\nBlood work Thursday at 7:30 am."} placeholderTextColor={C.stone} style={[st.input, { minHeight: 140, fontSize: 16, borderColor: C.espresso }]} />
         {error ? <T style={{ color: C.red }}>{error}</T> : null}
         <Button testID="say-send" label={busy ? "Reading…" : "Sort it out"} disabled={busy || !text.trim()} onPress={async () => { stop(); setBusy(true); setError(null); try { done(await api.capture({ kind: "voice", text })); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }} />
@@ -1369,7 +1408,9 @@ function RecordScreen({ api, d, go, reload }: { api: Api; d: SoloToday; go: (s: 
   const [meds, setMeds] = useState<SoloMed[] | null>(null);
   const [results, setResults] = useState<ResultGroup[] | null>(null);
   const [questions, setQuestions] = useState<{ id: string; question: string; asked: boolean }[]>([]);
-  const load = useCallback(async () => { const [m, r, q] = await Promise.all([api.soloMeds(), api.soloResults(), api.questions()]); setMeds(m); setResults(r); setQuestions(q); }, [api]);
+  const [ideas, setIdeas] = useState<string[] | null>(null);
+  // Ideas load with everything else, so the page doesn't jump when they arrive.
+  const load = useCallback(async () => { const [m, r, q, i] = await Promise.all([api.soloMeds(), api.soloResults(), api.questions(), api.questionIdeas().catch(() => [] as string[])]); setMeds(m); setResults(r); setQuestions(q); setIdeas(i); }, [api]);
   // Tabs stay open in the background, so refresh whenever she comes back to this one.
   useFocusEffect(useCallback(() => { void load(); }, [load]));
   const after = useCallback(() => { void load(); void reload(); }, [load, reload]);
@@ -1384,7 +1425,7 @@ function RecordScreen({ api, d, go, reload }: { api: Api; d: SoloToday; go: (s: 
       {children}
     </View>
   );
-  if (!meds || !results) return <ActivityIndicator color={C.espresso} />;
+  if (!meds || !results || !ideas) return <ActivityIndicator color={C.espresso} />;
   return (
     <>
       <Today size={36}>Your record</Today>
@@ -1429,7 +1470,7 @@ function RecordScreen({ api, d, go, reload }: { api: Api; d: SoloToday; go: (s: 
             <T style={{ flex: 1, fontSize: 15, textDecorationLine: q.asked ? "line-through" : "none", color: q.asked ? C.stone : C.ink }}>{q.question}</T>
           </Pressable>
         ))}</Card> : <Muted style={{ fontSize: 15 }}>Write questions down when you think of them. Tick them off at your visit.</Muted>}
-        <QuestionIdeas api={api} added={() => void load()} />
+        <QuestionIdeas api={api} initial={ideas ?? []} added={() => void load()} />
         <Button testID="open-summary" kind="line" label="My visit summary" onPress={() => go({ name: "summary" })} />
       </Section>
     </>
@@ -1486,6 +1527,7 @@ function MoreScreen({ api, profile, reload, onSignOut, go }: { api: Api; profile
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [cal, setCal] = useState<{ url: string; webcal: string } | null>(null);
+  const [calCopied, setCalCopied] = useState<boolean | null>(false); // null: the browser blocked copying
   const [detail, setDetail] = useState(profile.calendarDetail);
   const [confirm, setConfirm] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -1523,8 +1565,13 @@ function MoreScreen({ api, profile, reload, onSignOut, go }: { api: Api; profile
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}><T style={{ fontSize: 15 }}>Show what each visit is for</T><Toggle value={detail} onChange={setDetail} /></View>
         <Button testID="calendar-link" kind="esp" label={profile.calendarOn ? "Make a new calendar link" : "Get my calendar link"} onPress={() => act(async () => setCal(await api.calendarLink(detail)), "Your calendar link is ready. Any older link stopped working.")} />
         {cal ? <>
-          <Button kind="line" label="Add to my calendar" onPress={() => Linking.openURL(Platform.OS === "web" ? cal.url : cal.webcal)} />
-          <Pressable onPress={() => Clipboard.setStringAsync(cal.url)} style={{ backgroundColor: C.oat, borderRadius: 12, padding: 12 }}><T testID="calendar-url" style={{ fontSize: 13 }} numberOfLines={2}>{cal.url}</T><Muted style={{ fontSize: 13 }}>Tap to copy. Keep this link private.</Muted></Pressable>
+          {/* webcal: opens the phone's Calendar app to subscribe (iPhone, Mac, and Outlook); a plain https link would only download a file. */}
+          <Button testID="calendar-subscribe" kind="esp" label="Add to my calendar" onPress={() => { void Linking.openURL(Platform.OS === "web" && !APPLE_WEB ? cal.url : cal.webcal).catch(() => {}); }} />
+          <Pressable testID="calendar-copy" accessibilityRole="button" onPress={async () => { const ok = await Clipboard.setStringAsync(cal.url).then(() => true, () => false); setCalCopied(ok ? true : null); setTimeout(() => setCalCopied(false), 4000); }} style={{ backgroundColor: C.oat, borderRadius: 12, padding: 12, minHeight: 44 }}>
+            <Text testID="calendar-url" selectable style={{ fontSize: 13, fontFamily: F.sans, color: C.ink }} numberOfLines={calCopied === null ? undefined : 2}>{cal.url}</Text>
+            <T style={{ fontSize: 13, fontFamily: F.sans600, color: calCopied ? C.sageInk : C.lavInk }}>{calCopied ? "Copied. Paste it into your calendar app to subscribe." : calCopied === null ? "Press and hold the link to copy it." : "Copy link"}</T>
+          </Pressable>
+          <Muted style={{ fontSize: 13 }}>Keep this link private. On Google Calendar: Other calendars, then From URL, then paste it.</Muted>
         </> : null}
         {profile.calendarOn ? <Pressable onPress={() => act(() => api.calendarOff(), "Calendar link turned off.")}><Muted style={{ textDecorationLine: "underline" }}>Turn off my calendar link</Muted></Pressable> : null}
       </Card>

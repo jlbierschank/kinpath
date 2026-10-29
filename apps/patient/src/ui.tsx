@@ -262,8 +262,11 @@ export const st: ReturnType<typeof makeStyles> = { ...makeStyles() };
 
 /** On/off switch in the app's colors. activeThumbColor is the web equivalent of thumbColor when on. */
 export function Toggle({ value, onChange, disabled, testID }: { value: boolean; onChange: (v: boolean) => void; disabled?: boolean; testID?: string }) {
-  const web = { activeThumbColor: C.paper, activeTrackColor: C.espresso } as unknown as SwitchProps;
-  return <Switch testID={testID} value={value} disabled={disabled} onValueChange={onChange} thumbColor={C.paper} trackColor={{ true: C.espresso, false: C.line }} ios_backgroundColor={C.line} {...web} />;
+  // A light thumb on a clearly visible track, in light and dark: off is tan, on is espresso (lavender in dark).
+  const dark = current === "dark";
+  const on = dark ? C.lavInk : C.espresso, thumbOn = dark ? "#1B1512" : "#FFFFFF", thumbOff = "#FFFFFF";
+  const web = { activeThumbColor: thumbOn, activeTrackColor: on, thumbColor: value ? thumbOn : thumbOff } as unknown as SwitchProps;
+  return <Switch testID={testID} value={value} disabled={disabled} onValueChange={onChange} thumbColor={value ? thumbOn : thumbOff} trackColor={{ true: on, false: C.tan }} ios_backgroundColor={C.tan} {...web} />;
 }
 
 /** The Pumpkin logo (color mark plus lowercase wordmark), from the design system. Minimum width 96. */

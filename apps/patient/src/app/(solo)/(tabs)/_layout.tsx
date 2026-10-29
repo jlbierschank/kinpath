@@ -2,10 +2,11 @@ import { NativeTabs } from "expo-router/native-tabs";
 import { TabTop, useSolo } from "../../../solo";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { View } from "react-native";
-import { C } from "../../../ui";
+import { C, useTheme } from "../../../ui";
 
 /** The system tab bar on iPhone and Android: icons, labels, and a count of things waiting to check. */
 export default function TabsLayout() {
+  useTheme();
   const { today } = useSolo();
   const waiting = today?.toCheck ?? 0;
   return (

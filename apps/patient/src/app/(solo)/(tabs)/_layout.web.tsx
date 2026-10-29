@@ -3,7 +3,7 @@ import { Platform, Pressable, Text, View } from "react-native";
 import { Tabs } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { TabTop, useSolo } from "../../../solo";
-import { C, F, Icon, isDark } from "../../../ui";
+import { C, useTheme, F, Icon, isDark } from "../../../ui";
 import type { IconName } from "../../../icons";
 
 const TABS: { name: string; label: string; icon: IconName | "you"; testID: string }[] = [
@@ -19,6 +19,7 @@ const TABS: { name: string; label: string; icon: IconName | "you"; testID: strin
  * phone asks for less transparency.
  */
 export default function TabsLayout() {
+  useTheme();
   const { today } = useSolo();
   const waiting = today?.toCheck ?? 0;
   const initial = (today?.about.displayName ?? today?.profile.firstName ?? "").trim().charAt(0).toUpperCase();
