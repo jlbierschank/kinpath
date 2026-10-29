@@ -11,7 +11,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useFocusEffect, useIsFocused, useRouter, type Href } from "expo-router";
 import { WebSheet } from "./websheet";
-import { ActivityIndicator, Animated, Image, Linking, Platform, Pressable, ScrollView, Share, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Alert, Animated, Image, Linking, Platform, Pressable, ScrollView, Share, Text, TextInput, useWindowDimensions, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
@@ -311,24 +311,14 @@ export function TabTop() {
   const narrow = useWindowDimensions().width < 370;
   const [menu, setMenu] = useState(false);
   const read = useReadPicked();
-  const hand = (kind: ItemKind) => () => go({ name: "by-hand", kind });
-  const sections: { title?: string; items: PlusItem[] }[] = [
-    { title: "Pumpkin reads it for you", items: [
-      { id: "camera", label: "Camera", icon: "camera", tint: [C.clay, C.clayInk], onPress: () => read(() => pickPhoto(true)) },
-      { id: "photos", label: "Photos", icon: "photo", tint: [C.lav, C.lavInk], onPress: () => read(() => pickPhoto(false)) },
-      { id: "pdf", label: "PDF", icon: "doc", tint: [C.sage, C.sageInk], onPress: () => read(pickPdf) },
-      { id: "say", label: "Say it", icon: "message", tint: [C.softLav, C.lavInk], onPress: () => go({ name: "say" }) },
-      { id: "type", label: "Type it", icon: "pen", tint: [C.oat, C.espresso], onPress: () => go({ name: "type" }) },
-    ] },
-    { title: "Add it yourself", items: [
-      { id: "medication", label: "Medication", icon: "medication", tint: [C.lav, C.lavInk], onPress: hand("medication") },
-      { id: "appointment", label: "Appointment", icon: "calendar", tint: [C.sage, C.sageInk], onPress: hand("appointment") },
-      { id: "result", label: "Test result", icon: "lab", tint: [C.softLav, C.lavInk], onPress: hand("result") },
-      { id: "cost", label: "Cost", icon: "wallet", tint: [C.clay, C.clayInk], onPress: hand("cost") },
-      { id: "question", label: "Question", icon: "message", tint: [C.oat, C.espresso], onPress: hand("question") },
-    ] },
-    { items: [{ id: "more", label: "More ways to add", icon: "sliders", tint: [C.oat, C.stone], onPress: () => go({ name: "add" }) }] },
-  ];
+  // Four ways in. Pumpkin sorts what she sends into meds, results, visits and costs, and she checks it.
+  const sections: { title?: string; items: PlusItem[] }[] = [{ items: [
+    { id: "camera", label: "Camera", sub: "A paper, a label or a bottle", icon: "camera", tint: [C.clay, C.clayInk], onPress: () => read(() => pickPhoto(true)) },
+    { id: "upload", label: "Upload it", sub: "From your photos or files", icon: "photo", tint: [C.lav, C.lavInk], onPress: () => read(pickUpload) },
+    { id: "say", label: "Say it", sub: "Tell Pumpkin out loud", icon: "message", tint: [C.sage, C.sageInk], onPress: () => go({ name: "say" }) },
+    { id: "type", label: "Type it", sub: "A quick note, or fill in the details", icon: "pen", tint: [C.oat, C.espresso], onPress: () => go({ name: "type" }) },
+  ] }];
+
   return (
     <View style={{ paddingHorizontal: 18, paddingTop: 12, paddingBottom: 4, flexDirection: "row", justifyContent: "space-between", alignItems: "center", width: "100%", maxWidth: 480, alignSelf: "center" }}>
       <Logo width={narrow ? 100 : 124} />
@@ -366,7 +356,7 @@ export function SoloScreen({ screen }: { screen: Screen }) {
       {screen.name === "edit-today" && <EditTodayScreen stage={today.profile.stage} layout={tl.layout} save={tl.save} done={() => home("Today is set up your way.")} />}
       {screen.name === "add" && <AddScreen api={api} profile={today.profile} go={go} done={afterCapture} />}
       {screen.name === "say" && <SayScreen api={api} done={afterCapture} />}
-      {screen.name === "type" && <TypeScreen api={api} done={afterCapture} />}
+      {screen.name === "type" && <TypeScreen api={api} done={afterCapture} go={go} />}
       {screen.name === "check" && <CheckScreen api={api} go={go} done={(n) => home(n)} />}
       {screen.name === "original" && <OriginalScreen api={api} captureId={screen.captureId} text={screen.text} />}
       {screen.name === "by-hand" && <ByHandScreen api={api} kind={screen.kind} test={screen.test} done={(msg) => { if (screen.back) { void load(); back(); setNotice(msg); } else home(msg, { name: screen.kind === "cost" ? "costs" : "record" }); }} />}
@@ -911,6 +901,27 @@ export async function pickPhoto(camera: boolean): Promise<CaptureInput | null> {
   const mime = a.mimeType && a.mimeType !== "image/heic" ? a.mimeType : "image/jpeg";
   return { kind: "photo", mime, base64, filename: a.fileName ?? "Photo" };
 }
+/**
+ * Upload it: a photo or a file. In a browser, one picker (the phone offers Photo Library, Take Photo
+ * or Choose File itself). In the app, she picks Photos or Files first.
+ */
+export async function pickUpload(): Promise<CaptureInput | null> {
+  if (Platform.OS === "web") {
+    const r = await DocumentPicker.getDocumentAsync({ type: ["image/*", "application/pdf"], copyToCacheDirectory: true, multiple: false });
+    if (r.canceled || !r.assets[0]) return null;
+    const a = r.assets[0];
+    const pdf = a.mimeType === "application/pdf" || /\.pdf$/i.test(a.name);
+    return { kind: pdf ? "pdf" : "photo", mime: pdf ? "application/pdf" : a.mimeType && a.mimeType !== "image/heic" ? a.mimeType : "image/jpeg", base64: await blobToBase64(a.uri), filename: a.name };
+  }
+  const from = await new Promise<"photos" | "files" | null>((resolve) => {
+    Alert.alert("Upload from", undefined, [
+      { text: "Photos", onPress: () => resolve("photos") },
+      { text: "Files", onPress: () => resolve("files") },
+      { text: "Cancel", style: "cancel", onPress: () => resolve(null) },
+    ], { cancelable: true, onDismiss: () => resolve(null) });
+  });
+  return from === "photos" ? pickPhoto(false) : from === "files" ? pickPdf() : null;
+}
 export async function pickPdf(): Promise<CaptureInput | null> {
   const r = await DocumentPicker.getDocumentAsync({ type: ["application/pdf"], copyToCacheDirectory: true, multiple: false });
   if (r.canceled || !r.assets[0]) return null;
@@ -1072,19 +1083,28 @@ function SayScreen({ api, done }: { api: Api; done: (r: { status: string; urgent
   );
 }
 
-function TypeScreen({ api, done }: { api: Api; done: (r: { status: string; urgent: "urgent" | "crisis" | null; items: number; problem: string | null }) => void }) {
+function TypeScreen({ api, done, go }: { go: (s: Screen) => void; api: Api; done: (r: { status: string; urgent: "urgent" | "crisis" | null; items: number; problem: string | null }) => void }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
     <>
       <Today size={34}>Type it</Today>
-      <Muted style={{ fontSize: 15 }}>Meds, a number from your portal, a visit, a payment, or a question for your next appointment.</Muted>
+      <Muted style={{ fontSize: 15 }}>Write it how you'd say it. Pumpkin sorts it into meds, results, visits and costs, and you check it.</Muted>
       <Card style={{ gap: 10 }}>
         <TextInput testID="type-text" value={text} onChangeText={setText} multiline placeholder={"Estradiol 612 pg/mL today\n$1,790 due Nov 1\nCan I keep running during stims?"} placeholderTextColor={C.stone} style={[st.input, { minHeight: 140, fontSize: 16, borderColor: C.espresso }]} />
         {error ? <T style={{ color: C.red }}>{error}</T> : null}
         <Button testID="type-send" label={busy ? "Reading…" : "Sort it out"} disabled={busy || !text.trim()} onPress={async () => { setBusy(true); setError(null); try { done(await api.capture({ kind: "text", text })); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }} />
       </Card>
+      <View testID="type-forms" style={{ gap: 8 }}>
+        <T style={{ fontFamily: F.sans600, fontSize: 15 }}>Or fill in the details</T>
+        <Chips>
+          {([["medication", "Medication"], ["appointment", "Appointment"], ["result", "Test result"], ["cost", "Cost"], ["question", "Question"]] as [ItemKind, string][]).map(([k, label]) => (
+            <Chip key={k} testID={`add-hand-${k}`} label={label} onPress={() => go({ name: "by-hand", kind: k })} />
+          ))}
+        </Chips>
+      </View>
+      <Pressable testID="type-more" onPress={() => go({ name: "add" })} style={{ minHeight: 44, justifyContent: "center", alignSelf: "flex-start" }}><T style={{ color: C.lavInk, fontFamily: F.sans600 }}>Forward an email instead</T></Pressable>
     </>
   );
 }

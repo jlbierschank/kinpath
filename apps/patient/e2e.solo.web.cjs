@@ -39,7 +39,7 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localho
   await shot('solo-3-added');
 
   // Add a sample lab report.
-  await byId('solo-tab-add').click(); await byId('menu-more').click();
+  await byId('solo-tab-add').click(); await byId('menu-type').click(); await byId('type-more').filter({ visible: true }).click();
   await byId('sample-lab-report').click();
   await byId('item-result').first().waitFor({ timeout: 15000 });
   ok(await byId('item-result').count() === 3, 'Sample lab report read into 3 results');

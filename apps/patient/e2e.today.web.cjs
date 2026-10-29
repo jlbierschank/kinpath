@@ -54,7 +54,7 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localho
   await p.screenshot({ path: D + 'today-2-refill.png', fullPage: true });
 
   // A meds calendar becomes the whole schedule to check.
-  await byId('solo-tab-add').click(); await byId('menu-more').click();
+  await byId('solo-tab-add').click(); await byId('menu-type').click(); await byId('type-more').filter({ visible: true }).click();
   await byId('sample-protocol-calendar').click();
   await byId('schedule-summary').waitFor({ timeout: 15000 });
   ok(/\d+ medication steps/.test(await byId('schedule-summary').innerText()), 'Schedule overview of every step');

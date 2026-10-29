@@ -10,7 +10,7 @@ import { C, F, Icon, isDark } from "./ui";
 import type { IconName } from "./icons";
 import { useReduceMotion } from "./motion";
 
-export type PlusItem = { id: string; label: string; icon: IconName | "camera" | "photo"; tint: [string, string]; onPress: () => void };
+export type PlusItem = { id: string; label: string; sub?: string; icon: IconName | "camera" | "photo"; tint: [string, string]; onPress: () => void };
 
 const CameraGlyph = ({ color }: { color: string }) => (
   <Svg width={22} height={22} viewBox="0 0 24 24"><Path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2.2l1.4-2h5.8l1.4 2h2.2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5z" stroke={color} strokeWidth={1.9} fill="none" strokeLinejoin="round" /><Circle cx={12} cy={13} r={3.4} stroke={color} strokeWidth={1.9} fill="none" /><Rect x={16.6} y={9.3} width={1.4} height={1.4} rx={0.7} fill={color} /></Svg>
@@ -42,7 +42,10 @@ export function PlusMenu({ open, onClose, sections }: { open: boolean; onClose: 
       <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: it.tint[0], alignItems: "center", justifyContent: "center" }}>
         {it.icon === "camera" ? <CameraGlyph color={it.tint[1]} /> : it.icon === "photo" ? <PhotoGlyph color={it.tint[1]} /> : <Icon name={it.icon} size={22} color={it.tint[1]} />}
       </View>
-      <Text maxFontSizeMultiplier={1.6} style={{ fontFamily: F.sans500, fontSize: 17, color: C.ink, flex: 1 }}>{it.label}</Text>
+      <View style={{ flex: 1, paddingVertical: 8 }}>
+        <Text maxFontSizeMultiplier={1.6} style={{ fontFamily: F.sans500, fontSize: 17, color: C.ink }}>{it.label}</Text>
+        {it.sub ? <Text maxFontSizeMultiplier={1.6} style={{ fontFamily: F.sans, fontSize: 13, color: C.stone }}>{it.sub}</Text> : null}
+      </View>
     </Pressable>
   );
   return (
