@@ -58,7 +58,8 @@ function Frame({ children, top, tabs, inTabs }: { children: ReactNode; top?: Rea
       <StatusBar style={isDark() ? "light" : "dark"} />
       <View style={{ flex: 1, width: "100%", maxWidth: 480, alignSelf: "center" }}>
         {top}
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 28, gap: 14 }} keyboardShouldPersistTaps="handled"><TestBanner />{children}</ScrollView>
+        {/* In the tabs, the floating tab bar sits over the bottom, so leave room for it on the web. */}
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: inTabs && Platform.OS === "web" ? 120 : 28, gap: 14 }} keyboardShouldPersistTaps="handled"><TestBanner />{children}</ScrollView>
         {tabs}
       </View>
     </SafeAreaView>
