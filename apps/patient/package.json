@@ -10,6 +10,7 @@
     "@kinpath/core": "workspace:*",
     "@react-native-community/datetimepicker": "9.2.1",
     "expo": "~58.0.19",
+    "expo-calendar": "~58.0.6",
     "expo-clipboard": "~58.0.4",
     "expo-constants": "~58.0.13",
     "expo-document-picker": "~58.0.4",

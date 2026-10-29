@@ -8,7 +8,13 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "ai.thepumpkin.dev.patient"
+      "bundleIdentifier": "ai.thepumpkin.dev.patient",
+      "entitlements": {
+        "com.apple.developer.usernotifications.time-sensitive": true
+      },
+      "infoPlist": {
+        "NSCalendarsWriteOnlyAccessUsageDescription": "Pumpkin adds the visits you choose to your calendar."
+      }
     },
     "android": {
       "adaptiveIcon": {

@@ -32,6 +32,7 @@ import { TestBanner } from "./appinfo";
 import { CalendarShareCard } from "./calshare";
 import { AppLockSetting } from "./privacy";
 import { ItemAction, useUndo } from "./undo";
+import { addVisitToCalendar, nativeCalendar } from "./nativecal";
 import { ConsultKitScreen, nextTest, obDue, ObHandoffScreen, TestCalendarScreen, testCalendarOn } from "./kits";
 import { CONSULT_BRING, OB_RECORDS } from "@kinpath/core";
 import { BrushSketch, DrawCheck, DrawPumpkin, PulseOnce, RiseIn, useReduceMotion } from "./motion";
@@ -1349,7 +1350,10 @@ function RecordScreen({ api, d, go, reload }: { api: Api; d: SoloToday; go: (s: 
       <Section icon="calendar" title="Visits" add="appointment">
         {d.appointments.length ? d.appointments.filter((a) => !undo.hidden(a.id)).map((a) => (
           <View key={a.id} style={[st.card, { padding: 14 }]}><T style={{ fontFamily: F.sans600, fontSize: 15.5 }}>{a.title}</T><Muted style={{ fontSize: 14 }}>{`${when(a.startsAt)}${a.location ? ` · ${a.location}` : ""}`}</Muted>
-            {a.mine ? <ItemAction testID={`remove-visit-${a.id}`} label="Remove" onPress={() => void undo.remove({ id: a.id, label: a.title, commit: () => api.removeMine("delete-appointment", a.id) })} /> : null}</View>
+            <View style={{ flexDirection: "row", gap: 16 }}>
+              {nativeCalendar ? <ItemAction label="Add to my calendar" onPress={() => void addVisitToCalendar(a)} /> : null}
+              {a.mine ? <ItemAction testID={`remove-visit-${a.id}`} label="Remove" onPress={() => void undo.remove({ id: a.id, label: a.title, commit: () => api.removeMine("delete-appointment", a.id) })} /> : null}
+            </View></View>
         )) : <Muted style={{ fontSize: 15 }}>No visits coming up.</Muted>}
       </Section>
       <Section icon="message" title="For my next visit" add="question">

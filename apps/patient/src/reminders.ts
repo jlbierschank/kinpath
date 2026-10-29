@@ -44,7 +44,8 @@ export async function syncReminders(plan: PlannedReminder[]): Promise<number> {
     if (at.getTime() <= Date.now()) continue;
     await Notifications.scheduleNotificationAsync({
       identifier: r.key.replace(/[^a-zA-Z0-9-]/g, "-"),
-      content: { title: r.title, body: r.body, data: { kind: r.kind, doseIds: r.doseIds }, ...(r.kind === "dose" ? { categoryIdentifier: "dose" } : {}) },
+      // Doses are time-sensitive on iPhone, so a Focus mode doesn't hold them back.
+      content: { title: r.title, body: r.body, data: { kind: r.kind, doseIds: r.doseIds }, ...(r.kind === "dose" ? { categoryIdentifier: "dose", interruptionLevel: "timeSensitive" as const } : {}) },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: at, channelId: Platform.OS === "android" ? "doses" : undefined },
     });
     n++;
@@ -58,7 +59,7 @@ export async function snoozeDose(doseIds: string[], title: string, body: string,
   const at = new Date(Date.now() + minutes * 60_000);
   await Notifications.scheduleNotificationAsync({
     identifier: `${SNOOZE}${Date.now()}`,
-    content: { title, body, data: { kind: "dose", doseIds }, categoryIdentifier: "dose" },
+    content: { title, body, data: { kind: "dose", doseIds }, categoryIdentifier: "dose", interruptionLevel: "timeSensitive" },
     trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: at, channelId: Platform.OS === "android" ? "doses" : undefined },
   });
   return at;
