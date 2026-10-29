@@ -99,3 +99,5 @@ Minimum necessary: clinic admins see the team and audit log but no clinical reco
 - [ ] Backup restore drill, and an incident response plan
 - [ ] Log retention decision with counsel (audit logs are kept indefinitely today)
 - [ ] A named technical owner (founding engineer or fractional CTO) on call for production
+- [ ] Uploads (photos, PDFs, forwarded attachments): confirm the database host signs a BAA (unverified for DigitalOcean; Aptible and AWS do), and confirm the AI vendor's BAA covers reading them
+- [ ] Before scale: move upload files out of the database (captures.bytes, up to 5 MB photos and 10 MB PDFs) into encrypted object storage under the same BAA (for example AWS S3), keeping only a reference in the database, so backups stay fast
