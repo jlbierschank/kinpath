@@ -16,12 +16,13 @@ import * as DocumentPicker from "expo-document-picker";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import Svg, { Circle, Path, Text as SvgText } from "react-native-svg";
-import { auth, type Api, type CaptureInput, type ItemKind, type PendingItem, type Refill, type ResultGroup, type SignedInUser, type SoloCosts, type SoloMed, type SoloProfile, type SoloStage, type SoloToday } from "./api";
-import { askPermission, onDoseAction, remindersSupported, snoozeDose, syncReminders } from "./reminders";
+import { Api, auth, type CaptureInput, type ItemKind, type PendingItem, type Refill, type ResultGroup, type SignedInUser, type SoloCosts, type SoloMed, type SoloProfile, type SoloStage, type SoloToday } from "./api";
+import { askPermission, onDoseAction, reminderPermission, remindersSupported, sendTestReminder, snoozeDose, syncReminders, type ReminderPermission } from "./reminders";
 import { SwipeRow, tick } from "./swipe";
 import { deviceName, loadPref, savePref } from "./session";
-import { AppearanceCard, Button, C, isDark, Cap, Card, Logo, Chip, Chips, F, H1, Icon, Muted, Pill, st, T, Today, Toggle } from "./ui";
+import { AppearanceCard, Button, C, ChoiceList, isDark, Cap, Card, Logo, Chip, Chips, F, H1, Icon, Muted, Pill, st, T, Today, Toggle } from "./ui";
 import { Field } from "./field";
+import { applyFirstRun, FirstRun, STAGES, type FirstRunAnswers } from "./firstrun";
 import { DateField, niceDate, niceTime, TimeField, TimesField } from "./datefield";
 import { AboutScreen, AliasScreen, QuestionIdeas, SummaryScreen, TalkScreen } from "./yours";
 import { FeedbackScreen, PeopleScreen } from "./people";
@@ -32,14 +33,7 @@ import { BrushSketch, DrawCheck, DrawPumpkin, PulseOnce, RiseIn, useReduceMotion
 let welcomeNext = false;
 import { PRONOUNS } from "@kinpath/core";
 
-const STAGES: [SoloStage, string, string][] = [
-  ["just_starting", "Just starting", "Getting ready for a first consult or tests"],
-  ["in_cycle", "In a cycle", "Meds, monitoring visits and results"],
-  ["two_week_wait", "In the two-week wait", "After a transfer or IUI"],
-  ["after_hard_result", "After a hard result", "Taking it one day at a time"],
-  ["freezing_eggs", "Freezing eggs", "Meds, visits and costs"],
-  ["between_cycles", "Between cycles", "Planning what comes next"],
-];
+
 const DEMO = typeof __DEV__ !== "undefined" && __DEV__ || process.env.EXPO_PUBLIC_DEMO === "1";
 const money = (cents: number) => `${cents < 0 ? "-" : ""}$${(Math.abs(cents) / 100).toLocaleString("en-US", { minimumFractionDigits: cents % 100 === 0 ? 0 : 2, maximumFractionDigits: 2 })}`;
 const dayLabel = (ymd: string) => new Date(`${ymd}T12:00:00`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
@@ -113,15 +107,16 @@ function Urgent({ profile, crisis, back, api, reload }: { profile: SoloProfile |
 
 // ---------- sign up ----------
 
-type SignupStep = { name: "contact" } | { name: "code"; contact: string; sentTo: string } | { name: "about"; ticket: string };
+type SignupStep = { name: "first" } | { name: "contact" } | { name: "code"; contact: string; sentTo: string } | { name: "about"; ticket: string };
 export function SignupFlow({ onSignedIn, onBack }: { onSignedIn: (u: SignedInUser) => void; onBack: () => void }) {
-  const [step, setStep] = useState<SignupStep>({ name: "contact" });
+  const [step, setStep] = useState<SignupStep>({ name: "first" });
+  const [answers, setAnswers] = useState<FirstRunAnswers | null>(null);
   const [contact, setContact] = useState("");
   const [code, setCode] = useState("");
   const [first, setFirst] = useState("");
   const [preferred, setPreferred] = useState("");
   const [pronouns, setPronouns] = useState("");
-  const [stage, setStage] = useState<SoloStage | null>(null);
+  const stage = answers?.stage ?? null;
   const [clinic, setClinic] = useState("");
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
@@ -153,24 +148,23 @@ export function SignupFlow({ onSignedIn, onBack }: { onSignedIn: (u: SignedInUse
           <T style={{ fontFamily: F.sans600, fontSize: 14 }}>Your pronouns (optional)</T>
           <Chips>{PRONOUNS.map((x) => <Chip key={x} testID={`signup-pronouns-${x}`} label={x} selected={pronouns === x} onPress={() => setPronouns(pronouns === x ? "" : x)} />)}</Chips>
         </View>
-        <View style={{ gap: 8 }}>
-          <T style={{ fontFamily: F.sans600, fontSize: 14 }}>Where are you right now?</T>
-          <Chips>{STAGES.map(([id, label]) => <Chip key={id} testID={`stage-${id}`} label={label} selected={stage === id} onPress={() => setStage(id)} />)}</Chips>
-        </View>
         <Field testID="signup-clinic" label="Your clinic (optional)" value={clinic} onChange={setClinic} placeholder="e.g. Coastal Fertility" />
         <Field testID="signup-phone" label="Their after-hours nurse line (optional)" value={phone} onChange={setPhone} keyboard="phone-pad" placeholder="(813) 555-0100"
           hint="Without a nurse on Pumpkin, urgent symptoms go to this number. It's usually on your paperwork." />
         {err}
         <Button testID="signup-finish" label={busy ? "Setting up…" : "Start my record"} disabled={busy || !first.trim() || !stage}
-          onPress={() => run(async () => { const u = await auth.signupFinish({ ticket: step.ticket, firstName: first, preferredName: preferred, pronouns, stage: stage!, clinicName: clinic, afterHoursPhone: phone, timeZone: zone(), device: deviceName() }); welcomeNext = true; onSignedIn(u); })} />
+          onPress={() => run(async () => { const u = await auth.signupFinish({ ticket: step.ticket, firstName: first, preferredName: preferred, pronouns, stage: stage!, clinicName: clinic, afterHoursPhone: phone, timeZone: zone(), device: deviceName() }); if (answers) await applyFirstRun(new Api({ token: u.token }), answers); welcomeNext = true; onSignedIn(u); })} />
       </Card>
       <Muted style={{ fontSize: 13 }}>Your record is private. You choose who sees each part, and you can download it or delete it anytime.</Muted>
     </Frame>
   );
+  if (step.name === "first") return (
+    <Frame><FirstRun onBack={onBack} onSave={(a) => { setAnswers(a); setStep({ name: "contact" }); }} /></Frame>
+  );
   return (
-    <Frame top={<Back onBack={onBack} />}>
-      <Today size={36}>Start on your own</Today>
-      <Muted style={{ fontSize: 15 }}>Keep your meds, numbers and costs in one place, even if your clinic isn't on Pumpkin yet. We're letting people in from the waitlist a few at a time.</Muted>
+    <Frame top={<Back onBack={() => setStep({ name: "first" })} />}>
+      <Today size={36}>Save your record</Today>
+      <Muted style={{ fontSize: 15 }}>We'll send a code to confirm it's you. We're letting people in from the waitlist a few at a time.</Muted>
       <Card style={{ gap: 10 }}>
         <Field testID="signup-contact" label="Mobile number or email" value={contact} onChange={setContact} keyboard="email-address" placeholder="you@email.com" />
         {err}
@@ -287,9 +281,11 @@ function Tabs({ current, go, badge }: { current: string; go: (s: Screen) => void
 
 // ---------- Today: a "Right now" card, then tiles in the order she chose ----------
 
-export type TileId = "meds" | "check" | "coming" | "numbers" | "payment" | "refill" | "add" | "yours" | "clinic";
+export type TileId = "meds" | "check" | "coming" | "numbers" | "payment" | "refill" | "add" | "yours" | "clinic" | "reminders" | "result";
 export const TILE_INFO: Record<TileId, { label: string; locked?: boolean }> = {
   meds: { label: "Tonight's meds", locked: true },
+  reminders: { label: "Turn on reminders", locked: true },
+  result: { label: "Your result", locked: true },
   check: { label: "Ready to check", locked: true },
   coming: { label: "Coming up" },
   numbers: { label: "Your latest numbers" },
@@ -301,8 +297,16 @@ export const TILE_INFO: Record<TileId, { label: string; locked?: boolean }> = {
 };
 /** Pumpkin's starting order for each stage; she can change it in Edit Today. */
 export function defaultOrder(stage: SoloStage): TileId[] {
+  const base = stageOrder(stage);
+  const at = base.indexOf("meds");
+  return ["result", ...base.slice(0, at + 1), "reminders", ...base.slice(at + 1)];
+}
+function stageOrder(stage: SoloStage): TileId[] {
   switch (stage) {
-    case "just_starting": return ["check", "add", "coming", "yours", "payment", "meds", "numbers", "refill", "clinic"];
+    case "trying": return ["check", "coming", "add", "numbers", "yours", "payment", "meds", "refill", "clinic"];
+    case "just_starting": return ["check", "coming", "add", "numbers", "payment", "yours", "meds", "refill", "clinic"];
+    case "pregnant": return ["meds", "coming", "numbers", "check", "refill", "add", "payment", "yours", "clinic"];
+    case "storage": return ["payment", "check", "coming", "add", "numbers", "meds", "refill", "yours", "clinic"];
     case "two_week_wait": return ["coming", "meds", "check", "add", "payment", "refill", "numbers", "yours", "clinic"];
     case "after_hard_result": return ["coming", "check", "add", "numbers", "payment", "meds", "refill", "yours", "clinic"];
     case "between_cycles": return ["check", "coming", "add", "payment", "numbers", "meds", "refill", "yours", "clinic"];
@@ -363,6 +367,14 @@ function TodayScreen({ d, api, go, reload, layout, notice, prefs, setPrefs }: { 
   const daysTo = (ymd: string) => (Date.parse(`${ymd}T12:00:00`) - Date.now()) / 86400_000;
   const dueSoon = !!d.nextDue && (d.about.costCheckins === "always" || daysTo(d.nextDue.dueOn) <= 7);
   const refills = d.refills.filter((r) => r.daysLeft !== null && r.daysLeft <= 5);
+  // Ask for notifications once there's a reminder worth ringing, then prove they work.
+  const [perm, setPerm] = useState<ReminderPermission>("unsupported");
+  useEffect(() => { void reminderPermission().then(setPerm).catch(() => {}); }, []);
+  const turnOn = async () => {
+    const ok = await askPermission();
+    setPerm(ok ? "granted" : await reminderPermission());
+    if (ok) { await sendTestReminder(); notice("Reminders are on. A test one will ring in a few seconds."); }
+  };
   const snoozed = (k: string) => { const u = prefs.hideUntil[k]; return !!u && Date.parse(u) > Date.now(); };
   const notNow = (k: string, days = 7) => ({ label: "Not now", bg: C.oat, fg: C.stone, run: () => { setPrefs({ ...prefs, hideUntil: { ...prefs.hideUntil, [k]: new Date(Date.now() + days * 86400_000).toISOString() } }); } });
 
@@ -410,6 +422,14 @@ function TodayScreen({ d, api, go, reload, layout, notice, prefs, setPrefs }: { 
   };
 
   const tiles: Record<TileId, ReactNode> = {
+    reminders: (perm === "undetermined" || perm === "denied") && d.schedule.upcoming.length > 0 && !quiet ? (
+      <View testID="reminders-tile" style={[st.card, { padding: 16, gap: 8 }]}>
+        <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="medication" /><T style={{ fontFamily: F.display, fontSize: 20 }}>Get a reminder for each dose</T></View>
+        <T style={{ fontSize: 15 }}>{perm === "denied" ? "Reminders are off for Pumpkin. Turn them on in your phone's Settings, under Pumpkin." : "15 minutes before each dose. The lock screen only says \"You have a reminder.\" We'll send a test so you know it works."}</T>
+        {perm === "undetermined" ? <Button testID="reminders-on" kind="esp" label="Turn on reminders" onPress={() => void turnOn()} /> : null}
+      </View>
+    ) : null,
+    result: p.stage === "two_week_wait" && !f.onBreak ? <ResultTile api={api} reveal={d.about.revealResults} reload={reload} go={go} notice={notice} /> : null,
     meds: soon.length > 0 || missed.length > 0 ? (
       <View style={[st.dark, { gap: 12 }]}>
         <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><Icon name="medication" color={C.marigoldOnFill} /><T style={{ fontFamily: F.sans700, color: C.marigoldOnFill, fontSize: 13, letterSpacing: 0.6 }}>MEDS</T></View>
@@ -454,7 +474,7 @@ function TodayScreen({ d, api, go, reload, layout, notice, prefs, setPrefs }: { 
         <T style={{ color: C.lavInk, fontFamily: F.sans600 }}>Show me</T>
       </Pressable>
     )) : null,
-    payment: d.nextDue && dueSoon && !quiet ? (
+    payment: d.nextDue && dueSoon && !quiet && !hard && p.stage !== "two_week_wait" ? (
       <Pressable testID="next-payment" onPress={() => go({ name: "costs" })} style={{ backgroundColor: C.clay, borderRadius: 22, padding: 18, flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
         <View style={{ flex: 1 }}><View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><Icon name="wallet" color={C.clayInk} /><T style={{ fontFamily: F.sans700, color: C.clayInk, fontSize: 13, letterSpacing: 0.6 }}>NEXT PAYMENT</T></View><T style={{ fontSize: 15 }}>{`Due ${dayLabel(d.nextDue.dueOn)}`}</T></View>
         <T style={{ fontFamily: F.display, fontSize: 26 }}>{money(d.nextDue.amountCents)}</T>
@@ -537,9 +557,55 @@ function TodayScreen({ d, api, go, reload, layout, notice, prefs, setPrefs }: { 
   );
 }
 
+/**
+ * In the two-week wait: how she wants to see her result, and a place to tell Pumpkin when she has it.
+ * A negative offers quiet mode and a positive offers the next stage; neither happens without her say.
+ */
+function ResultTile({ api, reveal, reload, go, notice }: { api: Api; reveal: boolean; reload: () => Promise<void>; go: (s: Screen) => void; notice: (m: string) => void }) {
+  const [said, setSaid] = useState<"positive" | "negative" | null>(null);
+  const [busy, setBusy] = useState(false);
+  const act = async (fn: () => Promise<unknown>, msg: string) => { setBusy(true); try { await fn(); await reload(); notice(msg); } finally { setBusy(false); } };
+  if (said === "negative") return (
+    <View testID="result-negative" style={{ backgroundColor: C.lav, borderRadius: 22, padding: 18, gap: 10 }}>
+      <T style={{ fontFamily: F.display, fontSize: 22, lineHeight: 26 }}>We're so sorry.</T>
+      <T style={{ fontSize: 15, lineHeight: 21 }}>You don't have to decide anything today. Want Pumpkin to keep things quiet for a while? Only what you need will show.</T>
+      <T style={{ fontSize: 13.5, color: C.lavInk }}>Keep taking any medication until your clinic tells you to stop. Your reminders stay on.</T>
+      <Button testID="quiet-yes" kind="esp" label={busy ? "One moment…" : "Yes, keep things quiet"} disabled={busy} onPress={() => act(() => api.saveSoloProfile({ stage: "after_hard_result" }), "Pumpkin will keep things quiet.")} />
+      <Button kind="plain" label="Not now" onPress={() => setSaid(null)} />
+    </View>
+  );
+  if (said === "positive") return (
+    <View testID="result-positive" style={{ backgroundColor: C.sage, borderRadius: 22, padding: 18, gap: 10 }}>
+      <T style={{ fontFamily: F.display, fontSize: 22, lineHeight: 26, color: C.sageInk }}>Your test is positive.</T>
+      <T style={{ fontSize: 15, lineHeight: 21 }}>Your clinic will usually repeat it to confirm. Pumpkin can switch to early scans and getting ready for your OB, whenever you like.</T>
+      <Button testID="pregnant-yes" kind="esp" label={busy ? "One moment…" : "Switch to Pregnant after treatment"} disabled={busy} onPress={() => act(() => api.saveSoloProfile({ stage: "pregnant" }), "Switched to Pregnant after treatment.")} />
+      <Button kind="plain" label="Not yet" onPress={() => setSaid(null)} />
+    </View>
+  );
+  return (
+    <View testID="result-tile" style={[st.card, { padding: 16, gap: 10 }]}>
+      <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="lab" /><T style={{ fontFamily: F.sans700, fontSize: 13, letterSpacing: 0.6 }}>YOUR RESULT</T></View>
+      <T style={{ fontSize: 15 }}>When a result is added to Pumpkin:</T>
+      <Chips>
+        <Chip testID="reveal-now" label="Show it right away" selected={!reveal} onPress={() => void act(() => api.saveAbout({ revealResults: false }), "Results will show right away.")} />
+        <Chip testID="reveal-tap" label="Wait until I tap" selected={reveal} onPress={() => void act(() => api.saveAbout({ revealResults: true }), "Results will wait until you tap.")} />
+      </Chips>
+      <Pressable onPress={() => go({ name: "people" })} style={{ minHeight: 36, justifyContent: "center", alignSelf: "flex-start" }}><T style={{ color: C.lavInk, fontFamily: F.sans600 }}>Choose who else sees it</T></Pressable>
+      <View style={{ borderTopWidth: 1, borderTopColor: C.lineSoft, paddingTop: 10, gap: 8 }}>
+        <T style={{ fontSize: 15 }}>Have your result? Tell Pumpkin when you're ready, and it will adjust what you see.</T>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <View style={{ flex: 1 }}><Button testID="said-positive" kind="line" label="Positive" onPress={() => setSaid("positive")} /></View>
+          <View style={{ flex: 1 }}><Button testID="said-negative" kind="line" label="Negative" onPress={() => setSaid("negative")} /></View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 /** Reorder, hide and show the tiles on Today. Tonight's meds and things to check always stay. */
 function EditTodayScreen({ stage, layout, save, done }: { stage: SoloStage; layout: TodayLayout | null; save: (l: TodayLayout | null) => void; done: () => void }) {
   const cur = orderFor(stage, layout);
+  cur.order = cur.order.filter((t) => t !== "reminders" && t !== "result");
   const [order, setOrder] = useState<TileId[]>(cur.order);
   const [hidden, setHidden] = useState<Set<TileId>>(cur.hidden);
   const move = (i: number, by: number) => setOrder((o) => { const n = [...o]; const j = i + by; if (j < 0 || j >= n.length) return o; [n[i], n[j]] = [n[j]!, n[i]!]; return n; });
@@ -1158,7 +1224,7 @@ function MoreScreen({ api, profile, reload, onSignOut, go }: { api: Api; profile
       </Card>
       <Card style={{ gap: 12 }}>
         <T style={{ fontFamily: F.sans600, fontSize: 15 }}>Where are you right now?</T>
-        <Chips>{STAGES.map(([id, label]) => <Chip key={id} label={label} selected={stage === id} onPress={() => setStage(id)} />)}</Chips>
+        <ChoiceList testIDPrefix="settings-stage-" options={STAGES} value={stage} onChange={setStage} />
         <Field label="Your clinic" value={clinic} onChange={setClinic} />
         {profile.askedClinicAt ? <T testID="clinic-asked" style={{ fontSize: 13.5, marginTop: -6, color: C.stone }}>{`You asked them to join Pumpkin on ${new Date(profile.askedClinicAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}.`}</T> : null}
         <Field testID="settings-phone" label="Their after-hours nurse line" value={phone} onChange={setPhone} keyboard="phone-pad" hint="Urgent symptoms go here (or 911)." />
@@ -1175,7 +1241,7 @@ function MoreScreen({ api, profile, reload, onSignOut, go }: { api: Api; profile
         </> : null}
         {profile.calendarOn ? <Pressable onPress={() => act(() => api.calendarOff(), "Calendar link turned off.")}><Muted style={{ textDecorationLine: "underline" }}>Turn off my calendar link</Muted></Pressable> : null}
       </Card>
-      {remindersSupported ? <Card style={{ gap: 8 }}><T style={{ fontFamily: F.sans600, fontSize: 15 }}>Dose reminders</T><Muted style={{ fontSize: 14 }}>A reminder 15 minutes before each dose. The lock screen says only "You have a reminder."</Muted><Button kind="line" label="Turn on reminders" onPress={() => act(async () => { if (!(await askPermission())) throw new Error("Reminders are off in your phone's Settings."); }, "Reminders are on.")} /></Card> : null}
+      {remindersSupported ? <Card style={{ gap: 8 }}><T style={{ fontFamily: F.sans600, fontSize: 15 }}>Dose reminders</T><Muted style={{ fontSize: 14 }}>A reminder 15 minutes before each dose. The lock screen says only "You have a reminder."</Muted><Button kind="line" label="Turn on reminders and test" onPress={() => act(async () => { if (!(await askPermission())) throw new Error("Reminders are off. Turn them on in your phone's Settings, under Pumpkin."); await sendTestReminder(); }, "Reminders are on. A test one will ring in a few seconds.")} /></Card> : null}
       <AppearanceCard />
       <Card style={{ gap: 10 }}>
         <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><Icon name="shield" /><T style={{ fontFamily: F.sans600, fontSize: 15 }}>Your data, your call</T></View>

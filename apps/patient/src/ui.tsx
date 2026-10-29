@@ -330,3 +330,24 @@ export function SheetPicker({ label, value, options, onChange, otherLabel, testI
     </View>
   );
 }
+
+/** A longer single choice where each option needs a line of explanation: one row each, with a radio dot. */
+export function ChoiceList<V extends string>({ options, value, onChange, testIDPrefix }: { options: [V, string, string?][]; value: V | null; onChange: (v: V) => void; testIDPrefix?: string }) {
+  return (
+    <View style={[st.card, { overflow: "hidden" }]}>
+      {options.map(([id, label, hint], i) => {
+        const on = value === id;
+        return (
+          <Pressable key={id} testID={testIDPrefix ? `${testIDPrefix}${id}` : undefined} accessibilityRole="radio" accessibilityState={{ selected: on }} onPress={() => onChange(id)}
+            style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, paddingHorizontal: 14, minHeight: 56, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: C.lineSoft, backgroundColor: on ? C.softLav : "transparent" }}>
+            <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: on ? C.lavInk : C.stone, alignItems: "center", justifyContent: "center" }}>{on ? <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: C.lavInk }} /> : null}</View>
+            <View style={{ flex: 1 }}>
+              <T style={{ fontSize: 15.5, fontFamily: on ? F.sans600 : F.sans500 }}>{label}</T>
+              {hint ? <T style={{ fontSize: 13, color: C.stone }}>{hint}</T> : null}
+            </View>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}

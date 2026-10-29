@@ -83,3 +83,22 @@ export function onDoseAction(handle: (a: DoseAction) => void): () => void {
   const sub = Notifications.addNotificationResponseReceivedListener(take);
   return () => sub.remove();
 }
+
+export type ReminderPermission = "granted" | "denied" | "undetermined" | "unsupported";
+/** Whether reminders can ring on this phone, without asking. */
+export async function reminderPermission(): Promise<ReminderPermission> {
+  if (!remindersSupported) return "unsupported";
+  const s = await Notifications.getPermissionsAsync();
+  if (s.granted || s.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL) return "granted";
+  return s.canAskAgain ? "undetermined" : "denied";
+}
+/** One test notification a few seconds from now, so she knows reminders really ring. */
+export async function sendTestReminder(seconds = 5): Promise<boolean> {
+  if (!remindersSupported) return false;
+  await Notifications.scheduleNotificationAsync({
+    identifier: `${SNOOZE}test-${Date.now()}`,
+    content: { title: "Pumpkin", body: "This is how your reminders will look. You're all set." },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds, channelId: Platform.OS === "android" ? "doses" : undefined },
+  });
+  return true;
+}

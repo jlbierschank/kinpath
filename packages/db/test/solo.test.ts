@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   addCapture, addMedication, addResult, asActor, calendarFeed, deleteMyAccount, dismissItem, exportMyData, finishSignup, IDS, itemsToCheck, letIn, migrate,
   newCalendarLink, openDb, receiveForwardedEmail, requestSignInCode, requestSignup, saveItem, seed, sessionFromToken, soloCosts, soloMeds, soloResults, soloToday,
-  stopMedication, verifySignup, askMyClinic, AIServiceError, setMedSupply, logDose, type Db, type Extractor,
+  stopMedication, verifySignup, askMyClinic, AIServiceError, setMedSupply, logDose, updateSoloProfile, type Db, type Extractor,
 } from "../src";
 
 let db: Db;
@@ -86,6 +86,15 @@ describe("meds, results and costs she keeps herself", () => {
     expect((await soloMeds(db, alex, IDS.alex)).map((m) => m.medication)).toEqual(["Follistim", "Menopur"]);
     await stopMedication(db, alex, IDS.alex, id);
     expect((await db.query(`SELECT 1 FROM dose_logs WHERE med_order_id = $1 AND canceled_at IS NULL`, [id])).rows).toHaveLength(0);
+  });
+
+  it("the newer stages: trying on her own, pregnant after treatment, eggs or embryos in storage", async () => {
+    for (const stage of ["trying", "pregnant", "storage", "just_starting"]) {
+      await updateSoloProfile(db, alex, IDS.alex, { stage });
+      expect((await soloToday(db, alex, IDS.alex)).profile.stage).toBe(stage);
+    }
+    expect((await soloToday(db, alex, IDS.alex)).profile.stageLabel).toBe("Getting started with a clinic");
+    await expect(updateSoloProfile(db, alex, IDS.alex, { stage: "married" })).rejects.toThrow(/where you are/);
   });
 
   it("refill countdown: doses left from her count minus what she logs, and the day she'd run out", async () => {

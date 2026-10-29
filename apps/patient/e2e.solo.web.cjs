@@ -94,17 +94,20 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localho
 
   // ---------- A new person signs up (demo builds skip the waitlist) ----------
   await byId('start-on-my-own').click();
+  await byId('stage-just_starting').click(); await byId('fr-next').click();
+  await byId('fr-skip').click(); await byId('fr-skip').click();
+  ok(await byId('fr-consult').count() === 1, 'Before any sign-up: her first-consult kit');
+  await byId('fr-save').click();
   await byId('signup-contact').fill('rae.new@example.com');
   await byId('signup-start').click();
   await byId('signup-code').waitFor();
   await byId('signup-code').fill(await codeFor('rae.new@example.com'));
   await byId('signup-verify').click();
   await byId('signup-first').fill('Rae');
-  await byId('stage-just_starting').click();
   await byId('signup-clinic').fill('Gulf Coast Fertility');
   await shot('solo-9-signup');
   await byId('signup-finish').click();
-  ok(await sees('Today', 15000) && await sees('Just starting'), 'Signed up and landed on Today');
+  ok(await sees('Hi, Rae.', 15000) && await sees('Getting started with a clinic'), 'Signed up and landed on Today');
   await byId('make-yours').waitFor({ timeout: 15000 });
   ok(await byId('ask-clinic').count() === 0, 'One setup card at a time: Make Pumpkin yours first');
   await byId('yours-not-now').click();

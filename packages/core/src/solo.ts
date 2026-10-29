@@ -8,12 +8,15 @@
  */
 
 export const SOLO_STAGES = {
-  just_starting: { en: "Just starting", hint: "Getting ready for a first consult or tests" },
+  trying: { en: "Trying on my own", hint: "Before a clinic, or deciding when to see one" },
+  just_starting: { en: "Getting started with a clinic", hint: "A first consult and tests" },
+  freezing_eggs: { en: "Freezing eggs", hint: "Meds, visits and costs" },
   in_cycle: { en: "In a cycle", hint: "Meds, monitoring visits and results" },
   two_week_wait: { en: "In the two-week wait", hint: "After a transfer or IUI" },
+  pregnant: { en: "Pregnant after treatment", hint: "Early scans, then your OB" },
   after_hard_result: { en: "After a hard result", hint: "Taking it one day at a time" },
-  freezing_eggs: { en: "Freezing eggs", hint: "Meds, visits and costs" },
   between_cycles: { en: "Between cycles", hint: "Planning what comes next" },
+  storage: { en: "Eggs or embryos in storage", hint: "Storage, renewals and records" },
 } as const;
 export type SoloStage = keyof typeof SOLO_STAGES;
 export const isSoloStage = (s: unknown): s is SoloStage => typeof s === "string" && s in SOLO_STAGES;
@@ -21,7 +24,7 @@ export const isSoloStage = (s: unknown): s is SoloStage => typeof s === "string"
 /** Cycle kind and stage to start a personal space with. */
 export function cycleForStage(stage: SoloStage): { kind: "ivf" | "egg_freezing"; stage: string } {
   if (stage === "freezing_eggs") return { kind: "egg_freezing", stage: "stimulation" };
-  return { kind: "ivf", stage: ({ just_starting: "consult", in_cycle: "stimulation", two_week_wait: "wait", after_hard_result: "result", between_cycles: "consult" } as const)[stage] };
+  return { kind: "ivf", stage: ({ trying: "trying", just_starting: "consult", in_cycle: "stimulation", two_week_wait: "wait", pregnant: "pregnant", after_hard_result: "result", between_cycles: "consult", storage: "storage" } as const)[stage] };
 }
 
 // ---------- what each test measures ----------

@@ -83,7 +83,7 @@ export interface Guide { medication: string; steps: Record<Lang, string>[]; vide
 export interface SendResult { handoffId: string; kind: "missed_dose" | "question" | "urgent_symptom" | "crisis" | "result_review" }
 
 // ---------- Pumpkin on your own ----------
-export type SoloStage = "just_starting" | "in_cycle" | "two_week_wait" | "after_hard_result" | "freezing_eggs" | "between_cycles";
+export type SoloStage = "trying" | "just_starting" | "freezing_eggs" | "in_cycle" | "two_week_wait" | "pregnant" | "after_hard_result" | "between_cycles" | "storage";
 export interface SoloProfile { aiReads: { on: boolean; plan: "free" | "premium"; used: number; limit: number | null; left: number | null }; firstName: string; stage: SoloStage; stageLabel: string; clinicName: string | null; afterHoursPhone: string | null; askedClinicAt: string | null; calendarOn: boolean; calendarDetail: boolean; forwardAddress: string; timeZone: string }
 export interface About {
   firstName: string; displayName: string; preferredName: string | null; pronunciation: string | null; pronouns: string | null; consented: boolean;

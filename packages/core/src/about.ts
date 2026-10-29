@@ -73,6 +73,20 @@ export function cleanConditions(v: unknown): Condition[] {
 // ---------- questions she might want to ask at her next visit ----------
 
 const BY_STAGE: Record<string, string[]> = {
+  trying: [
+    "Given how long I've been trying, or my plans, is it time to see a specialist?",
+    "Which tests can you order now, before a referral?",
+    "What does my insurance need before a fertility visit is covered?",
+  ],
+  pregnant: [
+    "When is my next scan or blood test?",
+    "When should I stop each medication, and who tells me?",
+    "When do I move to my OB, and which records should I bring?",
+  ],
+  storage: [
+    "Where are my eggs or embryos stored, and what does each year cost?",
+    "How do I move them or renew the storage agreement?",
+  ],
   just_starting: [
     "What tests will I need before treatment, and what does each one check?",
     "What are my options, and which would you suggest for me?",

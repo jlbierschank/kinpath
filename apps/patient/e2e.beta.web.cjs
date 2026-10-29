@@ -27,13 +27,14 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? SERVER + '/phon
 
   // Sign up.
   await byId('start-on-my-own').click();
+  await byId('stage-in_cycle').click(); await byId('fr-next').click();
+  await byId('fr-skip').click(); await byId('fr-skip').click(); await byId('fr-save').click();
   await byId('signup-contact').fill('jess.test@example.com');
   await byId('signup-start').click();
   await byId('signup-code').waitFor();
   await byId('signup-code').fill(await codeFor('jess.test@example.com'));
   await byId('signup-verify').click();
   await byId('signup-first').fill('Jess');
-  await byId('stage-in_cycle').click();
   await byId('signup-finish').click();
   ok(await sees('Hi, Jess.', 15000), 'Signed up');
   ok(await byId('test-banner').count() > 0, 'Banner stays on inside the app');
