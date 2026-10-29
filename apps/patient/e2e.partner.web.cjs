@@ -11,7 +11,7 @@ const SERVER = process.env.SERVER_URL ?? 'http://localhost:3000/';
   const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process.exitCode = 1; };
   const byId = id => p.locator(`[data-testid="${id}"]`);
   const text = s => p.getByText(s, { exact: false });
-  const sees = s => text(s).first().waitFor({ timeout: 10000 }).then(() => true, () => false);
+  const sees = s => text(s).filter({ visible: true }).first().waitFor({ timeout: 10000 }).then(() => true, () => false);
   const as = async (name) => { await p.goto(APP); await byId(`pick-${name}`).click(); };
 
   // Fresh demo data

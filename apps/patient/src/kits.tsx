@@ -50,7 +50,7 @@ const Bullets = ({ items }: { items: string[] }) => (
   <View style={{ gap: 6 }}>{items.map((t) => <View key={t} style={{ flexDirection: "row", gap: 10 }}><T style={{ color: C.lavInk, fontFamily: F.sans700 }}>·</T><T style={{ flex: 1, fontSize: 15, lineHeight: 21 }}>{t}</T></View>)}</View>
 );
 const Link = ({ label, onPress, testID }: { label: string; onPress: () => void; testID?: string }) => (
-  <Pressable testID={testID} onPress={onPress} style={{ minHeight: 40, justifyContent: "center", alignSelf: "flex-start" }}><T style={{ color: C.lavInk, fontFamily: F.sans600 }}>{label}</T></Pressable>
+  <Pressable testID={testID} onPress={onPress} style={{ minHeight: 44, justifyContent: "center", alignSelf: "flex-start" }}><T style={{ color: C.lavInk, fontFamily: F.sans600 }}>{label}</T></Pressable>
 );
 
 // ---------- first consult ----------
@@ -175,7 +175,7 @@ export function TestCalendarScreen({ api, initial, reload }: { api: Api; initial
                   <T testID={`kit-when-${t.id}`} style={{ fontFamily: F.sans600, fontSize: 14, color: C.lavInk }}>{whenText(t, k)}</T>
                 </View>
                 <Pressable testID={`kit-done-${t.id}`} accessibilityRole="checkbox" accessibilityState={{ checked: done }} accessibilityLabel={`${t.name} done`} onPress={() => void save({ tests: { done: toggle(k.done, t.id) } })}
-                  style={{ minHeight: 40, paddingHorizontal: 12, borderRadius: 999, justifyContent: "center", backgroundColor: done ? C.sage : C.oat }}>
+                  style={{ minHeight: 44, paddingHorizontal: 12, borderRadius: 999, justifyContent: "center", backgroundColor: done ? C.sage : C.oat }}>
                   <T style={{ fontFamily: F.sans600, fontSize: 13.5, color: done ? C.sageInk : C.espresso }}>{done ? "Done" : "Mark done"}</T>
                 </Pressable>
               </View>
@@ -340,7 +340,7 @@ function ShareCard(p: {
         {active.map((s, i) => (
           <View key={s.id} style={[st.row, { borderTopWidth: 1 }]}>
             <View style={{ flex: 1 }}><T style={{ fontSize: 14.5 }}>{`Shared with ${s.recipient}`}</T><Muted style={{ fontSize: 13 }}>{`Until ${niceDate(s.expiresAt.slice(0, 10))}${s.views ? ` · opened ${s.views} time${s.views > 1 ? "s" : ""}` : ""}`}</Muted></View>
-            <Pressable testID={`kit-share-stop-${i}`} onPress={() => void p.stop(s.id)} style={{ minHeight: 40, justifyContent: "center" }}><T style={{ fontFamily: F.sans600, color: C.clayInk }}>Stop sharing</T></Pressable>
+            <Pressable testID={`kit-share-stop-${i}`} onPress={() => void p.stop(s.id)} style={{ minHeight: 44, justifyContent: "center" }}><T style={{ fontFamily: F.sans600, color: C.clayInk }}>Stop sharing</T></Pressable>
           </View>
         ))}
       </Card>

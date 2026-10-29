@@ -26,10 +26,16 @@ const nextConfig = {
   poweredByHeader: false,
   // The phone app, published as web pages for the shared demo (scripts/build-phone-web.sh).
   async rewrites() {
-    return [{ source: "/phone", destination: "/phone/index.html" }];
+    // Any other /phone path that isn't a file is a screen in the app (Expo Router); the app routes it.
+    return [{ source: "/phone", destination: "/phone/index.html" }, { source: "/phone/:path*", destination: "/phone/index.html" }];
   },
   async headers() {
-    return [{ source: "/:path*", headers: security }];
+    return [
+      { source: "/:path*", headers: security },
+      // The phone app may use the camera (snap a meds calendar) and microphone (Say it), and nothing else.
+      { source: "/phone/:path*", headers: [{ key: "Permissions-Policy", value: "camera=(self), microphone=(self), geolocation=(), payment=()" }] },
+      { source: "/phone", headers: [{ key: "Permissions-Policy", value: "camera=(self), microphone=(self), geolocation=(), payment=()" }] },
+    ];
   },
 };
 export default nextConfig;

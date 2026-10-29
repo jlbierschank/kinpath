@@ -56,6 +56,18 @@ function Picker({ mode, value, onChange, label, check, testID, hint, placeholder
   }
 
   const initial = parsed ?? (mode === "time" ? fromHm("20:00")! : new Date());
+  // iPhone: once there's a value, the system's compact picker (a small chip that opens a calendar or
+  // time wheel in place). Before that, a field she taps to open the full calendar inline.
+  if (Platform.OS === "ios" && parsed && !open) return (
+    <View style={{ gap: 4 }}>
+      <Label label={label} check={check} />
+      <View style={{ flexDirection: "row", alignItems: "center", minHeight: 48 }}>
+        <DateTimePicker testID={testID} accessibilityLabel={label} value={parsed} mode={mode} display="compact" themeVariant={isDark() ? "dark" : "light"} accentColor={C.lavInk}
+          onChange={(event, d) => { if (event.type === "set" && d) onChange(mode === "date" ? toYmd(d) : toHm(d)); }} />
+      </View>
+      {hint ? <Muted style={{ fontSize: 13 }}>{hint}</Muted> : null}
+    </View>
+  );
   return (
     <View style={{ gap: 4 }}>
       <Label label={label} check={check} />
@@ -65,10 +77,10 @@ function Picker({ mode, value, onChange, label, check, testID, hint, placeholder
       </Pressable>
       {open ? (
         <View style={{ gap: 6 }}>
-          <DateTimePicker value={initial} mode={mode} display={Platform.OS === "ios" ? "spinner" : "default"} themeVariant={isDark() ? "dark" : "light"}
+          <DateTimePicker value={initial} mode={mode} display={Platform.OS === "ios" ? (mode === "date" ? "inline" : "spinner") : "default"} themeVariant={isDark() ? "dark" : "light"} accentColor={C.lavInk}
             onChange={(event, d) => {
               if (Platform.OS !== "ios") setOpen(false);
-              if (event.type === "set" && d) onChange(mode === "date" ? toYmd(d) : toHm(d));
+              if (event.type === "set" && d) { onChange(mode === "date" ? toYmd(d) : toHm(d)); if (Platform.OS === "ios" && mode === "date") setOpen(false); }
             }} />
           {Platform.OS === "ios" ? <Button kind="line" label="Done" onPress={() => { if (!parsed) onChange(mode === "date" ? toYmd(initial) : toHm(initial)); setOpen(false); }} /> : null}
         </View>
@@ -99,7 +111,7 @@ export function TimesField({ value, onChange, label, check, testID }: { value: s
           {times.length > 1 ? <Pressable accessibilityLabel="Remove this time" onPress={() => onChange(times.filter((_, k) => k !== i))} style={{ minHeight: 48, minWidth: 44, alignItems: "center", justifyContent: "center" }}><T style={{ fontSize: 20, color: C.stone }}>×</T></Pressable> : null}
         </View>
       ))}
-      <Pressable testID={testID ? `${testID}-add` : undefined} onPress={() => onChange([...times.filter(Boolean), times.length === 1 && times[0] ? "08:00" : "20:00"])} style={{ alignSelf: "flex-start", minHeight: 40, justifyContent: "center" }}>
+      <Pressable testID={testID ? `${testID}-add` : undefined} onPress={() => onChange([...times.filter(Boolean), times.length === 1 && times[0] ? "08:00" : "20:00"])} style={{ alignSelf: "flex-start", minHeight: 44, justifyContent: "center" }}>
         <T style={{ fontFamily: F.sans600, color: C.lavInk }}>+ Add another time</T>
       </Pressable>
     </View>

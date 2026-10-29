@@ -11,7 +11,7 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? SERVER + '/phon
   const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process.exitCode = 1; };
   const byId = id => p.locator(`[data-testid="${id}"]`);
   const text = s => p.getByText(s, { exact: false });
-  const sees = async (s, t = 10000) => { try { await text(s).first().waitFor({ timeout: t }); return true; } catch { return false; } };
+  const sees = async (s, t = 10000) => { try { await text(s).filter({ visible: true }).first().waitFor({ timeout: t }); return true; } catch { return false; } };
   const outbox = async () => { const o = await b.newPage(); await o.goto(SERVER + '/dev/outbox'); const rows = await o.locator('[data-testid=outbox-row]').allInnerTexts(); await o.close(); return rows; };
   const codeFor = async (to) => (await outbox()).find((x) => x.includes(to) && /\b\d{6}\b/.test(x)).match(/\b(\d{6})\b/)[1];
 

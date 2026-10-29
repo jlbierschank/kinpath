@@ -15,7 +15,7 @@ const SERVER = (process.env.SERVER_URL ?? 'http://localhost:3000/').replace(/\/$
   const shot = n => p.screenshot({ path: D + n + '.png', fullPage: true });
   const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process.exitCode = 1; };
   const byId = id => p.locator(`[data-testid="${id}"]`);
-  const sees = s => p.getByText(s, { exact: false }).first().waitFor({ timeout: 10000 }).then(() => true, () => false);
+  const sees = s => p.getByText(s, { exact: false }).filter({ visible: true }).first().waitFor({ timeout: 10000 }).then(() => true, () => false);
   const wsees = s => web.getByText(s, { exact: false }).first().waitFor({ timeout: 10000 }).then(() => true, () => false);
   const as = async (name) => { await p.goto(APP); await byId(`pick-${name}`).click(); await p.waitForTimeout(900); };
   const webAs = async (name) => {

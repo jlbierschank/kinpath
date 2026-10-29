@@ -10,7 +10,7 @@ const SERVER = process.env.SERVER_URL ?? 'http://localhost:3000/';
   const shot = n => p.screenshot({ path: D + n + '.png', fullPage: true });
   const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process.exitCode = 1; };
   const byId = id => p.locator(`[data-testid="${id}"]`);
-  const sees = s => p.getByText(s, { exact: false }).first().waitFor({ timeout: 10000 }).then(() => true, () => false);
+  const sees = s => p.getByText(s, { exact: false }).filter({ visible: true }).first().waitFor({ timeout: 10000 }).then(() => true, () => false);
   const as = async (name) => { await p.evaluate(() => { try { localStorage.clear(); } catch {} }).catch(() => {}); await p.goto(APP); await byId(`pick-${name}`).click(); };
   // Dev outbox: where sign-in and confirmation codes land until a texting/email service is connected.
   const codeFor = async (to) => { const o = await b.newPage(); await o.goto(SERVER + 'dev/outbox'); const rows = await o.locator('[data-testid=outbox-row]').allInnerTexts(); await o.close(); const r = rows.find((x) => x.includes(to) && /\b\d{6}\b/.test(x)); return r.match(/\b(\d{6})\b/)[1]; };

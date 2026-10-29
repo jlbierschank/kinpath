@@ -59,7 +59,7 @@ export function CalendarShareCard({ api, testID = "calshare" }: { api: Api; test
       {shares.map((s, i) => (
         <View key={s.id} style={[st.row, { borderTopWidth: 1 }]}>
           <View style={{ flex: 1 }}><T style={{ fontSize: 14.5 }}>{s.label}</T><Muted style={{ fontSize: 13 }}>{s.detail ? "Sees what each visit is for" : "Sees \"Appointment\" only"}</Muted></View>
-          <Pressable testID={`${testID}-stop-${i}`} onPress={async () => { await api.stopCalendarShare(s.id); load(); }} style={{ minHeight: 40, justifyContent: "center" }}><T style={{ fontFamily: F.sans600, color: C.clayInk }}>Stop</T></Pressable>
+          <Pressable testID={`${testID}-stop-${i}`} onPress={async () => { await api.stopCalendarShare(s.id); load(); }} style={{ minHeight: 44, justifyContent: "center" }}><T style={{ fontFamily: F.sans600, color: C.clayInk }}>Stop</T></Pressable>
         </View>
       ))}
     </Card>

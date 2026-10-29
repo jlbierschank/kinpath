@@ -7,7 +7,7 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localho
   const p = await b.newPage({ viewport: { width: 390, height: 844 } });
   const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process.exitCode = 1; };
   const byId = id => p.locator(`[data-testid="${id}"]`);
-  const sees = async (s, t = 10000) => { try { await p.getByText(s, { exact: false }).first().waitFor({ timeout: t }); return true; } catch { return false; } };
+  const sees = async (s, t = 10000) => { try { await p.getByText(s, { exact: false }).filter({ visible: true }).first().waitFor({ timeout: t }); return true; } catch { return false; } };
   { const w = await b.newPage(); await w.goto(SERVER + '/'); await w.click('button:has-text("Reset demo data")'); await w.waitForTimeout(1500); await w.close(); }
   const urgent = async () => {
     await byId('solo-tab-add').click(); await byId('add-type').click();

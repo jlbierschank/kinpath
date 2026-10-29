@@ -166,7 +166,7 @@ export function AboutScreen({ api, done }: { api: Api; done: (msg: string) => vo
       <View style={{ gap: 8 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <T testID="about-progress" style={{ fontSize: 13.5, color: C.stone }}>{`Make Pumpkin yours · ${qi + 1} of ${qs.length}`}</T>
-          <Pressable testID="about-later" onPress={finishLater} style={{ minHeight: 40, justifyContent: "center" }}><T style={{ color: C.lavInk, fontFamily: F.sans600, fontSize: 14 }}>Finish later</T></Pressable>
+          <Pressable testID="about-later" onPress={finishLater} style={{ minHeight: 44, justifyContent: "center" }}><T style={{ color: C.lavInk, fontFamily: F.sans600, fontSize: 14 }}>Finish later</T></Pressable>
         </View>
         <View style={{ height: 4, borderRadius: 2, backgroundColor: C.line }}><View style={{ height: 4, borderRadius: 2, width: `${((qi + 1) / qs.length) * 100}%`, backgroundColor: C.lavInk }} /></View>
       </View>

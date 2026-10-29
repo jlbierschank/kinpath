@@ -11,7 +11,7 @@ const SERVER = (process.env.SERVER_URL ?? 'http://localhost:3000').replace(/\/$/
   const shot = (n) => p.screenshot({ path: D + n + '.png', fullPage: true });
   const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process.exitCode = 1; };
   const byId = (id) => p.locator(`[data-testid="${id}"]`);
-  const sees = (s) => p.getByText(s, { exact: false }).first().waitFor({ timeout: 10000 }).then(() => true, () => false);
+  const sees = (s) => p.getByText(s, { exact: false }).filter({ visible: true }).first().waitFor({ timeout: 10000 }).then(() => true, () => false);
   const codeFor = async (to) => { const o = await b.newPage(); await o.goto(SERVER + '/dev/outbox'); const rows = await o.locator('[data-testid=outbox-row]').allInnerTexts(); await o.close(); return rows.find((x) => x.includes(to) && /\b\d{6}\b/.test(x)).match(/\b(\d{6})\b/)[1]; };
 
   const web = await b.newPage(); await web.goto(SERVER + '/'); await web.click('button:has-text("Reset demo data")'); await web.waitForTimeout(1500);

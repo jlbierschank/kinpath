@@ -10,7 +10,7 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localho
   const shot = n => p.screenshot({ path: D + n + '.png' });
   const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process.exitCode = 1; };
   const byId = id => p.locator(`[data-testid="${id}"]`);
-  const sees = async (s, t = 10000) => { try { await p.getByText(s, { exact: false }).first().waitFor({ timeout: t }); return true; } catch { return false; } };
+  const sees = async (s, t = 10000) => { try { await p.getByText(s, { exact: false }).filter({ visible: true }).first().waitFor({ timeout: t }); return true; } catch { return false; } };
   const day = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
   // A fake recognizer that never starts, like Safari after the microphone prompt.
   await p.addInitScript(() => { window.webkitSpeechRecognition = function () { this.start = () => {}; this.stop = () => {}; this.abort = () => {}; }; });
@@ -22,7 +22,7 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localho
 
   // Add it yourself: an appointment.
   await byId('solo-tab-add').click();
-  ok(await byId('add-hand-appointment').count() === 1, 'Add has an Appointment option');
+  ok(await byId('add-hand-appointment').waitFor({ timeout: 10000 }).then(() => true, () => false), 'Add has an Appointment option');
   await byId('add-hand-appointment').click();
   const inside = async (id) => { const box = await byId(id).boundingBox(); const card = await byId(id).locator('xpath=ancestor::div[contains(@style,"border-radius")][1]').boundingBox(); return box && box.x + box.width <= 320 && (!card || box.x + box.width <= card.x + card.width + 1); };
   ok(await inside('f-date') && await inside('f-time'), 'Date and time fields fit a 320px-wide phone');
@@ -58,9 +58,9 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localho
   ok(await byId('say-send').isEnabled(), 'And she can still type and send');
 
   // The test calendar's date field fits too.
-  await p.getByText('Today', { exact: true }).first().click();
+  while (await byId('sheet-close').filter({ visible: true }).count()) { await byId('sheet-close').filter({ visible: true }).last().click(); await p.waitForTimeout(400); }
   await byId('solo-tab-more').click();
-  await byId('settings-stage-just_starting').click(); await byId('settings-save').click();
+  await byId('stage-change').click(); await byId('settings-stage-just_starting').click(); await byId('settings-save').click();
   await sees('Saved.');
   await byId('solo-tab-today').click();
   await byId('tests-tile').click();

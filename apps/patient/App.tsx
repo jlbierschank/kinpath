@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ActivityIndicator, Animated, Easing, Linking, Platform, Pressable, ScrollView, Share, Text, TextInput, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -11,7 +11,7 @@ import { Api, auth, type Auth, type SignedInUser, type NextCycle, type Dose, typ
 import { askPermission, onDoseAction, remindersSupported, snoozeDose, syncReminders } from "./src/reminders";
 import { tick } from "./src/swipe";
 import { CostsCard, CostsScreen, PartnerCostsCard, ReceiptScreen } from "./src/money";
-import { SignupFlow, SoloApp } from "./src/solo";
+import { SignupFlow } from "./src/solo";
 import { TestBanner, useAppInfo } from "./src/appinfo";
 import { clearSession, deviceName, loadSession, saveSession } from "./src/session";
 import { Bell, InboxScreen, NotificationSettingsScreen, SignInSection } from "./src/account";
@@ -38,15 +38,17 @@ const stageIndex = (stage: string | null) => ({ consult: 0, testing: 1, stimulat
 const clock = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }).toLowerCase().replace(" ", " ");
 const dayClock = (iso: string) => new Date(iso).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" });
 
-export default function App() {
-  return <SafeAreaProvider><ThemeProvider><AppInner /></ThemeProvider></SafeAreaProvider>;
-}
+// The app starts in src/app (Expo Router). The gate in src/app/index.tsx uses these.
+export type Who = { auth: Auth; name: string; initials: string; partner: boolean; demo: boolean; space?: "personal" | "clinic" };
+export const whoFromUser = (u: SignedInUser): Who => ({ auth: { token: u.token }, name: u.name, initials: initialsOf(u.name), partner: u.role === "partner", demo: false, space: u.space });
+export const whoFromDemo = (p: DevPerson): Who => ({ auth: { devUserId: p.id }, name: p.name, initials: p.initials, partner: p.partner, demo: true, space: "solo" in p && p.solo ? "personal" : "clinic" });
 
-type Who = { auth: Auth; name: string; initials: string; partner: boolean; demo: boolean; space?: "personal" | "clinic" };
+interface WhoState { who: Who | null; booting: boolean; api: Api | null; signIn: (w: Who, save?: SignedInUser) => Promise<void>; signOut: () => Promise<void> }
+const WhoCtx = createContext<WhoState | null>(null);
+export const useWho = () => { const c = useContext(WhoCtx); if (!c) throw new Error("useWho outside WhoProvider"); return c; };
 
-function AppInner() {
-  useTheme(); // re-render everything when light or dark changes
-  const [fontsLoaded] = useFonts({ BricolageGrotesque_600SemiBold, BricolageGrotesque_700Bold, InstrumentSans_400Regular, InstrumentSans_500Medium, InstrumentSans_600SemiBold, InstrumentSans_700Bold });
+/** Who is signed in on this phone, kept across launches (demo people aren't saved). */
+export function WhoProvider({ children }: { children: ReactNode }) {
   const [who, setWho] = useState<Who | null>(null);
   const [booting, setBooting] = useState(true);
   useEffect(() => {
@@ -58,18 +60,21 @@ function AppInner() {
       setWho({ auth: { token: x.token }, name: x.name, initials: initialsOf(x.name), partner: x.role === "partner", demo: false, space });
     }).finally(() => setBooting(false));
   }, []);
-  const signOut = useCallback(async () => { await clearSession(); setWho(null); }, []);
-  const api = useMemo(() => (who ? new Api(who.auth, () => void signOut()) : null), [who, signOut]);
-  if (!fontsLoaded || booting) return <View style={{ flex: 1, backgroundColor: C.oat, alignItems: "center", justifyContent: "center" }}><ActivityIndicator color={C.espresso} /></View>;
-  if (!who || !api) {
-    return <SignIn
-      onSignedIn={async (u) => { await saveSession(u); setWho({ auth: { token: u.token }, name: u.name, initials: initialsOf(u.name), partner: u.role === "partner", demo: false, space: u.space }); }}
-      onDemo={(p) => setWho({ auth: { devUserId: p.id }, name: p.name, initials: p.initials, partner: p.partner, demo: true, space: "solo" in p && p.solo ? "personal" : "clinic" })} />;
-  }
-  const out = async () => { if (!who.demo) await api.signOut(); await signOut(); };
-  if (who.space === "personal" && !who.partner) return <SoloApp api={api} onSignOut={out} />;
-  if (who.partner) return <PartnerApp api={api} initials={who.initials} onSignOut={out} demo={who.demo} />;
-  return <Signed api={api} initials={who.initials} onSignOut={out} demo={who.demo} />;
+  const clear = useCallback(async () => { await clearSession(); setWho(null); }, []);
+  const api = useMemo(() => (who ? new Api(who.auth, () => void clear()) : null), [who, clear]);
+  const signIn = useCallback(async (w: Who, save?: SignedInUser) => { if (save) await saveSession(save); setWho(w); }, []);
+  const signOut = useCallback(async () => { if (who && !who.demo && api) await api.signOut().catch(() => null); await clear(); }, [who, api, clear]);
+  const value = useMemo(() => ({ who, booting, api, signIn, signOut }), [who, booting, api, signIn, signOut]);
+  return <WhoCtx.Provider value={value}>{children}</WhoCtx.Provider>;
+}
+
+/** Signed out: sign in. Clinic patients and support people: their app. (On-your-own goes to /today.) */
+export function Gate() {
+  useTheme();
+  const { who, api, signIn, signOut } = useWho();
+  if (!who || !api) return <SignIn onSignedIn={(u) => void signIn(whoFromUser(u), u)} onDemo={(p) => void signIn(whoFromDemo(p))} />;
+  if (who.partner) return <PartnerApp api={api} initials={who.initials} onSignOut={() => void signOut()} demo={who.demo} />;
+  return <Signed api={api} initials={who.initials} onSignOut={() => void signOut()} demo={who.demo} />;
 }
 
 function Frame({ children, tabs, top }: { children: ReactNode; tabs?: ReactNode; top?: ReactNode }) {
@@ -137,21 +142,35 @@ function SignIn({ onSignedIn, onDemo }: { onSignedIn: (u: SignedInUser) => void;
       </Card>
     </Frame>
   );
+  const signInBox = (kind: "mari" | "line") => (
+    <Card style={{ gap: 10 }}>
+      <TextInput testID="signin-identifier" style={st.input} value={identifier} onChangeText={setIdentifier} autoCapitalize="none" keyboardType="email-address" textContentType="username" autoComplete="email" placeholder="(813) 555-0142 or you@email.com" placeholderTextColor={C.stone} accessibilityLabel="Mobile number or email" />
+      {err}
+      <Button testID="signin-send" kind={kind} label={busy ? "Sending…" : "Send me a code"} disabled={busy || !identifier.trim()} onPress={() => run(async () => { const r = await auth.requestCode(identifier); setCode(""); setStep({ name: "code", identifier, sentTo: r.sentTo }); })} />
+    </Card>
+  );
   return (
     <Frame top={<View style={{ padding: 18, paddingBottom: 6 }}>{plain ? <Logo /> : <Muted>Bayside Fertility · powered by Pumpkin</Muted>}</View>}>
       <Today size={38}>Welcome.</Today>
-      <Muted>{plain ? "Sign in with your mobile number or email. We'll send a code. No password needed." : "Sign in with the mobile number or email Bayside has for you. We'll send a code. No password needed."}</Muted>
-      <Card style={{ gap: 10 }}>
-        <TextInput testID="signin-identifier" style={st.input} value={identifier} onChangeText={setIdentifier} autoCapitalize="none" keyboardType="email-address" textContentType="username" placeholder="(813) 555-0142 or you@email.com" placeholderTextColor={C.stone} />
-        {err}
-        <Button testID="signin-send" label={busy ? "Sending…" : "Send me a code"} disabled={busy || !identifier.trim()} onPress={() => run(async () => { const r = await auth.requestCode(identifier); setCode(""); setStep({ name: "code", identifier, sentTo: r.sentTo }); })} />
-      </Card>
-      <Button testID="have-code" kind="line" label="I have an invite code" onPress={() => { setError(null); setStep({ name: "join" }); }} />
-      <Card style={{ gap: 8, backgroundColor: C.lav, borderColor: C.lav }}>
-        <T style={{ fontFamily: F.serif, fontSize: 20, lineHeight: 24 }}>Clinic not on Pumpkin yet?</T>
-        <T style={{ fontSize: 14.5 }}>Keep your meds, numbers and costs in one place on your own, and bring your clinic in later.</T>
-        <Button testID="start-on-my-own" kind="esp" label="Start on my own" onPress={() => { setError(null); setStep({ name: "signup" }); }} />
-      </Card>
+      {plain ? (
+        // The beta: most people are starting on their own, so that's the one big button.
+        <>
+          <Muted style={{ fontSize: 16 }}>Keep your meds, results, visits and costs in one place. Bring your clinic in later.</Muted>
+          <Button testID="start-on-my-own" kind="esp" label="Get started" onPress={() => { setError(null); setStep({ name: "signup" }); }} />
+          <View style={{ height: 1, backgroundColor: C.line, marginVertical: 6 }} />
+          <T style={{ fontFamily: F.sans600, fontSize: 15 }}>Already have an account?</T>
+          {signInBox("line")}
+          <Pressable testID="have-code" accessibilityRole="button" onPress={() => { setError(null); setStep({ name: "join" }); }} style={{ minHeight: 44, justifyContent: "center", alignSelf: "flex-start" }}><T style={{ color: C.lavInk, fontFamily: F.sans600 }}>I have an invite code</T></Pressable>
+        </>
+      ) : (
+        // A clinic's patients were invited by their clinic: signing in is the one big action.
+        <>
+          <Muted>Sign in with the mobile number or email Bayside has for you. We'll send a code. No password needed.</Muted>
+          {signInBox("mari")}
+          <Pressable testID="have-code" accessibilityRole="button" onPress={() => { setError(null); setStep({ name: "join" }); }} style={{ minHeight: 44, justifyContent: "center", alignSelf: "flex-start" }}><T style={{ color: C.lavInk, fontFamily: F.sans600 }}>I have an invite code</T></Pressable>
+          <Pressable testID="start-on-my-own" accessibilityRole="button" onPress={() => { setError(null); setStep({ name: "signup" }); }} style={{ minHeight: 44, justifyContent: "center", alignSelf: "flex-start" }}><T style={{ color: C.lavInk, fontFamily: F.sans600 }}>Clinic not on Pumpkin yet? Start on your own</T></Pressable>
+        </>
+      )}
       {(__DEV__ || process.env.EXPO_PUBLIC_DEMO === "1") && !plain && (
         <>
           <View style={{ height: 1, backgroundColor: C.line, marginVertical: 6 }} />

@@ -104,15 +104,16 @@ export const F = {
 };
 
 export function T({ children, style, testID, numberOfLines }: { children: ReactNode; style?: TextStyle | TextStyle[]; testID?: string; numberOfLines?: number }) {
-  return <Text testID={testID} numberOfLines={numberOfLines} style={[{ fontFamily: F.sans, color: C.ink, fontSize: 14, lineHeight: 20 }, style]}>{children}</Text>;
+  // Follows the phone's text size (Dynamic Type), up to a size where layouts still hold.
+  return <Text testID={testID} numberOfLines={numberOfLines} maxFontSizeMultiplier={2.2} style={[{ fontFamily: F.sans, color: C.ink, fontSize: 14, lineHeight: 20 }, style]}>{children}</Text>;
 }
 /** The big screen headline ("Today"): Bricolage Grotesque 600, tight tracking. */
 export function Today({ children, size = 40 }: { children: ReactNode; size?: number }) {
-  return <Text accessibilityRole="header" style={{ fontFamily: F.display, fontSize: size, lineHeight: size * 1.05, letterSpacing: -size * 0.03, color: C.espresso }}>{children}</Text>;
+  return <Text accessibilityRole="header" maxFontSizeMultiplier={1.4} style={{ fontFamily: F.display, fontSize: size, lineHeight: size * 1.05, letterSpacing: -size * 0.03, color: C.espresso }}>{children}</Text>;
 }
 /** Section headline (h3 in the design system). */
 export function H1({ children, testID }: { children: ReactNode; testID?: string }) {
-  return <Text testID={testID} accessibilityRole="header" style={{ fontFamily: F.display, fontSize: 28, lineHeight: 32, letterSpacing: -0.6, color: C.espresso }}>{children}</Text>;
+  return <Text testID={testID} accessibilityRole="header" maxFontSizeMultiplier={1.6} style={{ fontFamily: F.display, fontSize: 28, lineHeight: 32, letterSpacing: -0.6, color: C.espresso }}>{children}</Text>;
 }
 /** A brush-line icon from the design system. Decorative: put words beside it. */
 export function Icon({ name, size = 24, color = C.espresso }: { name: IconName; size?: number; color?: string }) {
@@ -310,7 +311,7 @@ export function SheetPicker({ label, value, options, onChange, otherLabel, testI
           <Svg width={16} height={16} viewBox="0 0 24 24"><Path d="M6 9l6 6 6-6" stroke={C.stone} strokeWidth={2.2} fill="none" strokeLinecap="round" strokeLinejoin="round" /></Svg>
         </Pressable>
       )}
-      {typing || custom ? <Pressable onPress={() => { setTyping(false); onChange(""); setOpen(true); }} style={{ alignSelf: "flex-start", minHeight: 36, justifyContent: "center" }}><T style={{ color: C.lavInk, fontFamily: F.sans600, fontSize: 14 }}>Pick from the list instead</T></Pressable> : null}
+      {typing || custom ? <Pressable onPress={() => { setTyping(false); onChange(""); setOpen(true); }} style={{ alignSelf: "flex-start", minHeight: 44, justifyContent: "center" }}><T style={{ color: C.lavInk, fontFamily: F.sans600, fontSize: 14 }}>Pick from the list instead</T></Pressable> : null}
       <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
         <Pressable accessibilityLabel="Close" onPress={() => setOpen(false)} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.35)" }} />
         <View style={{ backgroundColor: C.paper, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingTop: 10, paddingBottom: 28, maxHeight: "70%", width: "100%", maxWidth: 480, alignSelf: "center" }}>

@@ -11,7 +11,7 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localho
   const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process.exitCode = 1; };
   const byId = id => p.locator(`[data-testid="${id}"]`);
   const text = s => p.getByText(s, { exact: false });
-  const sees = async (s, t = 10000) => { try { await text(s).first().waitFor({ timeout: t }); return true; } catch { return false; } };
+  const sees = async (s, t = 10000) => { try { await text(s).filter({ visible: true }).first().waitFor({ timeout: t }); return true; } catch { return false; } };
   const codeFor = async (to) => { const o = await b.newPage(); await o.goto(SERVER + '/dev/outbox'); const rows = await o.locator('[data-testid=outbox-row]').allInnerTexts(); await o.close(); return rows.find((x) => x.includes(to) && /\b\d{6}\b/.test(x)).match(/\b(\d{6})\b/)[1]; };
   const day = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
@@ -73,7 +73,7 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localho
   ok(/clinic will time/.test(await byId('kit-when-fsh').innerText()), 'Irregular cycles: the clinic times cycle-day tests');
 
   // Notes that mention urgent symptoms go to the urgent screen.
-  await p.getByText('Today', { exact: true }).first().click();
+  await byId('back').filter({ visible: true }).click();
   await byId('consult-tile').click();
   await byId('kit-notes').fill('Since the visit I have severe pain and heavy bleeding');
   await byId('kit-notes-save').click();
@@ -85,7 +85,7 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localho
   await byId('pick-Alex Rivera').click();
   await sees('Hi,', 15000);
   await byId('solo-tab-more').click();
-  await byId('settings-stage-pregnant').click(); await byId('settings-save').click();
+  await byId('stage-change').click(); await byId('settings-stage-pregnant').click(); await byId('settings-save').click();
   await sees('Saved.');
   await byId('solo-tab-today').click();
   await byId('ob-tile').waitFor({ timeout: 10000 });
@@ -122,7 +122,7 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localho
 
   await byId('kit-moved').click();
   ok(await sees('Today is lighter now'), 'Moved to her OB');
-  await p.getByText('Today', { exact: true }).first().click();
+  await byId('back').filter({ visible: true }).click();
   await sees("You're with your OB now");
   ok(await byId('next-payment').count() === 0 && await byId('tile-numbers').count() === 0, 'Light Today: no payments or numbers');
   ok(await byId('tile-meds').count() + await byId('now').count() > 0 || await sees('MEDS', 2000), 'Light Today: meds stay');
