@@ -10,10 +10,14 @@ import { C, F, Icon, isDark } from "./ui";
 import type { IconName } from "./icons";
 import { useReduceMotion } from "./motion";
 
-export type PlusItem = { id: string; label: string; icon: IconName | "camera"; tint: [string, string]; onPress: () => void };
+export type PlusItem = { id: string; label: string; icon: IconName | "camera" | "photo"; tint: [string, string]; onPress: () => void };
 
 const CameraGlyph = ({ color }: { color: string }) => (
   <Svg width={22} height={22} viewBox="0 0 24 24"><Path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2.2l1.4-2h5.8l1.4 2h2.2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5z" stroke={color} strokeWidth={1.9} fill="none" strokeLinejoin="round" /><Circle cx={12} cy={13} r={3.4} stroke={color} strokeWidth={1.9} fill="none" /><Rect x={16.6} y={9.3} width={1.4} height={1.4} rx={0.7} fill={color} /></Svg>
+);
+
+const PhotoGlyph = ({ color }: { color: string }) => (
+  <Svg width={22} height={22} viewBox="0 0 24 24"><Rect x={4} y={5} width={16} height={14} rx={2.2} stroke={color} strokeWidth={1.9} fill="none" /><Circle cx={9} cy={10} r={1.6} fill={color} /><Path d="M5 17l4.5-4.5 3 3 2.5-2.5L19.5 17" stroke={color} strokeWidth={1.9} fill="none" strokeLinejoin="round" strokeLinecap="round" /></Svg>
 );
 
 export function PlusMenu({ open, onClose, sections }: { open: boolean; onClose: () => void; sections: { title?: string; items: PlusItem[] }[] }) {
@@ -36,7 +40,7 @@ export function PlusMenu({ open, onClose, sections }: { open: boolean; onClose: 
     <Pressable key={it.id} testID={`menu-${it.id}`} accessibilityRole="menuitem" onPress={() => { onClose(); it.onPress(); }}
       style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 14, minHeight: 52, paddingHorizontal: 14, borderRadius: 16, backgroundColor: pressed ? (dark ? "rgba(255,255,255,0.06)" : "rgba(60,40,25,0.06)") : "transparent" })}>
       <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: it.tint[0], alignItems: "center", justifyContent: "center" }}>
-        {it.icon === "camera" ? <CameraGlyph color={it.tint[1]} /> : <Icon name={it.icon} size={22} color={it.tint[1]} />}
+        {it.icon === "camera" ? <CameraGlyph color={it.tint[1]} /> : it.icon === "photo" ? <PhotoGlyph color={it.tint[1]} /> : <Icon name={it.icon} size={22} color={it.tint[1]} />}
       </View>
       <Text maxFontSizeMultiplier={1.6} style={{ fontFamily: F.sans500, fontSize: 17, color: C.ink, flex: 1 }}>{it.label}</Text>
     </Pressable>

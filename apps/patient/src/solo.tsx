@@ -305,7 +305,7 @@ export function TabTop() {
   const sections: { title?: string; items: PlusItem[] }[] = [
     { title: "Pumpkin reads it for you", items: [
       { id: "camera", label: "Camera", icon: "camera", tint: [C.clay, C.clayInk], onPress: () => read(() => pickPhoto(true)) },
-      { id: "photos", label: "Photos", icon: "doc", tint: [C.lav, C.lavInk], onPress: () => read(() => pickPhoto(false)) },
+      { id: "photos", label: "Photos", icon: "photo", tint: [C.lav, C.lavInk], onPress: () => read(() => pickPhoto(false)) },
       { id: "pdf", label: "PDF", icon: "doc", tint: [C.sage, C.sageInk], onPress: () => read(pickPdf) },
       { id: "say", label: "Say it", icon: "message", tint: [C.softLav, C.lavInk], onPress: () => go({ name: "say" }) },
       { id: "type", label: "Type it", icon: "pen", tint: [C.oat, C.espresso], onPress: () => go({ name: "type" }) },
