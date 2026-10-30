@@ -3,17 +3,36 @@
  * second one (snooze). Every swipe has a button too, so nobody has to discover the gesture.
  * Vertical scrolling still wins unless the finger clearly moves sideways.
  */
-import { useRef, useState, type ReactNode } from "react";
-import { Animated, PanResponder, Platform, View } from "react-native";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Animated, PanResponder, Platform, Pressable, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { F, T } from "./ui";
 
 export type SwipeAction = { label: string; bg: string; fg: string; run: () => void | Promise<void> };
 const THRESHOLD = 88;
 
+/**
+ * True on a computer with a mouse or trackpad, where nobody swipes. Those devices get visible buttons
+ * and no swipe tips. Phones and tablets (touch) keep the gestures, which always have buttons too.
+ */
+export function usePointer() {
+  const [fine, setFine] = useState(false);
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const mm = (globalThis as unknown as { matchMedia?: (q: string) => { matches: boolean; addEventListener?: (t: string, f: () => void) => void; removeEventListener?: (t: string, f: () => void) => void } }).matchMedia;
+    const q = mm?.("(hover: hover) and (pointer: fine)");
+    if (!q) return;
+    const on = () => setFine(q.matches); on();
+    q.addEventListener?.("change", on);
+    return () => q.removeEventListener?.("change", on);
+  }, []);
+  return fine;
+}
+
 export const tick = () => { if (Platform.OS !== "web") void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}); };
 
-export function SwipeRow({ children, right, left, testID, radius = 16, surface }: { children: ReactNode; right?: SwipeAction; left?: SwipeAction; testID?: string; radius?: number; surface: string }) {
+export function SwipeRow({ children, right, left, testID, radius = 16, surface, buttons = true }: { children: ReactNode; right?: SwipeAction; left?: SwipeAction; testID?: string; radius?: number; surface: string; buttons?: boolean }) {
+  const pointer = usePointer();
   const acts = useRef({ right, left }); acts.current = { right, left };
   const x = useRef(new Animated.Value(0)).current;
   const [dir, setDir] = useState<"right" | "left" | null>(null);
@@ -35,6 +54,20 @@ export function SwipeRow({ children, right, left, testID, radius = 16, surface }
     onPanResponderTerminate: settle,
   })).current;
   const a = dir === "right" ? right : dir === "left" ? left : undefined;
+  // With a mouse or trackpad: no dragging, just the actions as buttons (unless the row already has its own).
+  if (pointer) {
+    const acts = [right, left].filter((x, i, all): x is SwipeAction => !!x && all.findIndex((y) => y?.label === x.label) === i);
+    return (
+      <View testID={testID} style={{ borderRadius: radius, overflow: "hidden", backgroundColor: surface }}>
+        {children}
+        {buttons && acts.length ? (
+          <View style={{ flexDirection: "row", gap: 16, justifyContent: "flex-end", paddingHorizontal: 14, paddingBottom: 8 }}>
+            {acts.map((x) => <Pressable key={x.label} testID={`swipe-button-${x.label}`} accessibilityRole="button" onPress={() => void x.run()} style={{ minHeight: 36, justifyContent: "center" }}><T style={{ fontFamily: F.sans600, fontSize: 13.5, textDecorationLine: "underline" }}>{x.label}</T></Pressable>)}
+          </View>
+        ) : null}
+      </View>
+    );
+  }
   return (
     <View testID={testID} style={{ borderRadius: radius, overflow: "hidden" }}>
       {a ? (

@@ -20,7 +20,7 @@ const SERVER = process.env.SERVER_URL ?? 'http://localhost:3000/';
 
   // Maya invites her mom and shares only her cycle
   await as('Maya Torres');
-  await byId('avatar').click();
+  await byId('tab-you').click();
   ok(await sees('Your support people'), 'Settings lists her support people');
   await byId('invite-someone').click();
   await byId('invite-person-name').fill('Rosa Torres');
@@ -72,8 +72,9 @@ const SERVER = process.env.SERVER_URL ?? 'http://localhost:3000/';
 
   // Maya sees Rosa connected, and removes Jordan
   await as('Maya Torres');
-  ok((await byId('bell-count').innerText()) === '1', 'Maya’s bell shows a new notification');
-  await byId('bell').click();
+  await byId('tab-you').click();
+  ok(await sees('1 new'), 'Maya’s You tab shows a new update');
+  await byId('open-inbox').click();
   ok(await sees('Rosa accepted your invite.'), 'Her inbox says Rosa accepted');
   await shot('6a-maya-inbox');
   await byId('notification').first().click(); await p.waitForTimeout(800);

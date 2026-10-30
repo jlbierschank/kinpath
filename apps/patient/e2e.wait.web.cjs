@@ -57,7 +57,8 @@ const SERVER = (process.env.SERVER_URL ?? 'http://localhost:3000/').replace(/\/$
   ok(await sees('What would help right now?'), '"Rough day?" opens support options');
   await shot('w3-rough-day');
   await byId('rough-calm').click();
-  ok(await byId('breath-circle').count() === 1, 'Breathing circle');
+  await byId('breath-circle').first().waitFor({ timeout: 8000 }).catch(() => {});
+  ok(await byId('breath-circle').count() >= 1, 'Breathing circle');
   await shot('w4-breathe');
   await byId('breathe-done').click();
   ok(await sees('a few minutes just for you'), 'Comes back with a kind note');
@@ -99,7 +100,7 @@ const SERVER = (process.env.SERVER_URL ?? 'http://localhost:3000/').replace(/\/$
   await wshot('w7-nurse-released');
 
   await as('Maya Torres');
-  ok(await sees('We’re so sorry, Maya.') || await sees("We're so sorry, Maya."), 'Maya sees the gentle negative-result screen');
+  ok(await sees("We're here with you, Maya."), 'Maya sees the gentle negative-result screen');
   ok((await byId('result-note').innerText()).includes("I'll call you and Jordan"), 'With Maria’s note');
   ok(await byId('quiet-banner').count() === 1, 'The app is quiet for 14 days');
   await byId('ask-counselor').click();

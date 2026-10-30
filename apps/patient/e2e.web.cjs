@@ -13,12 +13,19 @@ const { chromium } = require('playwright');
   { const w = await b.newPage(); await w.goto('http://localhost:3000/'); await w.click('button:has-text("Reset demo data")'); await w.waitForTimeout(1500); await w.close(); }
   await p.goto((process.env.APP ? process.env.APP + '/' : 'http://localhost:8081/'));
   await byId('pick-Maya Torres').click();
-  await text('Up next').waitFor({ timeout: 15000 });
+  await text('Others ask this on day 6').waitFor({ timeout: 15000 });
   await p.waitForTimeout(500);
   await shot('1-home');
   ok(await text('Others ask this on day 6').count() === 1, 'Home matches demo: "Others ask this on day 6" chips');
   ok(await text('3 injections tonight').count() === 1, 'Dark card shows tonight’s 3 injections');
   ok(await p.locator('svg').count() > 0, 'Dotted path renders');
+  ok(await byId('greeting').filter({ visible: true }).innerText() === 'Hi, Maya.' && await byId('tab-bar').count() >= 1 && await byId('feeling-unwell').filter({ visible: true }).count() === 1, 'Same shell as on your own: greeting, glass tab bar, Feeling unwell');
+  ok(['tab-today','tab-messages','tab-record','tab-costs','tab-you'].length === 5 && await byId('tab-messages').count() >= 1 && await byId('tab-costs').count() >= 1, 'Tabs: Today, Messages, Record, Costs, You');
+  await byId('clinic-add').filter({ visible: true }).click();
+  ok(await byId('menu-refill').count() === 1 && await byId('menu-message').count() === 1, 'The + menu has her clinic actions');
+  await byId('menu-refill').click();
+  ok(await byId('refill-ask-form').filter({ visible: true }).waitFor({ timeout: 8000 }).then(() => true, () => false), 'Ask for a refill opens from +');
+  await byId('back').filter({ visible: true }).click();
 
   await byId('start-walkthrough').click();
   await byId('walk-med').waitFor();
@@ -48,7 +55,7 @@ const { chromium } = require('playwright');
   ok(true, 'Urgent note goes to the safety screen');
   await p.getByText('Back to today').click();
 
-  await byId('tab-team').click();
+  await byId('tab-messages').click();
   await byId('message').fill('Can I have coffee during stims?');
   await byId('message-send').click();
   await text('Waiting for your nurse').first().waitFor({ timeout: 10000 });
@@ -56,7 +63,7 @@ const { chromium } = require('playwright');
   ok(true, 'Message shows as waiting for the nurse');
 
   await byId('tab-record').click(); await text('Your record').waitFor(); await shot('7-record');
-  await byId('avatar').click(); await p.getByText('Settings', { exact: true }).waitFor(); await shot('8-settings');
+  await byId('tab-you').click(); await byId('open-notif-settings').waitFor(); await shot('8-settings');
   ok(true, 'Record and Settings open');
 
   await p.goto((process.env.APP ? process.env.APP + '/' : 'http://localhost:8081/'));

@@ -4,7 +4,7 @@ const { chromium } = require('playwright');
 const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localhost:8081';
 (async () => {
   const b = await chromium.launch();
-  const p = await b.newPage({ viewport: { width: 320, height: 700 }, deviceScaleFactor: 2 });
+  const p = await b.newPage({ viewport: { width: 320, height: 700 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }); // a phone: touch, a camera
   const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errs.push(m.text()); });
   const D = require('os').tmpdir() + '/kinpath-phone-shots/'; require('fs').mkdirSync(D, { recursive: true });
   const shot = n => p.screenshot({ path: D + n + '.png' });

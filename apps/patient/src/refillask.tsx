@@ -13,10 +13,10 @@ import { Field } from "./field";
 type Tx = (en: string, es: string) => string;
 const en: Tx = (e) => e;
 
-export function RefillAsk({ meds, clinicName, send, t = en, testID = "refill-ask" }: {
-  meds: string[]; clinicName: string; send: (medication: string, note: string) => Promise<SendResult>; t?: Tx; testID?: string;
+export function RefillAsk({ meds, clinicName, send, t = en, testID = "refill-ask", startOpen = false }: {
+  meds: string[]; clinicName: string; send: (medication: string, note: string) => Promise<SendResult>; t?: Tx; testID?: string; startOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(startOpen);
   const [med, setMed] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);

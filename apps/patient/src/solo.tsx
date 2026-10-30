@@ -20,7 +20,7 @@ import { StatusBar } from "expo-status-bar";
 import Svg, { Circle, Path, Text as SvgText } from "react-native-svg";
 import { Api, auth, type CaptureInput, type ItemKind, type PendingItem, type Refill, type ResultGroup, type SignedInUser, type SoloCosts, type SoloMed, type SoloProfile, type SoloStage, type SoloToday } from "./api";
 import { askPermission, onDoseAction, reminderPermission, remindersSupported, sendTestReminder, snoozeDose, syncReminders, type ReminderPermission } from "./reminders";
-import { SwipeRow, tick } from "./swipe";
+import { SwipeRow, tick, usePointer } from "./swipe";
 import { deviceName, loadPref, savePref } from "./session";
 import { AppearanceCard, useTheme, Button, C, ChoiceList, isDark, Cap, Card, Logo, Chip, Chips, F, H1, Icon, Muted, Pill, st, T, Today, Toggle } from "./ui";
 import { Field } from "./field";
@@ -56,7 +56,7 @@ const zone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZo
 
 // ---------- shell ----------
 
-function Frame({ children, top, tabs, inTabs }: { children: ReactNode; top?: ReactNode; tabs?: ReactNode; inTabs?: boolean }) {
+export function Frame({ children, top, tabs, inTabs }: { children: ReactNode; top?: ReactNode; tabs?: ReactNode; inTabs?: boolean }) {
   return (
     <SafeAreaView edges={inTabs ? ["left", "right"] : undefined} style={{ flex: 1, backgroundColor: C.oat }}>
       <StatusBar style={isDark() ? "light" : "dark"} />
@@ -69,7 +69,7 @@ function Frame({ children, top, tabs, inTabs }: { children: ReactNode; top?: Rea
     </SafeAreaView>
   );
 }
-function Back({ label = "Back", onBack }: { label?: string; onBack: () => void }) {
+export function Back({ label = "Back", onBack }: { label?: string; onBack: () => void }) {
   return (
     <View style={{ paddingHorizontal: 14, paddingTop: 16, paddingBottom: 6 }}>
       <Pressable testID="back" onPress={onBack} style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 8, alignSelf: "flex-start", minHeight: 44 }}>
@@ -315,9 +315,12 @@ export function TabTop() {
   const [menu, setMenu] = useState(false);
   const read = useReadPicked();
   // Four ways in. Pumpkin sorts what she sends into meds, results, visits and costs, and she checks it.
+  // A computer with a mouse usually has no camera pointed at paper, and browsers there open a file picker
+  // instead; so on a computer it's Upload it, which covers photos and files.
+  const pointer = usePointer();
   const sections: { title?: string; items: PlusItem[] }[] = [{ items: [
-    { id: "camera", label: "Camera", sub: "A paper, a label or a bottle", icon: "camera", tint: [C.clay, C.clayInk], onPress: () => read(() => pickPhoto(true)) },
-    { id: "upload", label: "Upload it", sub: "From your photos or files", icon: "photo", tint: [C.lav, C.lavInk], onPress: () => read(pickUpload) },
+    ...(pointer ? [] : [{ id: "camera", label: "Camera", sub: "A paper, a label or a bottle", icon: "camera" as const, tint: [C.clay, C.clayInk] as [string, string], onPress: () => read(() => pickPhoto(true)) }]),
+    { id: "upload", label: "Upload it", sub: pointer ? "A photo, a screenshot or a PDF from this computer" : "From your photos or files", icon: "photo", tint: [C.lav, C.lavInk], onPress: () => read(pickUpload) },
     { id: "say", label: "Say it", sub: "Tell Pumpkin out loud", icon: "message", tint: [C.sage, C.sageInk], onPress: () => go({ name: "say" }) },
     { id: "type", label: "Type it", sub: "A quick note, or fill in the details", icon: "pen", tint: [C.oat, C.espresso], onPress: () => go({ name: "type" }) },
   ] }];
@@ -481,6 +484,7 @@ export function orderFor(stage: SoloStage, layout: TodayLayout | null): { order:
 }
 
 function TodayScreen({ d, api, go, reload, layout, notice, prefs, setPrefs }: { d: SoloToday; api: Api; go: (s: Screen) => void; reload: () => Promise<void>; layout: TodayLayout | null; notice: (m: string) => void; prefs: TodayPrefs; setPrefs: (p: TodayPrefs) => void }) {
+  const pointer = usePointer();
   const p = d.profile;
   // The next day's doses (the next 30 hours), so the 8 pm dose stays visible after tonight's is done.
   const soon = d.schedule.upcoming.filter((x) => new Date(x.scheduledFor).getTime() - Date.now() < 30 * 3600_000);
@@ -550,7 +554,7 @@ function TodayScreen({ d, api, go, reload, layout, notice, prefs, setPrefs }: { 
     );
     if (x.takenAt) return <View key={x.id}>{row}</View>;
     return (
-      <SwipeRow key={x.id} testID={`swipe-${x.id}`} surface={C.fill} radius={12}
+      <SwipeRow key={x.id} testID={`swipe-${x.id}`} surface={C.fill} radius={12} buttons={false}
         right={{ label: "Log it", bg: C.sage, fg: C.sageInk, run: async () => { await log(x.id); if (!prefs.swiped) setPrefs({ ...prefs, swiped: true }); } }}
         left={remindersSupported ? { label: "Snooze 15 min", bg: C.lav, fg: C.lavInk, run: () => snooze(x) } : undefined}>
         {row}
@@ -603,7 +607,7 @@ function TodayScreen({ d, api, go, reload, layout, notice, prefs, setPrefs }: { 
           </View>
         ))}
         {soon.map(doseRow)}
-        {nextDose && !calm && !prefs.swiped ? <T style={{ fontSize: 12.5, color: C.fillMuted }}>{remindersSupported ? "Tip: swipe right to log, left to snooze." : "Tip: swipe right to log."}</T> : null}
+        {nextDose && !calm && !prefs.swiped && !pointer ? <T style={{ fontSize: 12.5, color: C.fillMuted }}>{remindersSupported ? "Tip: swipe right to log, left to snooze." : "Tip: swipe right to log."}</T> : null}
       </View>
     ) : null,
     check: d.toCheck > 0 && !quiet ? (
@@ -648,7 +652,7 @@ function TodayScreen({ d, api, go, reload, layout, notice, prefs, setPrefs }: { 
       </Card>
     ) : null,
     yours: d.about.stepsLeft.length > 0 && !quiet && !gentle && !hard && !snoozed("yours") ? (
-      <SwipeRow surface={C.paper} radius={22} right={notNow("yours")} left={notNow("yours")}>
+      <SwipeRow surface={C.paper} radius={22} right={notNow("yours")} left={notNow("yours")} buttons={false}>
         <View style={[st.card, { padding: 16, gap: 6 }]}>
           <Pressable testID="make-yours" onPress={() => go({ name: "about" })} style={{ gap: 6 }}>
             <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="heart" /><T style={{ fontFamily: F.display, fontSize: 20 }}>Make Pumpkin yours</T></View>
@@ -663,7 +667,7 @@ function TodayScreen({ d, api, go, reload, layout, notice, prefs, setPrefs }: { 
       : Date.now() - new Date(p.askedClinicAt).getTime() < 24 * 3600_000 && !snoozed("clinicSent") ? (
       // The confirmation shows for a day, then lives in Settings. Swipe it away sooner.
       <SwipeRow surface={C.sage} radius={22} right={notNow("clinicSent", 3650)} left={notNow("clinicSent", 3650)}>
-        <View testID="clinic-sent" style={{ backgroundColor: C.sage, borderRadius: 22, padding: 16, gap: 4 }}><T style={{ color: C.sageInk, fontFamily: F.sans600, fontSize: 15 }}>{`You asked ${p.clinicName ?? "your clinic"} to join. When they do, your nurse can see what you've logged, if you choose to share it.`}</T><Muted style={{ fontSize: 12.5 }}>Swipe to clear. It's in Settings too.</Muted></View>
+        <View testID="clinic-sent" style={{ backgroundColor: C.sage, borderRadius: 22, padding: 16, gap: 4 }}><T style={{ color: C.sageInk, fontFamily: F.sans600, fontSize: 15 }}>{`You asked ${p.clinicName ?? "your clinic"} to join. When they do, your nurse can see what you've logged, if you choose to share it.`}</T><Muted style={{ fontSize: 12.5 }}>{pointer ? "It's in Settings too." : "Swipe to clear. It's in Settings too."}</Muted></View>
       </SwipeRow>
     ) : null,
   };
@@ -1594,7 +1598,8 @@ function MoreScreen({ api, profile, reload, onSignOut, go }: { api: Api; profile
       </Card>
       <ClinicConnectCard api={api} clinicName={profile.clinicName} />
       <CalendarShareCard api={api} />
-      {remindersSupported ? <Card style={{ gap: 8 }}><T style={{ fontFamily: F.sans600, fontSize: 15 }}>Dose reminders</T><Muted style={{ fontSize: 14 }}>A reminder 15 minutes before each dose. The lock screen says only "You have a reminder."</Muted><Button kind="line" label="Turn on reminders and test" onPress={() => act(async () => { if (!(await askPermission())) throw new Error("Reminders are off. Turn them on in your phone's Settings, under Pumpkin."); await sendTestReminder(); }, "Reminders are on. A test one will ring in a few seconds.")} /></Card> : null}
+      {remindersSupported ? <Card style={{ gap: 8 }}><T style={{ fontFamily: F.sans600, fontSize: 15 }}>Dose reminders</T><Muted style={{ fontSize: 14 }}>A reminder 15 minutes before each dose. The lock screen says only "You have a reminder."</Muted><Button kind="line" label="Turn on reminders and test" onPress={() => act(async () => { if (!(await askPermission())) throw new Error("Reminders are off. Turn them on in your phone's Settings, under Pumpkin."); await sendTestReminder(); }, "Reminders are on. A test one will ring in a few seconds.")} /></Card>
+        : <Card testID="reminders-where" style={{ gap: 6 }}><T style={{ fontFamily: F.sans600, fontSize: 15 }}>Dose reminders</T><Muted style={{ fontSize: 14 }}>Reminders ring on your phone, through the Pumpkin app. Sign in there with the same email and they start on that phone. Everything you add here shows up there too.</Muted></Card>}
       <AppearanceCard />
       <Card style={{ gap: 10 }}>
         <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><Icon name="shield" /><T style={{ fontFamily: F.sans600, fontSize: 15 }}>Your data, your call</T></View>

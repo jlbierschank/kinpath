@@ -3,6 +3,7 @@ import { ActivityIndicator, Animated, Easing, Linking, Platform, Pressable, Scro
 import * as Clipboard from "expo-clipboard";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
+import { Redirect, type Href } from "expo-router";
 import { useFonts } from "expo-font";
 import { BricolageGrotesque_600SemiBold, BricolageGrotesque_700Bold } from "@expo-google-fonts/bricolage-grotesque";
 import { InstrumentSans_400Regular, InstrumentSans_500Medium, InstrumentSans_600SemiBold, InstrumentSans_700Bold } from "@expo-google-fonts/instrument-sans";
@@ -16,7 +17,7 @@ import { RefillAsk } from "./src/refillask";
 import { TestBanner, useAppInfo } from "./src/appinfo";
 import { clearSession, deviceName, loadSession, saveSession } from "./src/session";
 import { Bell, InboxScreen, NotificationSettingsScreen, SignInSection } from "./src/account";
-import { AppearanceCard, AskBox, Avatar, isDark, Logo, ThemeProvider, useTheme, Button, C, Cap, Card, Chip, Chips, F, H1, JourneyPath, Moment, Muted, Pill, Row, st, T, TimelineItem, Today, Toggle } from "./src/ui";
+import { AppearanceCard, AskBox, Avatar, Icon, isDark, Logo, ThemeProvider, useTheme, Button, C, Cap, Card, Chip, Chips, F, H1, JourneyPath, Moment, Muted, Pill, Row, st, T, TimelineItem, Today, Toggle } from "./src/ui";
 
 // DEV ONLY: synthetic seed people. Real passwordless sign-in replaces this screen.
 const DEV_PEOPLE = [
@@ -29,9 +30,10 @@ type DevPerson = (typeof DEV_PEOPLE)[number];
 const initialsOf = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?";
 const NURSE_LINE = "tel:+18135550100"; // placeholder
 
-type Tab = "home" | "community" | "record" | "team";
-type Screen = { name: Tab } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; kind: SendResult["kind"] } | { name: "missed"; dose: Dose } | { name: "invite" } | { name: "rough" } | { name: "breathe" } | { name: "keepsake" } | { name: "share-summary"; ob: string | null } | { name: "next-cycle" } | { name: "inbox" } | { name: "notif-settings" } | { name: "costs" } | { name: "receipt"; id: string };
-type Tx = (en: string, es: string) => string;
+export type ClinicTab = "home" | "community" | "record" | "team";
+export type ClinicScreenSpec = { name: ClinicTab } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; kind: SendResult["kind"] } | { name: "missed"; dose: Dose } | { name: "invite" } | { name: "rough" } | { name: "breathe" } | { name: "keepsake" } | { name: "share-summary"; ob: string | null } | { name: "next-cycle" } | { name: "inbox" } | { name: "notif-settings" } | { name: "costs" } | { name: "receipt"; id: string } | { name: "refill" };
+type Screen = ClinicScreenSpec;
+export type Tx = (en: string, es: string) => string;
 
 const STAGES = ["Consult", "Testing", "Stims", "Retrieval", "Transfer", "Wait", "Result", "OB-GYN"];
 const STAGES_ES = ["Consulta", "Pruebas", "Estimulación", "Extracción", "Transferencia", "Espera", "Resultado", "Ginecólogo"];
@@ -75,7 +77,7 @@ export function Gate() {
   const { who, api, signIn, signOut } = useWho();
   if (!who || !api) return <SignIn onSignedIn={(u) => void signIn(whoFromUser(u), u)} onDemo={(p) => void signIn(whoFromDemo(p))} />;
   if (who.partner) return <PartnerApp api={api} initials={who.initials} onSignOut={() => void signOut()} demo={who.demo} />;
-  return <Signed api={api} initials={who.initials} onSignOut={() => void signOut()} demo={who.demo} />;
+  return <Redirect href={"/clinic/today" as Href} />;
 }
 
 function Frame({ children, tabs, top }: { children: ReactNode; tabs?: ReactNode; top?: ReactNode }) {
@@ -211,87 +213,26 @@ function BackBar({ label, onBack }: { label: string; onBack: () => void }) {
     </View>
   );
 }
-function TabBar({ current, t, go, badge }: { current: string; t: Tx; go: (s: Screen) => void; badge: number }) {
-  const items: [Tab, string][] = [["home", t("Home", "Inicio")], ["community", t("Community", "Comunidad")], ["record", t("Record", "Expediente")], ["team", t("Care team", "Equipo")]];
+/** A card's label, the same as the tiles on your own: an icon and a short caps word. */
+function TileLabel({ icon, label, ink }: { icon: "medication" | "calendar" | "message"; label: string; ink?: string }) {
+  return <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name={icon} color={ink} /><T style={{ fontFamily: F.sans700, fontSize: 13, letterSpacing: 0.6, color: ink ?? C.ink }}>{label.toUpperCase()}</T></View>;
+}
+
+/** The top of Today, the same as on your own: her name, the date, and where she is. */
+export function Greeting({ data, t, pill }: { data: TodayData; t: Tx; pill: string | null }) {
   return (
-    <View style={{ marginHorizontal: 14, marginTop: 8, marginBottom: 14, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderBottomWidth: 3, borderRadius: 999, padding: 5, flexDirection: "row" }}>
-      {items.map(([name, label]) => {
-        const on = current === name;
-        return (
-          <Pressable key={name} testID={`tab-${name}`} onPress={() => go({ name })} style={{ flex: 1, borderRadius: 999, paddingVertical: 10, alignItems: "center", backgroundColor: on ? C.fill : "transparent" }}>
-            <Text numberOfLines={1} style={{ fontFamily: on ? F.sans600 : F.sans, fontSize: 12.5, color: on ? C.onFill : C.stone }}>{label}{name === "team" && badge ? ` · ${badge}` : ""}</Text>
-          </Pressable>
-        );
-      })}
+    <View style={{ gap: 6 }}>
+      <Text testID="greeting" accessibilityRole="header" maxFontSizeMultiplier={1.4} style={{ fontFamily: F.display, fontSize: 34, lineHeight: 37, letterSpacing: -1, color: C.espresso }}>{data.firstName ? t(`Hi, ${data.firstName}.`, `Hola, ${data.firstName}.`) : t("Hi.", "Hola.")}</Text>
+      <View style={{ flexDirection: "row", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <Muted style={{ fontSize: 15 }}>{new Date().toLocaleDateString(data.lang === "es" ? "es-US" : "en-US", { weekday: "short", month: "short", day: "numeric" })}</Muted>
+        {pill ? <Pill tone="lav" label={pill} /> : null}
+      </View>
     </View>
   );
 }
 
-function Signed({ api, initials, onSignOut, demo }: { api: Api; initials: string; onSignOut: () => void; demo: boolean }) {
-  const [data, setData] = useState<TodayData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [screen, setScreen] = useState<Screen>({ name: "home" });
-  const [scheduled, setScheduled] = useState(0);
-  // A short line shown at the top of home after a support action ("Your nurse will call you today").
-  const [notice, setNotice] = useState<string | null>(null);
-  const [alerts, setAlerts] = useState(0);
-  const refreshAlerts = useCallback(() => { api.notifications().then((n) => setAlerts(n.unread)).catch(() => {}); }, [api]);
-  const load = useCallback(async () => {
-    try { const d = await api.today(); setData(d); setError(null); setScheduled(await syncReminders(d.reminders)); refreshAlerts(); }
-    catch (e) { setError((e as Error).message); }
-  }, [api, refreshAlerts]);
-  useEffect(() => { void load(); }, [load]);
-  // Log it / Snooze tapped on a dose reminder.
-  useEffect(() => onDoseAction(async (x) => {
-    if (x.action === "log") { for (const id of x.doseIds) await api.logDose(id).catch(() => null); tick(); setScreen({ name: "home" }); setNotice("Logged."); void load(); }
-    else if (x.action === "snooze") { const at = await snoozeDose(x.doseIds, x.title, x.body); setScreen({ name: "home" }); setNotice(at ? `We'll remind you again at ${clock(at.toISOString())}.` : "Snoozed."); }
-  }), [api, load]);
-
-  if (error) return <Frame><Today size={34}>Can't reach Pumpkin</Today><Muted>{error}</Muted><Button label="Try again" onPress={load} /></Frame>;
-  if (!data) return <Frame><Muted>Loading…</Muted></Frame>;
-  const t: Tx = (en, es) => (data.lang === "es" ? es : en);
-  const go = (s: Screen) => setScreen(s);
-  const home = () => { void load(); go({ name: "home" }); };
-  const afterSend = (r: SendResult) => (r.kind === "urgent_symptom" || r.kind === "crisis" ? go({ name: "urgent", kind: r.kind }) : (void load(), go({ name: "team" })));
-  const unread = data.inbox.filter((m) => m.status === "sent").length;
-  const isTab = ["home", "community", "record", "team"].includes(screen.name);
-  const top = isTab ? <TopBar clinic={data.clinic.name} initials={initials} onAvatar={() => go({ name: "settings" })} unread={alerts} onBell={() => go({ name: "inbox" })} t={t} /> : <BackBar label={t("Home", "Inicio")} onBack={home} />;
-  // Where a notification takes you in the app.
-  const openAlert = (n: { kind: string }) => go(n.kind === "nurse_reply" ? { name: "team" } : n.kind === "support_joined" ? { name: "settings" } : { name: "home" });
-  const tabs = isTab ? <TabBar current={screen.name} t={t} go={go} badge={unread} /> : undefined;
-
-  return (
-    <Frame top={top} tabs={tabs}>
-      {screen.name === "home" && (data.stage === "graduated"
-        ? <GraduationHome data={data} api={api} t={t} go={go} reload={load} notice={notice} setNotice={setNotice} afterSend={afterSend} />
-        : data.wait.result
-        ? <ResultHome data={data} api={api} t={t} go={go} reload={load} notice={notice} setNotice={setNotice} />
-        : data.wait.stage === "wait"
-          ? <WaitHome data={data} api={api} t={t} go={go} reload={load} notice={notice} />
-          : <Home data={data} api={api} t={t} go={go} afterSend={afterSend} reload={load} />)}
-      {screen.name === "next-cycle" && <NextCycleScreen api={api} t={t} />}
-      {screen.name === "keepsake" && <KeepsakeScreen api={api} t={t} lang={data.lang} />}
-      {screen.name === "share-summary" && <ShareSummary api={api} t={t} ob={screen.ob} />}
-      {screen.name === "rough" && <RoughDay api={api} t={t} go={go} done={(msg) => { setNotice(msg); home(); }} />}
-      {screen.name === "breathe" && <Breathe t={t} done={() => { setNotice(t("That was a few minutes just for you.", "Fueron unos minutos solo para ti.")); home(); }} />}
-      {screen.name === "walk" && <Walk doses={screen.doses} focus={screen.focus} api={api} lang={data.lang} t={t} done={home} quiet={data.wait.quietUntil !== null} somethingWrong={() => go({ name: "team" })} />}
-      {screen.name === "missed" && <Missed dose={screen.dose} api={api} t={t} reload={load} afterSend={afterSend} done={home} />}
-      {screen.name === "team" && <CareTeam data={data} api={api} t={t} reload={load} afterSend={afterSend} />}
-      {screen.name === "record" && <Record data={data} api={api} t={t} go={go} />}
-      {screen.name === "costs" && <CostsScreen api={api} t={t} lang={data.lang} openReceipt={(id) => go({ name: "receipt", id })} />}
-      {screen.name === "receipt" && <ReceiptScreen api={api} t={t} id={screen.id} />}
-      {screen.name === "community" && <Community t={t} />}
-      {screen.name === "settings" && <Settings data={data} api={api} t={t} reload={load} scheduled={scheduled} onSignOut={onSignOut} go={go} demo={demo} />}
-      {screen.name === "inbox" && <InboxScreen api={api} t={t} open={(n) => { void load(); openAlert(n); }} changed={refreshAlerts} />}
-      {screen.name === "notif-settings" && <NotificationSettingsScreen api={api} t={t} lang={data.lang} />}
-      {screen.name === "invite" && <InviteScreen api={api} t={t} reload={load} done={() => { void load(); go({ name: "settings" }); }} />}
-      {screen.name === "urgent" && <Urgent kind={screen.kind} t={t} back={home} />}
-    </Frame>
-  );
-}
-
 // Notes from support people, shown at the top of every home view.
-function NoteCards({ data, api, t, reload }: { data: TodayData; api: Api; t: Tx; reload: () => Promise<void> }) {
+export function NoteCards({ data, api, t, reload }: { data: TodayData; api: Api; t: Tx; reload: () => Promise<void> }) {
   const notes = data.sharing.notes.filter((n) => !n.seenAt);
   return (
     <>
@@ -320,7 +261,7 @@ function NoteCards({ data, api, t, reload }: { data: TodayData; api: Api; t: Tx;
 }
 
 // ---------- Home (matches the demo's "Today") ----------
-function Home({ data, api, t, go, afterSend, reload }: { data: TodayData; api: Api; t: Tx; go: (s: Screen) => void; afterSend: (r: SendResult) => void; reload: () => Promise<void> }) {
+export function Home({ data, api, t, go, afterSend, reload }: { data: TodayData; api: Api; t: Tx; go: (s: Screen) => void; afterSend: (r: SendResult) => void; reload: () => Promise<void> }) {
   const [ask, setAsk] = useState("");
   const [sending, setSending] = useState(false);
   const pending = useMemo(() => data.schedule.upcoming.filter((d) => !d.takenAt), [data]);
@@ -335,11 +276,8 @@ function Home({ data, api, t, go, afterSend, reload }: { data: TodayData; api: A
 
   return (
     <>
-      <View style={{ gap: 4 }}>
-        <Today>{t("Today", "Hoy")}</Today>
-        <Muted>{day ? t(`Stimulation, day ${day} · We're here for anything.`, `Estimulación, día ${day} · Estamos aquí para lo que necesites.`) : t("We're here for anything.", "Estamos aquí para lo que necesites.")}</Muted>
-        <Muted style={{ fontSize: 12 }}>{data.clinic.replyWindow[data.lang]} {t("Urgent? Call the nurse line anytime.", "¿Urgente? Llama a enfermería a cualquier hora.")}</Muted>
-      </View>
+      <Greeting data={data} t={t} pill={day ? t(`Stimulation, day ${day}`, `Estimulación, día ${day}`) : null} />
+      <Muted style={{ fontSize: 13.5 }}>{data.clinic.replyWindow[data.lang]} {t("Urgent? Call the nurse line anytime.", "¿Urgente? Llama a enfermería a cualquier hora.")}</Muted>
 
       <NoteCards data={data} api={api} t={t} reload={reload} />
 
@@ -358,9 +296,9 @@ function Home({ data, api, t, go, afterSend, reload }: { data: TodayData; api: A
       </View>
 
       <View style={{ gap: 8 }}>
-        <Cap>{t("Up next", "Lo siguiente")}</Cap>
         {tonight.length > 0 ? (
           <View style={st.dark}>
+            <TileLabel icon="medication" label={t("Meds", "Medicamentos")} ink={C.fillMuted} />
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" }}>
               <Text style={{ fontFamily: F.serif, fontSize: 26, letterSpacing: -0.5, color: C.onFill }}>{clock(nextAt!)}</Text>
               <T style={{ fontSize: 13, color: C.fillMuted }}>{t(`${tonight.length} injection${tonight.length > 1 ? "s" : ""} tonight`, `${tonight.length} inyección${tonight.length > 1 ? "es" : ""} esta noche`)}</T>
@@ -376,6 +314,7 @@ function Home({ data, api, t, go, afterSend, reload }: { data: TodayData; api: A
           </View>
         ) : (
           <View style={st.dark}>
+            <TileLabel icon="medication" label={t("Meds", "Medicamentos")} ink={C.fillMuted} />
             <Text style={{ fontFamily: F.serif, fontSize: 24, color: C.onFill }}>{t("All set for tonight", "Todo listo por esta noche")}</Text>
             <T style={{ fontSize: 14.5, color: C.fillSoft }}>{t(`${loggedTonight.length} logged. Maria can see them.`, `${loggedTonight.length} registradas. María puede verlas.`)}</T>
           </View>
@@ -384,8 +323,8 @@ function Home({ data, api, t, go, afterSend, reload }: { data: TodayData; api: A
 
       {(data.appointments?.length ?? 0) > 0 && (
         <View style={{ gap: 8 }} testID="visits">
-          <Cap>{t("Coming up", "Próximas citas")}</Cap>
-          <Card pad={false} style={{ paddingHorizontal: 16, paddingVertical: 4 }}>
+          <Card pad={false} style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 }}>
+            <TileLabel icon="calendar" label={t("Coming up", "Próximas citas")} />
             {data.appointments!.slice(0, 3).map((a, i) => (
               <View key={a.id} testID="visit" style={[st.row, i === 0 && { borderTopWidth: 0 }]}>
                 <View style={{ flex: 1 }}>
@@ -424,7 +363,7 @@ function Home({ data, api, t, go, afterSend, reload }: { data: TodayData; api: A
 
 // ---------- The two-week wait (matches the demo's wait home) ----------
 const longDate = (iso: string, lang: "en" | "es") => new Date(iso).toLocaleDateString(lang === "es" ? "es-US" : "en-US", { weekday: "long", month: "short", day: "numeric" });
-function WaitHome({ data, api, t, go, reload, notice }: { data: TodayData; api: Api; t: Tx; go: (s: Screen) => void; reload: () => Promise<void>; notice: string | null }) {
+export function WaitHome({ data, api, t, go, reload, notice }: { data: TodayData; api: Api; t: Tx; go: (s: Screen) => void; reload: () => Promise<void>; notice: string | null }) {
   const w = data.wait;
   const [answer, setAnswer] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -446,10 +385,8 @@ function WaitHome({ data, api, t, go, reload, notice }: { data: TodayData; api: 
 
   return (
     <>
-      <View style={{ gap: 4 }}>
-        <Today>{w.prefs.hideDayCount || !w.dayOfWait ? t("The wait", "La espera") : t(`Day ${w.dayOfWait} of the wait`, `Día ${w.dayOfWait} de la espera`)}</Today>
-        <Muted>{t("Waiting is hard. We're with you.", "Esperar es difícil. Estamos contigo.")}</Muted>
-      </View>
+      <Greeting data={data} t={t} pill={w.prefs.hideDayCount || !w.dayOfWait ? t("The wait", "La espera") : t(`Day ${w.dayOfWait} of the wait`, `Día ${w.dayOfWait} de la espera`)} />
+      <Muted style={{ fontSize: 15 }}>{t("Waiting is hard. We're with you.", "Esperar es difícil. Estamos contigo.")}</Muted>
       <JourneyPath current={5} labels={data.lang === "es" ? STAGES_ES : STAGES} calm />
       {notice && <Moment>{notice}</Moment>}
       <NoteCards data={data} api={api} t={t} reload={reload} />
@@ -496,7 +433,7 @@ function WaitHome({ data, api, t, go, reload, notice }: { data: TodayData; api: 
   );
 }
 
-function RoughDay({ api, t, go, done }: { api: Api; t: Tx; go: (s: Screen) => void; done: (msg: string) => void }) {
+export function RoughDay({ api, t, go, done }: { api: Api; t: Tx; go: (s: Screen) => void; done: (msg: string) => void }) {
   const [busy, setBusy] = useState(false);
   return (
     <>
@@ -510,7 +447,7 @@ function RoughDay({ api, t, go, done }: { api: Api; t: Tx; go: (s: Screen) => vo
   );
 }
 
-function Breathe({ t, done }: { t: Tx; done: () => void }) {
+export function Breathe({ t, done }: { t: Tx; done: () => void }) {
   const scale = useMemo(() => new Animated.Value(0.6), []);
   useEffect(() => {
     const loop = Animated.loop(Animated.sequence([
@@ -535,7 +472,7 @@ function Breathe({ t, done }: { t: Tx; done: () => void }) {
 }
 
 // ---------- Result day ----------
-function ResultHome({ data, api, t, go, reload, notice, setNotice }: { data: TodayData; api: Api; t: Tx; go: (s: Screen) => void; reload: () => Promise<void>; notice: string | null; setNotice: (s: string | null) => void }) {
+export function ResultHome({ data, api, t, go, reload, notice, setNotice }: { data: TodayData; api: Api; t: Tx; go: (s: Screen) => void; reload: () => Promise<void>; notice: string | null; setNotice: (s: string | null) => void }) {
   const r = data.wait.result!;
   const first = data.firstName ?? "";
   const partner = data.sharing.partners.find((p) => p.relationship === "partner");
@@ -551,7 +488,7 @@ function ResultHome({ data, api, t, go, reload, notice, setNotice }: { data: Tod
     const quiet = data.wait.quietUntil;
     return (
       <>
-        <Today size={36}>{t(`We're so sorry, ${first}.`, `Lo sentimos mucho, ${first}.`)}</Today>
+        <Today size={36}>{t(`We're here with you, ${first}.`, `Estamos contigo, ${first}.`)}</Today>
         <Card style={{ gap: 6 }}>
           <T style={{ fontSize: 15.5 }}>{t("This test was negative. Whatever you're feeling right now is okay.", "Esta prueba salió negativa. Lo que sientas ahora está bien.")}</T>
           <Muted>{t("You don't have to decide anything today.", "No tienes que decidir nada hoy.")}</Muted>
@@ -610,7 +547,7 @@ function ResultHome({ data, api, t, go, reload, notice, setNotice }: { data: Tod
 }
 
 // ---------- "When you're ready": next-cycle planning, at her pace ----------
-function NextCycleScreen({ api, t }: { api: Api; t: Tx }) {
+export function NextCycleScreen({ api, t }: { api: Api; t: Tx }) {
   const [n, setN] = useState<NextCycle | null>(null);
   const [questions, setQuestions] = useState("");
   const [savedQ, setSavedQ] = useState(false);
@@ -669,7 +606,7 @@ function NewsCard({ data, api, t, reload, told }: { data: TodayData; api: Api; t
   );
 }
 
-function GraduationHome({ data, api, t, go, reload, notice, setNotice, afterSend }: { data: TodayData; api: Api; t: Tx; go: (s: Screen) => void; reload: () => Promise<void>; notice: string | null; setNotice: (s: string | null) => void; afterSend: (r: SendResult) => void }) {
+export function GraduationHome({ data, api, t, go, reload, notice, setNotice, afterSend }: { data: TodayData; api: Api; t: Tx; go: (s: Screen) => void; reload: () => Promise<void>; notice: string | null; setNotice: (s: string | null) => void; afterSend: (r: SendResult) => void }) {
   const [g, setG] = useState<Graduation | null>(null);
   const [thanks, setThanks] = useState("");
   const [busy, setBusy] = useState(false);
@@ -722,7 +659,7 @@ function GraduationHome({ data, api, t, go, reload, notice, setNotice, afterSend
   );
 }
 
-function KeepsakeScreen({ api, t, lang }: { api: Api; t: Tx; lang: "en" | "es" }) {
+export function KeepsakeScreen({ api, t, lang }: { api: Api; t: Tx; lang: "en" | "es" }) {
   const [g, setG] = useState<Graduation | null>(null);
   const [hidden, setHidden] = useState<KeepsakeId[]>([]);
   const [saved, setSaved] = useState(false);
@@ -761,7 +698,7 @@ function KeepsakeScreen({ api, t, lang }: { api: Api; t: Tx; lang: "en" | "es" }
   );
 }
 
-function ShareSummary({ api, t, ob }: { api: Api; t: Tx; ob: string | null }) {
+export function ShareSummary({ api, t, ob }: { api: Api; t: Tx; ob: string | null }) {
   const [recipient, setRecipient] = useState(ob ?? "");
   const [results, setResults] = useState(true);
   const [meds, setMeds] = useState(true);
@@ -827,7 +764,7 @@ function ShareSummary({ api, t, ob }: { api: Api; t: Tx; ob: string | null }) {
 }
 
 // ---------- Injection walkthrough (demo layout: one medication per screen) ----------
-function Walk({ doses, focus, api, lang, t, done, somethingWrong, helper, quiet }: { doses: Dose[]; focus?: string; api: Api; lang: "en" | "es"; t: Tx; done: () => void; somethingWrong: () => void; helper?: string; quiet?: boolean }) {
+export function Walk({ doses, focus, api, lang, t, done, somethingWrong, helper, quiet }: { doses: Dose[]; focus?: string; api: Api; lang: "en" | "es"; t: Tx; done: () => void; somethingWrong: () => void; helper?: string; quiet?: boolean }) {
   const start = Math.max(0, doses.findIndex((d) => d.medication === focus));
   const [i, setI] = useState(start);
   const [logged, setLogged] = useState(0);
@@ -892,7 +829,7 @@ function Walk({ doses, focus, api, lang, t, done, somethingWrong, helper, quiet 
 }
 
 // ---------- Missed dose ----------
-function Missed({ dose, api, t, reload, afterSend, done }: { dose: Dose; api: Api; t: Tx; reload: () => Promise<void>; afterSend: (r: SendResult) => void; done: () => void }) {
+export function Missed({ dose, api, t, reload, afterSend, done }: { dose: Dose; api: Api; t: Tx; reload: () => Promise<void>; afterSend: (r: SendResult) => void; done: () => void }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   return (
@@ -907,13 +844,13 @@ function Missed({ dose, api, t, reload, afterSend, done }: { dose: Dose; api: Ap
 }
 
 // ---------- Care team (messages) ----------
-function CareTeam({ data, api, t, reload, afterSend }: { data: TodayData; api: Api; t: Tx; reload: () => Promise<void>; afterSend: (r: SendResult) => void }) {
+export function CareTeam({ data, api, t, reload, afterSend }: { data: TodayData; api: Api; t: Tx; reload: () => Promise<void>; afterSend: (r: SendResult) => void }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const items = [...data.inbox].reverse();
   return (
     <>
-      <H1>{t("Your care team", "Tu equipo")}</H1>
+      <Today size={34}>{t("Messages", "Mensajes")}</Today>
       <Muted>{data.clinic.replyWindow[data.lang]}</Muted>
       {items.length === 0 && <Muted>{t("No messages yet.", "Aún no hay mensajes.")}</Muted>}
       {items.map((m) => (
@@ -938,14 +875,11 @@ function CareTeam({ data, api, t, reload, afterSend }: { data: TodayData; api: A
 }
 
 // ---------- Record ----------
-function Record({ data, api, t, go }: { data: TodayData; api: Api; t: Tx; go: (s: Screen) => void }) {
+export function Record({ data, api, t, go }: { data: TodayData; api: Api; t: Tx; go: (s: Screen) => void }) {
   return (
     <>
       <Today size={34}>{t("Your record", "Tu expediente")}</Today>
       <Muted>{t("Yours to keep, and to share as you choose.", "Tuyo para guardar y compartir como quieras.")}</Muted>
-      <Card pad={false}>
-        <Row testID="open-costs" title={t("Costs, coverage and payments", "Costos, cobertura y pagos")} sub={t("Your estimate, what's due, and receipts", "Tu presupuesto, lo que vence y recibos")} onPress={() => go({ name: "costs" })} right={<T style={{ color: C.lavInk }}>›</T>} />
-      </Card>
       <Cap>{t("Results", "Resultados")}</Cap>
       <Card pad={false}>
         {data.results.length === 0 && <Row title={t("No results yet", "Aún no hay resultados")} />}
@@ -966,7 +900,7 @@ function Record({ data, api, t, go }: { data: TodayData; api: Api; t: Tx; go: (s
   );
 }
 
-function Community({ t }: { t: Tx }) {
+export function Community({ t }: { t: Tx }) {
   return (
     <>
       <Today size={34}>{t("Community", "Comunidad")}</Today>
@@ -979,11 +913,15 @@ function Community({ t }: { t: Tx }) {
 }
 
 // ---------- Settings ----------
-function Settings({ data, api, t, reload, scheduled, onSignOut, go, demo }: { data: TodayData; api: Api; t: Tx; reload: () => Promise<void>; scheduled: number; onSignOut: () => void; go: (s: Screen) => void; demo: boolean }) {
+export function Settings({ data, api, t, reload, scheduled, onSignOut, go, demo, unread = 0 }: { data: TodayData; api: Api; t: Tx; reload: () => Promise<void>; scheduled: number; onSignOut: () => void; go: (s: Screen) => void; demo: boolean; unread?: number }) {
   const [perm, setPerm] = useState<string | null>(null);
   return (
     <>
-      <H1>{t("Settings", "Ajustes")}</H1>
+      <Today size={34}>{t("You", "Tú")}</Today>
+      <Card pad={false}>
+        <Row testID="open-inbox" title={t("Updates", "Novedades")} sub={unread ? t(`${unread} new`, `${unread} nuevas`) : t("Nothing new", "Nada nuevo")} onPress={() => go({ name: "inbox" })} right={unread ? <Pill tone="red" label={String(unread)} /> : <T style={{ color: C.stone, fontSize: 18 }}>›</T>} />
+        <Row testID="open-community" title={t("Community", "Comunidad")} sub={t("Coming soon", "Muy pronto")} onPress={() => go({ name: "community" })} right={<T style={{ color: C.stone, fontSize: 18 }}>›</T>} />
+      </Card>
       <Card pad={false}>
         <Row testID="open-notif-settings" title={t("Notifications", "Notificaciones")} sub={t("Which alerts you get, and how", "Qué alertas recibes y cómo")} onPress={() => go({ name: "notif-settings" })} right={<T style={{ color: C.stone, fontSize: 18 }}>›</T>} />
       </Card>
@@ -992,7 +930,7 @@ function Settings({ data, api, t, reload, scheduled, onSignOut, go, demo }: { da
       <Card style={{ gap: 8 }}>
         <Muted>{remindersSupported
           ? t(`${scheduled} reminder(s) set on this phone. Dose reminders still ring during quiet hours (${data.prefs.quietStart}–${data.prefs.quietEnd}); follow-ups wait until morning.`, `${scheduled} recordatorio(s) en este teléfono. Los de dosis suenan aun en horas de silencio (${data.prefs.quietStart}–${data.prefs.quietEnd}); los seguimientos esperan a la mañana.`)
-          : t("Reminders work in the phone app, not in a web browser.", "Los recordatorios funcionan en la app del teléfono, no en el navegador.")}</Muted>
+          : t("Reminders ring on your phone, through the Pumpkin app. Sign in there with the same email and they start on that phone.", "Los recordatorios suenan en tu teléfono, con la app de Pumpkin. Inicia sesión allí con el mismo correo y empezarán en ese teléfono.")}</Muted>
         {remindersSupported && <Button kind="esp" label={t("Turn on reminders", "Activar recordatorios")} onPress={async () => { const ok = await askPermission(); setPerm(ok ? t("Reminders are on.", "Recordatorios activados.") : t("Reminders are off in your phone's settings.", "Los recordatorios están desactivados en los ajustes del teléfono.")); await reload(); }} />}
         {perm && <Muted>{perm}</Muted>}
       </Card>
@@ -1070,7 +1008,7 @@ function SharingCard({ partner, api, t, reload }: { partner: SupportPerson; api:
 
 // ---------- Invite a support person ----------
 const RELATIONSHIPS: Relationship[] = ["partner", "family", "friend", "other"];
-function InviteScreen({ api, t, reload, done }: { api: Api; t: Tx; reload: () => Promise<void>; done: () => void }) {
+export function InviteScreen({ api, t, reload, done }: { api: Api; t: Tx; reload: () => Promise<void>; done: () => void }) {
   const [name, setName] = useState("");
   const [rel, setRel] = useState<Relationship>("partner");
   const [contact, setContact] = useState("");
@@ -1156,7 +1094,7 @@ function InviteScreen({ api, t, reload, done }: { api: Api; t: Tx; reload: () =>
 }
 
 // ---------- Urgent ----------
-function Urgent({ kind, t, back }: { kind: SendResult["kind"]; t: Tx; back: () => void }) {
+export function Urgent({ kind, t, back }: { kind: SendResult["kind"]; t: Tx; back: () => void }) {
   const crisis = kind === "crisis";
   return (
     <>

@@ -2,7 +2,7 @@
  * Account screens shared by patients and support people: the notification inbox, notification
  * settings, and sign-in devices.
  */
-import { SwipeRow } from "./swipe";
+import { SwipeRow, usePointer } from "./swipe";
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
@@ -33,6 +33,7 @@ const ago = (iso: string, t: Tx) => {
 /** Opens a notification: marks it read and goes where it points. */
 export function InboxScreen({ api, t, open, changed }: { api: Api; t: Tx; open: (n: AppNotification) => void; changed: () => void }) {
   const [items, setItems] = useState<AppNotification[] | null>(null);
+  const pointer = usePointer();
   const load = useCallback(async () => setItems((await api.notifications()).items), [api]);
   useEffect(() => { void load(); }, [load]);
   if (!items) return <Muted>{t("Loading…", "Cargando…")}</Muted>;
@@ -57,7 +58,7 @@ export function InboxScreen({ api, t, open, changed }: { api: Api; t: Tx; open: 
           </SwipeRow>
         ))}
       </Card>
-      {unread > 0 ? <Muted style={{ fontSize: 12.5, textAlign: "center" }}>{t("Tip: swipe right to mark one read.", "Consejo: desliza a la derecha para marcar como leído.")}</Muted> : null}
+      {unread > 0 && !pointer ? <Muted style={{ fontSize: 12.5, textAlign: "center" }}>{t("Tip: swipe right to mark one read.", "Consejo: desliza a la derecha para marcar como leído.")}</Muted> : null}
       {unread > 0 && <Button testID="mark-all-read" kind="line" label={t("Mark all read", "Marcar todo como leído")} onPress={async () => { await api.markNotificationsRead("all"); changed(); await load(); }} />}
     </>
   );

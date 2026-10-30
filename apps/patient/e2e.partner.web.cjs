@@ -55,7 +55,7 @@ const SERVER = process.env.SERVER_URL ?? 'http://localhost:3000/';
   await byId('note-ok').click(); await p.waitForTimeout(800);
   await byId('note-thanks').click(); await p.waitForTimeout(800);
   ok(await byId('partner-note').count() === 0 && await byId('partner-note-worried').count() === 0, '"I\'m okay" and "Thanks" clear the notes');
-  await byId('avatar').click();
+  await byId('tab-you').click();
   ok(await sees('Sharing with Jordan'), 'Maya has sharing controls in settings');
   await byId('share-Jordan-results').click(); await p.waitForTimeout(1200);
   await shot('6-maya-sharing');

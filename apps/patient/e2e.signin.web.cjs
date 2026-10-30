@@ -32,19 +32,19 @@ const SERVER = (process.env.SERVER_URL ?? 'http://localhost:3000').replace(/\/$/
   await p.reload(); await p.waitForTimeout(1500);
   ok(await sees('Others ask this on day 6'), 'She stays signed in after closing and reopening');
 
-  await byId('avatar').click();
+  await byId('tab-you').click();
   await byId('open-notif-settings').click();
   ok(await sees('Replies from your care team'), 'Notification settings list her alerts');
   await byId('notif-nurse_reply-email').click(); await p.waitForTimeout(800);
   await byId('quiet-hours').click(); await p.waitForTimeout(800);
   await shot('s3-notif-settings');
   await p.goto(APP); await p.waitForTimeout(1500);
-  await byId('avatar').click(); await byId('open-notif-settings').click(); await p.waitForTimeout(800);
+  await byId('tab-you').click(); await byId('open-notif-settings').click(); await p.waitForTimeout(800);
   const on = (id) => p.locator(`[data-testid="${id}"] input`).first().isChecked();
   ok(await on('notif-nurse_reply-email') && await on('quiet-hours'), 'Her choices are saved');
 
   await p.goto(APP); await p.waitForTimeout(1200);
-  await byId('avatar').click();
+  await byId('tab-you').click();
   await byId('sign-out').click();
   ok(await sees('Welcome.'), 'Sign out returns to sign-in');
   await p.reload(); await p.waitForTimeout(1200);

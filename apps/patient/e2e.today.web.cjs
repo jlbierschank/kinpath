@@ -4,7 +4,7 @@ const { chromium } = require('playwright');
 const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localhost:8081';
 (async () => {
   const b = await chromium.launch();
-  const p = await b.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  const p = await b.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }); // a phone: touch
   const errs = []; p.on('pageerror', (e) => errs.push(e.message));
   const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process.exitCode = 1; };
   const byId = (id) => p.locator(`[data-testid="${id}"]`);

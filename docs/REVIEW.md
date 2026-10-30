@@ -14,16 +14,16 @@ phone app, the way testers see it.
    - **Kara Diaz** (clinic admin): the audit log.
    - Both see **Pilot numbers** at the top right.
 5. Open a second tab at **localhost:3000/phone**. This is the phone app.
-   - **Alex Rivera**: on her own (the new app).
-   - **Maya Torres**: a Bayside patient (the clinic's app).
+   - **Alex Rivera**: on her own.
+   - **Maya Torres**: a Bayside patient. Same app, plus a Messages tab for her care team.
    - To look at it phone-sized, press Command-Option-I, then the phone icon at the top left of the panel.
 6. To use your iPhone instead, scan the QR code in the second Terminal window with the camera (Expo Go).
    The phone and Mac need the same Wi-Fi.
 
 ### Things to try
 
-- **Refill, clinic patient.** Maya → Record → Ask for a refill → pick a medication → Send. Then Maria →
-  open it in the queue → Mark handled. Maya's inbox shows who did it.
+- **Refill, clinic patient.** Maya → + → Ask for a refill (or Record → Ask for a refill) → pick a medication → Send. Then Maria →
+  open it in the queue → Mark handled. Maya's Messages tab shows who did it.
 - **Refill, own Pumpkin.** Alex → You → Your clinic on Pumpkin → find Bayside → Ask to connect. Maria
   confirms it (pick Priya Shah's chart). Alex → Record → Ask for a refill. Maria handles it; Alex sees what
   happened under "Refills you asked for".
@@ -39,3 +39,10 @@ There's no demo clinic, test-person picker or Reset there, so the clinic workspa
 clinic can only be reviewed on your Mac. It updates a few minutes after each push to main.
 
 Made-up information only, in both places.
+
+## Same app on every device
+
+The patient app looks and works the same on a phone, an iPad and a computer's browser: same header,
+same tab bar, same cards, in one centered column. Her account is on the server, so signing in with the
+same email shows the same record anywhere. On a computer with a mouse, swipes become buttons and the +
+menu offers Upload instead of Camera. Dose reminders ring on her phone, through the Pumpkin app.
