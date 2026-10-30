@@ -20,7 +20,12 @@ const SERVER = process.env.SERVER_URL ?? 'http://localhost:3000/';
 
   // Jordan: sees Maya's cycle and injections, not results
   await as('Jordan Torres');
-  ok(await sees('Hi Jordan.'), 'Jordan signs in to his own home screen');
+  ok(await sees('Hi, Jordan.'), 'Jordan signs in to his own home screen');
+  ok(await p.locator('[data-testid="tab-bar"]').count() >= 1 && await p.locator('[data-testid="feeling-unwell"]').filter({ visible: true }).count() === 1, 'Same shell as everyone: tab bar and help at the top');
+  await p.locator('[data-testid="feeling-unwell"]').filter({ visible: true }).click();
+  ok(await sees('Worried about her?') && await sees('call 911'), 'Help at the top tells Jordan who to call');
+  await p.locator('[data-testid="back"]').filter({ visible: true }).first().click(); await p.waitForTimeout(500);
+  await p.screenshot({ path: require('os').tmpdir() + '/kinpath-partner-shots/0-jordan-today.png' });
   ok(await sees('Supporting Maya'), 'It says who he is supporting');
   ok((await byId('shared-list').innerText()) === 'Her cycle · Injections', 'Shows exactly what Maya shares by default');
   ok(await text('Nurse reviewing').count() === 0, 'No results while Maya isn’t sharing them');
@@ -33,7 +38,7 @@ const SERVER = process.env.SERVER_URL ?? 'http://localhost:3000/';
   await shot('2-jordan-walk');
   for (let k = 0; k < 3; k++) { await byId('helper-next').click(); await p.waitForTimeout(400); }
   ok(await sees('logs each one on her phone'), 'Ends by saying Maya logs them');
-  await p.getByText('Back', { exact: true }).click();
+  await byId('back').filter({ visible: true }).click();
 
   // Notes
   await p.getByText('So proud of you', { exact: true }).click();

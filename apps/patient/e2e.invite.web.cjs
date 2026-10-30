@@ -53,7 +53,7 @@ const SERVER = process.env.SERVER_URL ?? 'http://localhost:3000/';
   await shot('4b-confirm');
   await byId('signin-code').fill(await codeFor('rosa@example.com'));
   await byId('join-confirm').click();
-  ok(await sees('Hi Rosa.'), 'Rosa joins and lands on her own home screen');
+  ok(await sees('Hi, Rosa.'), 'Rosa joins and lands on her own home screen');
   ok(await sees('Supporting Maya'), 'She is supporting Maya');
   ok((await byId('shared-list').innerText()) === 'Her cycle', 'She sees only Maya’s cycle');
   ok(await byId('help-tonight').count() === 0, 'No injection details, because Maya didn’t share them');

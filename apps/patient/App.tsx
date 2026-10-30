@@ -76,7 +76,7 @@ export function Gate() {
   useTheme();
   const { who, api, signIn, signOut } = useWho();
   if (!who || !api) return <SignIn onSignedIn={(u) => void signIn(whoFromUser(u), u)} onDemo={(p) => void signIn(whoFromDemo(p))} />;
-  if (who.partner) return <PartnerApp api={api} initials={who.initials} onSignOut={() => void signOut()} demo={who.demo} />;
+  if (who.partner) return <Redirect href={"/support/today" as Href} />;
   return <Redirect href={"/clinic/today" as Href} />;
 }
 
@@ -1114,7 +1114,7 @@ export function Urgent({ kind, t, back }: { kind: SendResult["kind"]; t: Tx; bac
 
 // ---------- Partner side ----------
 // English only for now; partner Spanish follows once the medical translator has reviewed the patient text.
-type PScreen = { name: "home" } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; level: "urgent" | "crisis" } | { name: "inbox" } | { name: "notif-settings" } | { name: "costs" };
+export type PScreen = { name: "home" } | { name: "walk"; doses: Dose[]; focus?: string } | { name: "settings" } | { name: "urgent"; level: "urgent" | "crisis"; fromNote?: boolean } | { name: "inbox" } | { name: "notif-settings" } | { name: "costs" } | { name: "note" };
 // Injection offers only appear when injections are shared with this person.
 const quickNotes = (meds: boolean, waiting: boolean, news: string | null) => news === "negative"
   ? ["I love you", "I'm here, whatever you need", "Dinner's on me tonight", "No need to reply"]
@@ -1127,72 +1127,35 @@ const quickNotes = (meds: boolean, waiting: boolean, news: string | null) => new
   : ["Thinking of you today", "So proud of you", "Whatever you need, I'm here", "Dinner's on me tonight"];
 const label = (s: string) => `${s[0]!.toUpperCase()}${s.slice(1)}`;
 
-function PartnerApp({ api, initials, onSignOut, demo }: { api: Api; initials: string; onSignOut: () => void; demo: boolean }) {
-  const [data, setData] = useState<PartnerHome | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [screen, setScreen] = useState<PScreen>({ name: "home" });
-  const [alerts, setAlerts] = useState(0);
-  const refreshAlerts = useCallback(() => { api.notifications().then((n) => setAlerts(n.unread)).catch(() => {}); }, [api]);
-  const load = useCallback(async () => {
-    try { setData(await api.partnerHome()); setError(null); refreshAlerts(); } catch (e) { setError((e as Error).message); }
-  }, [api, refreshAlerts]);
-  useEffect(() => { void load(); }, [load]);
-
-  if (error) return <Frame><Today size={34}>Can't reach Pumpkin</Today><Muted>{error}</Muted><Button label="Try again" onPress={load} /></Frame>;
-  if (!data) return <Frame><Muted>Loading…</Muted></Frame>;
-  const home = () => { void load(); setScreen({ name: "home" }); };
-  const top = screen.name === "home"
-    ? <TopBar clinic={data.clinic.name} initials={initials} onAvatar={() => setScreen({ name: "settings" })} unread={alerts} onBell={() => setScreen({ name: "inbox" })} t={(en) => en} />
-    : <BackBar label="Home" onBack={home} />;
+/** You, for a support person: alerts, appearance, what she shares, and signing out. */
+export function PartnerSettings({ data, api, onSignOut, demo, go, unread = 0 }: { data: PartnerHome; api: Api; onSignOut: () => void; demo: boolean; go: (s: PScreen) => void; unread?: number }) {
   const her = data.shared ? data.firstName ?? "your partner" : "your partner";
   const t: Tx = (en) => en;
-
   return (
-    <Frame top={top}>
-      {screen.name === "home" && (data.shared
-        ? <PartnerHomeScreen data={data} api={api} go={setScreen} reload={load} />
-        : (
-          <>
-            <Today size={34}>Nothing shared right now</Today>
-            <Muted>When your partner shares parts of her treatment with you in her app, they'll show up here.</Muted>
-            <Button kind="plain" label={demo ? "Switch test person" : "Sign out"} onPress={onSignOut} />
-          </>
-        ))}
-      {screen.name === "walk" && <Walk doses={screen.doses} focus={screen.focus} api={api} lang="en" t={t} done={home} helper={her} somethingWrong={() => Linking.openURL(NURSE_LINE)} />}
-      {screen.name === "urgent" && <PartnerUrgent level={screen.level} her={her} back={home} personal={!!data.clinic.personal} />}
-      {screen.name === "costs" && <CostsScreen api={api} t={t} lang="en" partner herName={data.shared ? data.firstName ?? undefined : undefined} />}
-      {screen.name === "inbox" && <InboxScreen api={api} t={t} open={() => home()} changed={refreshAlerts} />}
-      {screen.name === "notif-settings" && <NotificationSettingsScreen api={api} t={t} lang="en" />}
-      {screen.name === "settings" && (
-        <>
-          <H1>Settings</H1>
-          <Card pad={false}>
-            <Row testID="open-notif-settings" title="Notifications" sub="Which alerts you get, and how" onPress={() => setScreen({ name: "notif-settings" })} right={<T style={{ color: C.stone, fontSize: 18 }}>›</T>} />
-          </Card>
-          <AppearanceCard />
-          <Cap>Your access</Cap>
-          <Card style={{ gap: 8 }}>
-            <T style={{ fontSize: 15, lineHeight: 22 }}>{data.shared ? `You see what ${her} chooses to share: ${data.sections.map((s) => ({ schedule: "her cycle", meds: "injections", results: "results", money: "costs" })[s]).join(", ")}.` : "Nothing is shared with you right now."}</T>
-            <Muted>{`${her === "your partner" ? "Her" : `${her}'s`} messages with the care team are always private. She can change what you see at any time, and Pumpkin keeps a record each time you look.`}</Muted>
-          </Card>
-          <SignInSection api={api} t={t} onSignOut={onSignOut} demo={demo} />
-        </>
-      )}
-    </Frame>
+    <>
+      <Today size={34}>You</Today>
+      <Card pad={false}>
+        <Row testID="open-inbox" title="Updates" sub={unread ? `${unread} new` : "Nothing new"} onPress={() => go({ name: "inbox" })} right={unread ? <Pill tone="red" label={String(unread)} /> : <T style={{ color: C.stone, fontSize: 18 }}>›</T>} />
+        <Row testID="open-notif-settings" title="Notifications" sub="Which alerts you get, and how" onPress={() => go({ name: "notif-settings" })} right={<T style={{ color: C.stone, fontSize: 18 }}>›</T>} />
+      </Card>
+      <AppearanceCard />
+      <Cap>Your access</Cap>
+      <Card style={{ gap: 8 }}>
+        <T style={{ fontSize: 15, lineHeight: 22 }}>{data.shared ? `You see what ${her} chooses to share: ${data.sections.map((s) => ({ schedule: "her cycle", meds: "injections", results: "results", money: "costs" })[s]).join(", ")}.` : "Nothing is shared with you right now."}</T>
+        <Muted>{`${her === "your partner" ? "Her" : `${her}'s`} messages with the care team are always private. She can change what you see at any time, and Pumpkin keeps a record each time you look.`}</Muted>
+      </Card>
+      <SignInSection api={api} t={t} onSignOut={onSignOut} demo={demo} />
+    </>
   );
 }
 
-function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHome, { shared: true }>; api: Api; go: (s: PScreen) => void; reload: () => Promise<void> }) {
+/** Notes to her: quick ones or her own words. A worried note goes to the urgent screen, not to her quietly. */
+export function PartnerNotes({ data, api, go, reload }: { data: Extract<PartnerHome, { shared: true }>; api: Api; go: (s: PScreen) => void; reload: () => Promise<void> }) {
   const her = data.firstName ?? "your partner";
   const waiting = data.stage === "wait" || data.stage === "result";
-  const w = data.wait;
   const [note, setNote] = useState("");
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
-  const pending = data.schedule?.upcoming.filter((d) => !d.takenAt) ?? [];
-  const nextAt = pending[0]?.scheduledFor;
-  const tonight = pending.filter((d) => d.scheduledFor === nextAt);
-  const loggedToday = data.schedule ? [...data.schedule.upcoming, ...data.schedule.recent].filter((d) => d.takenAt && Math.abs(Date.now() - new Date(d.scheduledFor).getTime()) < 24 * 3600_000) : [];
   const send = async (text: string) => {
     if (!text.trim() || busy) return;
     setBusy(true);
@@ -1204,13 +1167,40 @@ function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHom
       await reload();
     } finally { setBusy(false); }
   };
+  return (
+    <View style={{ gap: 8 }}>
+        <Cap>{`Send ${her} a note`}</Cap>
+        {sent && <Moment>{`Sent. ${her} will see it on her home screen.`}</Moment>}
+        <Chips>{quickNotes(data.sections.includes("meds"), waiting, data.news).map((q) => <Chip key={q} label={q} onPress={() => { setSent(false); setNote(q); }} />)}</Chips>
+        <AskBox testID="note" value={note} onChange={(v) => { setSent(false); setNote(v); }} onSubmit={() => send(note)} placeholder={`Write something for ${her}`} />
+        <Muted style={{ fontSize: 12 }}>{data.clinic.personal ? `Notes go only to ${her}. If something's wrong medically, help ${her} call her clinic, or 911.` : `Notes go to ${her}, not to the clinic. If something's wrong medically, call the nurse line.`}</Muted>
+        {data.notes.length > 0 && (
+          <Card pad={false}>
+            {data.notes.map((n, i) => <Row key={n.id} title={n.body} sub={dayClock(n.createdAt)} right={<Pill tone={n.seenAt ? "sage" : "stone"} label={n.seenAt ? "Seen" : "Sent"} />} />)}
+          </Card>
+        )}
+    </View>
+  );
+}
+
+export function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHome, { shared: true }>; api: Api; go: (s: PScreen) => void; reload: () => Promise<void> }) {
+  const her = data.firstName ?? "your partner";
+  const waiting = data.stage === "wait" || data.stage === "result";
+  const w = data.wait;
+  const pending = data.schedule?.upcoming.filter((d) => !d.takenAt) ?? [];
+  const nextAt = pending[0]?.scheduledFor;
+  const tonight = pending.filter((d) => d.scheduledFor === nextAt);
+  const loggedToday = data.schedule ? [...data.schedule.upcoming, ...data.schedule.recent].filter((d) => d.takenAt && Math.abs(Date.now() - new Date(d.scheduledFor).getTime()) < 24 * 3600_000) : [];
 
   return (
     <>
-      <View style={{ gap: 4 }}>
-        <Cap>{`Supporting ${her}`}</Cap>
-        <Today>{`Hi ${data.name.split(" ")[0]}.`}</Today>
-        <T testID="partner-status" style={{ color: C.stone, fontSize: 13.5 }}>{data.news === "graduated"
+      <View style={{ gap: 6 }}>
+        <Text testID="greeting" accessibilityRole="header" maxFontSizeMultiplier={1.4} style={{ fontFamily: F.display, fontSize: 34, lineHeight: 37, letterSpacing: -1, color: C.espresso }}>{`Hi, ${data.name.split(" ")[0]}.`}</Text>
+        <View style={{ flexDirection: "row", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <Muted style={{ fontSize: 15 }}>{new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</Muted>
+          <Pill tone="lav" label={`Supporting ${her}`} />
+        </View>
+        <T testID="partner-status" style={{ color: C.stone, fontSize: 15 }}>{data.news === "graduated"
           ? `${her} graduated to her OB-GYN. You were part of every step.`
           : data.news === "positive"
           ? `${her} shared her news: her test is positive.`
@@ -1236,8 +1226,8 @@ function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHom
       {data.sections.includes("money") && <PartnerCostsCard api={api} open={() => go({ name: "costs" })} />}
       {(data.appointments?.length ?? 0) > 0 && (
         <View style={{ gap: 8 }} testID="partner-visits">
-          <Cap>{her === "your partner" ? "Coming up" : `${her}'s visits`}</Cap>
-          <Card pad={false} style={{ paddingHorizontal: 16, paddingVertical: 4 }}>
+          <Card pad={false} style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 }}>
+            <TileLabel icon="calendar" label={her === "your partner" ? "Coming up" : `${her}'s visits`} />
             {data.appointments!.slice(0, 3).map((a, i) => (
               <View key={a.id} style={[st.row, i === 0 && { borderTopWidth: 0 }]}>
                 <View style={{ flex: 1 }}>
@@ -1252,9 +1242,9 @@ function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHom
 
       {data.sections.includes("meds") && (!waiting || tonight.length > 0) && (
         <View style={{ gap: 8 }}>
-          <Cap>Tonight</Cap>
           {tonight.length > 0 ? (
             <View style={st.dark}>
+              <TileLabel icon="medication" label="Tonight" ink={C.fillMuted} />
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" }}>
                 <Text style={{ fontFamily: F.serif, fontSize: 26, letterSpacing: -0.5, color: C.onFill }}>{clock(nextAt!)}</Text>
                 <T style={{ fontSize: 13, color: C.fillMuted }}>{`${tonight.length} injection${tonight.length > 1 ? "s" : ""}`}</T>
@@ -1270,6 +1260,7 @@ function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHom
             </View>
           ) : (
             <View style={st.dark}>
+              <TileLabel icon="medication" label="Tonight" ink={C.fillMuted} />
               <Text style={{ fontFamily: F.serif, fontSize: 24, color: C.onFill }}>All set for tonight</Text>
               <T style={{ fontSize: 14.5, color: C.fillSoft }}>{`${her} logged ${loggedToday.length}.${data.clinic.personal ? "" : " Bayside can see them."}`}</T>
             </View>
@@ -1277,18 +1268,7 @@ function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHom
         </View>
       )}
 
-      <View style={{ gap: 8 }}>
-        <Cap>{`Send ${her} a note`}</Cap>
-        {sent && <Moment>{`Sent. ${her} will see it on her home screen.`}</Moment>}
-        <Chips>{quickNotes(data.sections.includes("meds"), waiting, data.news).map((q) => <Chip key={q} label={q} onPress={() => { setSent(false); setNote(q); }} />)}</Chips>
-        <AskBox testID="note" value={note} onChange={(v) => { setSent(false); setNote(v); }} onSubmit={() => send(note)} placeholder={`Write something for ${her}`} />
-        <Muted style={{ fontSize: 12 }}>{data.clinic.personal ? `Notes go only to ${her}. If something's wrong medically, help ${her} call her clinic, or 911.` : `Notes go to ${her}, not to the clinic. If something's wrong medically, call the nurse line.`}</Muted>
-        {data.notes.length > 0 && (
-          <Card pad={false}>
-            {data.notes.map((n, i) => <Row key={n.id} title={n.body} sub={dayClock(n.createdAt)} right={<Pill tone={n.seenAt ? "sage" : "stone"} label={n.seenAt ? "Seen" : "Sent"} />} />)}
-          </Card>
-        )}
-      </View>
+      <PartnerNotes data={data} api={api} go={go} reload={reload} />
 
       {data.results && (
         <View style={{ gap: 8 }}>
@@ -1312,8 +1292,21 @@ function PartnerHomeScreen({ data, api, go, reload }: { data: Extract<PartnerHom
   );
 }
 
-function PartnerUrgent({ level, her, back, personal }: { level: "urgent" | "crisis"; her: string; back: () => void; personal?: boolean }) {
+export function PartnerUrgent({ level, her, back, personal, fromNote = true }: { level: "urgent" | "crisis"; her: string; back: () => void; personal?: boolean; fromNote?: boolean }) {
   const crisis = level === "crisis";
+  if (!fromNote) return (
+    <>
+      <View style={[st.card, { padding: 16, gap: 10, borderColor: C.red, borderWidth: 1.5, borderBottomColor: C.red }]}>
+        <Text testID="urgent-title" style={{ fontFamily: F.display, fontSize: 30, lineHeight: 33, color: C.red }}>Worried about her?</Text>
+        <T style={{ fontSize: 15, lineHeight: 22 }}>{personal ? `Help ${her} call her clinic's after-hours line now.` : `Call Bayside's nurse line now, or help ${her} call. Nurses answer around the clock.`}</T>
+        {personal ? null : <Button kind="red" label="Call the nurse line now" onPress={() => Linking.openURL(NURSE_LINE)} />}
+        <T style={{ fontFamily: F.sans600 }}>{`If ${her} can't catch her breath, has chest pain, heavy bleeding, or passes out, call 911.`}</T>
+        <T style={{ fontSize: 14.5 }}>{`If ${her} may be thinking about hurting herself, call or text 988 and stay with her.`}</T>
+        <Button kind="line" label="Call or text 988" onPress={() => Linking.openURL("tel:988")} />
+      </View>
+      <Button kind="line" label="Back" onPress={back} />
+    </>
+  );
   return (
     <>
       <View style={[st.card, { padding: 16, gap: 10, borderColor: C.red, borderWidth: 1.5, borderBottomColor: C.red }]}>

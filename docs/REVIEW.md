@@ -16,6 +16,7 @@ phone app, the way testers see it.
 5. Open a second tab at **localhost:3000/phone**. This is the phone app.
    - **Alex Rivera**: on her own.
    - **Maya Torres**: a Bayside patient. Same app, plus a Messages tab for her care team.
+   - **Jordan Torres**: Maya's partner. Same app, showing only what Maya shares.
    - To look at it phone-sized, press Command-Option-I, then the phone icon at the top left of the panel.
 6. To use your iPhone instead, scan the QR code in the second Terminal window with the camera (Expo Go).
    The phone and Mac need the same Wi-Fi.

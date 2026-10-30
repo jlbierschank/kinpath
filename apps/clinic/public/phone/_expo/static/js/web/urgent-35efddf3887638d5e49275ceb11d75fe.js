@@ -1,0 +1,1 @@
+__d(function(g,r,i,a,m,e,d){"use strict";Object.defineProperty(e,'__esModule',{value:!0}),Object.defineProperty(e,"default",{enumerable:!0,get:function(){return s}});var n=r(d[0]),t=r(d[1]),c=r(d[2]);function s(){const{crisis:s}=(0,n.useLocalSearchParams)();return(0,c.jsx)(t.SoloScreen,{screen:{name:"urgent",crisis:"1"===s}})}},781,[804,802,6]);
