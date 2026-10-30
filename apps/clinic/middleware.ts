@@ -10,6 +10,8 @@ export async function middleware(req: NextRequest) {
   if (pathname === "/demo-pass" || pathname === "/api/demo-pass" || pathname === "/api/health" || pathname.startsWith("/api/integrations/") || pathname === "/api/app-info") return NextResponse.next();
   // The home-screen icon and app manifest hold nothing private; phones fetch them without the passcode cookie.
   if (/^\/phone\/(manifest\.webmanifest|[\w-]+\.png)$/.test(pathname)) return NextResponse.next();
+  // The brand fonts and logo, so the passcode page looks like Pumpkin too.
+  if (/^\/(fonts\/[\w-]+\.ttf|brand\/[\w-]+\.png)$/.test(pathname)) return NextResponse.next();
   if (req.cookies.get(DEMO_COOKIE)?.value === (await passToken(passcode))) return NextResponse.next();
   if (pathname.startsWith("/api/")) return NextResponse.json({ error: "This demo needs its passcode. Open the demo link first." }, { status: 401 });
   const url = req.nextUrl.clone();

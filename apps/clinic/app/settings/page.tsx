@@ -27,9 +27,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       <p style={{ display: "flex", gap: 16 }}>{s.role !== "clinic_admin" && <Link href="/nurse">← Queue</Link>}{s.role === "clinic_admin" && <Link href="/admin">← Audit log</Link>}</p>
       <h1>Clinic settings</h1>
       <p className="muted">Everything Bayside patients see comes from here. Every change is signed with your name and kept in the change history.{ro && " You can view these settings; only nurses and physicians can change them."}</p>
-      <nav style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "16px 0" }}>
+      <nav className="tabs" aria-label="Settings sections">
         {TABS.map(([k, label]) => (
-          <Link key={k} href={`/settings?tab=${k}`} className={`btn ${k === tab ? "btn-dark" : "btn-line"}`} style={{ padding: "8px 14px" }}>{label}</Link>
+          <Link key={k} href={`/settings?tab=${k}`} className={k === tab ? "on" : undefined} aria-current={k === tab ? "page" : undefined}>{label}</Link>
         ))}
       </nav>
       {sp.error && <div className="card urgent" role="alert"><b>Not saved.</b> {sp.error}</div>}

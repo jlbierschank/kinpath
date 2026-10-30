@@ -143,3 +143,8 @@ export async function removeTerm(db: Db, a: Editor, id: string) {
     await record(tx, a, "urgent_word", before.term, "removed", before, null);
   });
 }
+
+/** The signed-in person's clinic name, for the top bar. */
+export async function myClinicName(db: Db, actor: Actor): Promise<string | null> {
+  return asActor(db, actor, async (tx) => (await tx.query<{ name: string }>(`SELECT name FROM clinics WHERE id = $1`, [actor.clinicId])).rows[0]?.name ?? null);
+}
