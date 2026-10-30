@@ -3,7 +3,7 @@ import {
   addAppointment, addCapture, addCost, addMedication, addQuestion, addResult, askMyClinic, captureFile, deleteAppointment, deleteCost, deleteMyAccount, deleteQuestion,
   deleteResult, dismissItem, exportMyData, getReminderPrefs, itemsToCheck, newCalendarLink, SAMPLES, saveItem, setQuestionAsked, soloCosts, soloMeds, soloProfile,
   soloResults, soloToday, stopCalendarLink, stopMedication, setMedSupply, updateSoloProfile, visitQuestions, financePartners,
-  patientSharing, shareCalendar, calendarShares, stopCalendarShare, saveKit, setMedLastDay, createPersonalShare, personalShares, stopSummaryShare, aboutMe, addTenderDate, deleteTenderDate, questionIdeas, saveAbout, setAlias, setQuiet, visitSummary, withdrawAboutConsent,
+  patientSharing, joinableClinics, myClinicLinks, requestClinicLink, updateClinicLink, shareCalendar, calendarShares, stopCalendarShare, saveKit, setMedLastDay, createPersonalShare, personalShares, stopSummaryShare, aboutMe, addTenderDate, deleteTenderDate, questionIdeas, saveAbout, setAlias, setQuiet, visitSummary, withdrawAboutConsent,
 } from "@kinpath/db";
 import { getDb } from "@/lib/db";
 import { handle, preflight } from "@/lib/api";
@@ -47,6 +47,8 @@ export async function GET(req: Request, ctx: Ctx) {
       case "visit-summary": return visitSummary(db, s, pid);
       case "sharing": return patientSharing(db, s, pid);
       case "shares": return personalShares(db, s, pid);
+      case "joinable": return joinableClinics(db, s, new URL(req.url).searchParams.get("q") ?? "");
+      case "links": return myClinicLinks(db, s, pid);
       case "calendar-shares": return calendarShares(db, s, pid);
       default: throw new HandoffError("Not found.");
     }
@@ -100,6 +102,8 @@ export async function POST(req: Request, ctx: Ctx) {
       case "tender-delete": return deleteTenderDate(db, s, pid, str("id"));
       case "quiet": return setQuiet(db, s, pid, { pauseDays: b.pauseDays === undefined ? undefined : (b.pauseDays as number | null), onBreak: typeof b.onBreak === "boolean" ? b.onBreak : undefined });
       case "kit": return saveKit(db, s, pid, obj("patch"));
+      case "link-request": return requestClinicLink(db, s, str("clinicId"), obj("share"));
+      case "link-update": return updateClinicLink(db, s, str("id"), { share: obj("share"), stop: b.stop === true });
       case "med-last-day": return setMedLastDay(db, s, pid, str("medication"), str("lastDay"));
       case "share-summary": {
         const made = await createPersonalShare(db, s, pid, { recipient: str("recipient"), includeResults: b.includeResults === true, includeMeds: b.includeMeds === true });

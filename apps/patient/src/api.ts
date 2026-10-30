@@ -109,6 +109,8 @@ export interface SoloToday {
   kit: StageKit;
   reminders: PlannedReminder[]; prefs: ReminderPrefs;
 }
+export type LinkShare = { about: boolean; background: boolean; meds: boolean; results: boolean; visits: boolean; questions: boolean };
+export interface ClinicLink { id: string; clinicId: string; clinicName: string; status: "requested" | "active" | "declined" | "stopped"; share: LinkShare; requestedAt: string; decidedAt: string | null; decidedBy: string | null }
 export interface PersonalShare { id: string; recipient: string; includeResults: boolean; includeMeds: boolean; createdAt: string; expiresAt: string; active: boolean; views: number }
 export interface Refill { medication: string; dosesLeft: number | null; perDay: number; enough: boolean; runOutOn: string | null; orderBy: string | null; daysLeft: number | null; countedAt: string | null }
 export interface SoloMed { id: string; medication: string; dose: string; time: string; startsOn: string; endsOn: string | null; instructions: string | null; mine: boolean; nextAt: string | null }
@@ -188,6 +190,10 @@ export class Api {
   soloMeds = () => this.call<SoloMed[]>("/api/solo/meds");
   saveKit = (patch: Record<string, unknown>) => this.call<{ kit: StageKit; urgent: "urgent" | "crisis" | null }>("/api/solo/kit", { method: "POST", body: { patch } });
   setMedLastDay = (medication: string, lastDay: string) => this.call<{ lastDay: string }>("/api/solo/med-last-day", { method: "POST", body: { medication, lastDay } });
+  joinableClinics = (q: string) => this.call<{ id: string; name: string }[]>(`/api/solo/joinable?q=${encodeURIComponent(q)}`);
+  clinicLinks = () => this.call<ClinicLink[]>("/api/solo/links");
+  requestClinicLink = (clinicId: string, share: Partial<LinkShare>) => this.call<{ id: string }>("/api/solo/link-request", { method: "POST", body: { clinicId, share } });
+  updateClinicLink = (id: string, change: { share?: Partial<LinkShare>; stop?: boolean }) => this.call<unknown>("/api/solo/link-update", { method: "POST", body: { id, ...change } });
   personalShares = () => this.call<PersonalShare[]>("/api/solo/shares");
   sharePersonalSummary = (input: { recipient: string; includeResults: boolean; includeMeds: boolean }) => this.call<{ id: string; url: string; expiresAt: string }>("/api/solo/share-summary", { method: "POST", body: input });
   stopPersonalShare = (id: string) => this.call<unknown>("/api/solo/stop-share", { method: "POST", body: { id } });

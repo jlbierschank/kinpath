@@ -14,7 +14,7 @@ export type Audience = "staff" | "patient" | "partner";
 export type NotificationKind =
   | "urgent_message" | "new_message" | "result_to_review" | "call_to_make" | "thank_you"
   | "nurse_reply" | "result_ready" | "support_note" | "support_joined" | "summary_opened"
-  | "news_shared" | "access_changed" | "records_to_review" | "schedule_changed" | "billing_question" | "billing_update";
+  | "news_shared" | "access_changed" | "records_to_review" | "schedule_changed" | "billing_question" | "billing_update" | "connect_request";
 
 export interface KindInfo {
   audience: Audience;
@@ -48,6 +48,11 @@ export const KINDS: Record<NotificationKind, KindInfo> = {
     audience: "staff", defaults: d(true, true, false, false),
     label: { en: "Calls to make", es: "Llamadas pendientes" },
     description: { en: "Check-in calls, follow-ups and patients ready for next steps.", es: "Llamadas de seguimiento y pacientes listas para los próximos pasos." },
+  },
+  connect_request: {
+    audience: "staff", defaults: d(true, false, false, true),
+    label: { en: "Patients asking to connect", es: "Pacientes que piden conectarse" },
+    description: { en: "A patient who uses Pumpkin on her own asks to share it with your clinic.", es: "Una paciente que usa Pumpkin por su cuenta pide compartirlo con tu clínica." },
   },
   records_to_review: {
     audience: "staff", defaults: d(true, false, false, false),

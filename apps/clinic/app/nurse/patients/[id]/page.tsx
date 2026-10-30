@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { nursePatientCycle, waitDay } from "@kinpath/db";
+import { linkedSpaceForChart, nursePatientCycle, waitDay } from "@kinpath/db";
+import { LinkedPanel } from "../../linked";
 import { getDb } from "@/lib/db";
 import { requireSession } from "@/lib/session";
 import { enterResultAction, graduateAction, recordTransferAction, releaseResultAction } from "../actions";
@@ -21,8 +22,10 @@ export default async function PatientCycle({ params, searchParams }: { params: P
   const { id } = await params;
   const sp = await searchParams;
   const s = await requireSession(["nurse", "physician"]);
-  const c = await nursePatientCycle(await getDb(), s, id);
+  const db = await getDb();
+  const [c, linked] = await Promise.all([nursePatientCycle(db, s, id), linkedSpaceForChart(db, s, id)]);
   if (!c) notFound();
+  const goesBy = linked?.about ? [linked.about.preferredName && `goes by ${linked.about.preferredName}`, linked.about.pronouns].filter(Boolean).join(" · ") : "";
   const now = new Date();
   const testDefault = new Date(now); testDefault.setDate(testDefault.getDate() + 9); testDefault.setHours(8, 0, 0, 0);
   const t = c.test;
@@ -32,6 +35,7 @@ export default async function PatientCycle({ params, searchParams }: { params: P
     <>
       <p><Link href="/nurse">← Queue</Link></p>
       <h1>{c.name}</h1>
+      {goesBy && <p style={{ margin: "0 0 4px", fontWeight: 600 }} data-testid="goes-by">{goesBy}</p>}
       <p className="muted">
         {c.stage === "stimulation" ? `Stimulation day ${c.stimDay ?? ""}` : c.stage === "wait" ? `Two-week wait${c.transferOn ? `, day ${waitDay(c.transferOn, now)}` : ""}` : c.stage === "result" ? "Result released" : c.stage === "graduated" ? "Graduated to her OB-GYN" : c.stage ?? "No cycle"}
         {" · "}prefers {c.lang === "es" ? "Spanish" : "English"}
@@ -39,6 +43,7 @@ export default async function PatientCycle({ params, searchParams }: { params: P
       {sp.error && <div className="card urgent" role="alert"><b>Not saved.</b> {sp.error}</div>}
       {sp.saved && <div className="note" role="status" style={{ marginBottom: 12, background: "var(--sage)", borderColor: "var(--sage)", color: "var(--sage-ink)" }}>{sp.saved}</div>}
 
+      {linked && <LinkedPanel s={linked} />}
       <div className="grid">
         <div>
           {c.stage === "stimulation" && (

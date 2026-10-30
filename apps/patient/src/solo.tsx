@@ -30,6 +30,7 @@ import { AboutScreen, AliasScreen, QuestionIdeas, SummaryScreen, TalkScreen } fr
 import { FeedbackScreen, PeopleScreen } from "./people";
 import { TestBanner } from "./appinfo";
 import { CalendarShareCard } from "./calshare";
+import { ClinicConnectCard } from "./connect";
 import { AppLockSetting } from "./privacy";
 import { ItemAction, useUndo } from "./undo";
 import { addVisitToCalendar, nativeCalendar } from "./nativecal";
@@ -657,7 +658,7 @@ function TodayScreen({ d, api, go, reload, layout, notice, prefs, setPrefs }: { 
         </View>
       </SwipeRow>
     ) : null,
-    clinic: quiet || gentle || hard ? null : !p.askedClinicAt ? (snoozed("clinic") ? null : <AskClinicCard api={api} profile={p} reload={reload} onNotNow={() => void notNow("clinic").run()} />)
+    clinic: quiet || gentle || hard ? null : !p.askedClinicAt ? (snoozed("clinic") ? null : <AskClinicCard api={api} profile={p} reload={reload} onNotNow={() => void notNow("clinic").run()} onConnect={() => go({ name: "more" })} />)
       : Date.now() - new Date(p.askedClinicAt).getTime() < 24 * 3600_000 && !snoozed("clinicSent") ? (
       // The confirmation shows for a day, then lives in Settings. Swipe it away sooner.
       <SwipeRow surface={C.sage} radius={22} right={notNow("clinicSent", 3650)} left={notNow("clinicSent", 3650)}>
@@ -845,8 +846,15 @@ function SupplyCard({ api, refills, reload }: { api: Api; refills: Refill[]; rel
   );
 }
 
-function AskClinicCard({ api, profile, reload, onNotNow }: { api: Api; profile: SoloProfile; reload: () => Promise<void>; onNotNow?: () => void }) {
+function AskClinicCard({ api, profile, reload, onNotNow, onConnect }: { api: Api; profile: SoloProfile; reload: () => Promise<void>; onNotNow?: () => void; onConnect?: () => void }) {
   const [name, setName] = useState(profile.clinicName ?? "");
+  // If her clinic is already on Pumpkin, offer to connect instead of asking them to join.
+  const [onPumpkin, setOnPumpkin] = useState<string | null>(null);
+  useEffect(() => {
+    if (name.trim().length < 3) { setOnPumpkin(null); return; }
+    const t = setTimeout(() => { api.joinableClinics(name).then((r) => setOnPumpkin(r.find((c) => c.name.toLowerCase().includes(name.trim().toLowerCase()))?.name ?? null)).catch(() => setOnPumpkin(null)); }, 300);
+    return () => clearTimeout(t);
+  }, [api, name]);
   const [phone, setPhone] = useState(profile.afterHoursPhone ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -864,6 +872,13 @@ function AskClinicCard({ api, profile, reload, onNotNow }: { api: Api; profile: 
   );
   return (
     <View style={{ backgroundColor: C.sage, borderRadius: 22, padding: 18, gap: 10 }}>
+      {onPumpkin ? (
+        <View testID="clinic-on-pumpkin" style={{ backgroundColor: C.paper, borderRadius: 14, padding: 12, gap: 6 }}>
+          <T style={{ fontFamily: F.sans600, color: C.sageInk, fontSize: 15 }}>{`${onPumpkin} is on Pumpkin.`}</T>
+          <T style={{ fontSize: 14 }}>Connect so your care team can see what you track. You choose what they see.</T>
+          {onConnect ? <Button testID="clinic-connect-go" kind="esp" label="Connect in You" onPress={onConnect} /> : null}
+        </View>
+      ) : null}
       <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}><Icon name="people" color={C.sageInk} /><T style={{ fontFamily: F.display, fontSize: 21 }}>Want your clinic on Pumpkin?</T></View>
       <T style={{ fontSize: 15 }}>We'll let them know a patient asked. We never share your health details.</T>
       <Field testID="ask-clinic-name" label="Your clinic's name" value={name} onChange={setName} />
@@ -1575,6 +1590,7 @@ function MoreScreen({ api, profile, reload, onSignOut, go }: { api: Api; profile
         </> : null}
         {profile.calendarOn ? <Pressable onPress={() => act(() => api.calendarOff(), "Calendar link turned off.")}><Muted style={{ textDecorationLine: "underline" }}>Turn off my calendar link</Muted></Pressable> : null}
       </Card>
+      <ClinicConnectCard api={api} clinicName={profile.clinicName} />
       <CalendarShareCard api={api} />
       {remindersSupported ? <Card style={{ gap: 8 }}><T style={{ fontFamily: F.sans600, fontSize: 15 }}>Dose reminders</T><Muted style={{ fontSize: 14 }}>A reminder 15 minutes before each dose. The lock screen says only "You have a reminder."</Muted><Button kind="line" label="Turn on reminders and test" onPress={() => act(async () => { if (!(await askPermission())) throw new Error("Reminders are off. Turn them on in your phone's Settings, under Pumpkin."); await sendTestReminder(); }, "Reminders are on. A test one will ring in a few seconds.")} /></Card> : null}
       <AppearanceCard />

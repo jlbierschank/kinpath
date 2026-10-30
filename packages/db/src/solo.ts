@@ -652,6 +652,8 @@ export async function deleteMyAccount(db: Db, actor: Actor, confirm: string) {
       if (exists) await tx.query(`DELETE FROM ${table} WHERE ${col} = ANY($1::uuid[])`, [ids]);
     }
     await tx.query(`DELETE FROM clinic_requests WHERE patient_id = ANY($1::uuid[])`, [patients]);
+    // Connections to a clinic end with her space; the clinic keeps only its audit log.
+    await tx.query(`DELETE FROM clinic_links WHERE space_id = $1`, [space]);
     const contacts = users.flatMap((u) => [u.email, u.phone].filter((x): x is string => !!x));
     await tx.query(`DELETE FROM early_access WHERE identifier = ANY($1::text[])`, [contacts]);
     await tx.query(`DELETE FROM outbox WHERE to_address = ANY($1::text[])`, [contacts]);

@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { clinicPatients, nurseQueue, nurseTasks, recordsToReview, thankYouNotes, IDS } from "@kinpath/db";
+import { clinicPatients, linkedNames, linkRequests, nurseQueue, nurseTasks, recordsToReview, thankYouNotes, IDS } from "@kinpath/db";
+import { ConnectRequests } from "./connect";
 import { getDb } from "@/lib/db";
 import { requireSession } from "@/lib/session";
 import { enterResult } from "../actions";
@@ -26,7 +27,9 @@ export default async function NurseHome({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   const s = await requireSession(["nurse", "physician"]);
   const db = await getDb();
-  const [queue, tasks, patients, thanks, records] = await Promise.all([nurseQueue(db, s), nurseTasks(db, s), clinicPatients(db, s), thankYouNotes(db, s), recordsToReview(db, s)]);
+  const [queue, tasks, patients, thanks, records, links, names] = await Promise.all([nurseQueue(db, s), nurseTasks(db, s), clinicPatients(db, s), thankYouNotes(db, s), recordsToReview(db, s), linkRequests(db, s), linkedNames(db, s)]);
+  // How she'd like to be addressed, when she connected her own Pumpkin and shares it.
+  const goesBy = (id: string) => { const n = names[id]; return n ? [n.preferredName && `goes by ${n.preferredName}`, n.pronouns].filter(Boolean).join(" · ") : ""; };
   return (
     <>
       <p style={{ display: "flex", justifyContent: "flex-end", margin: 0 }}><Link href="/settings">Clinic settings →</Link></p>
@@ -64,13 +67,14 @@ export default async function NurseHome({ searchParams }: { searchParams: Promis
               </div>
             </>
           )}
+          <ConnectRequests requests={links} patients={patients} />
           <h2>Queue</h2>
           <div className="card">
             {queue.length === 0 && <div className="muted">All caught up.</div>}
             {queue.map((q) => (
               <div className="row" key={q.id}>
                 <div>
-                  <b>{q.patientName}</b> {q.preferredLang === "es" && <span className="pill p-lav">Español</span>}
+                  <b>{q.patientName}</b> {goesBy(q.patientId) && <span className="muted" style={{ fontSize: 13 }}>{goesBy(q.patientId)}</span>} {q.preferredLang === "es" && <span className="pill p-lav">Español</span>}
                   <div className="muted" style={{ fontSize: 13.5 }}>{q.patientMessage}</div>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -96,7 +100,7 @@ export default async function NurseHome({ searchParams }: { searchParams: Promis
           <h2>Patients</h2>
           <div className="card">
             {patients.map((p) => (
-              <div className="row" key={p.id}><Link href={`/nurse/patients/${p.id}`}>{p.name}</Link><span className="muted" style={{ fontSize: 13 }}>{p.stage ? STAGE[p.stage] ?? p.stage : ""}</span></div>
+              <div className="row" key={p.id}><span><Link href={`/nurse/patients/${p.id}`}>{p.name}</Link>{goesBy(p.id) && <span className="muted" style={{ fontSize: 13 }}> · {goesBy(p.id)}</span>}</span><span className="muted" style={{ fontSize: 13 }}>{p.stage ? STAGE[p.stage] ?? p.stage : ""}</span></div>
             ))}
           </div>
           <h2>Enter a result by hand</h2>
