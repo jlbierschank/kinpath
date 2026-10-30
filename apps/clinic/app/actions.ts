@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import {
-  closeAfterCall, draftReply, enterLabResult, markReplyRead, reportMissedDose, sendPatientMessage, sendReply,
+  closeAfterCall, closeRefill, type RefillOutcome, draftReply, enterLabResult, markReplyRead, reportMissedDose, sendPatientMessage, sendReply,
 } from "@kinpath/db";
 import { getDb, resetDb } from "@/lib/db";
 import { devLoginEnabled, getSession, homeFor, requireSession, SESSION_COOKIE } from "@/lib/session";
@@ -65,6 +65,13 @@ export async function send(form: FormData) {
   const s = await requireSession(["nurse", "physician"]);
   await sendReply(await getDb(), s, str(form, "handoffId"), str(form, "text"));
   redirect("/nurse");
+}
+
+export async function handleRefill(form: FormData) {
+  const s = await requireSession(["nurse", "physician"]);
+  const outcome = str(form, "outcome") as RefillOutcome;
+  await closeRefill(await getDb(), s, str(form, "handoffId"), outcome, str(form, "note"));
+  redirect("/nurse?saved=" + encodeURIComponent("Refill request handled."));
 }
 
 export async function markCalled(form: FormData) {

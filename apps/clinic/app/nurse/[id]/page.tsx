@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { aiDraftingStatus, handoffDetail } from "@kinpath/db";
 import { getDb } from "@/lib/db";
 import { requireSession } from "@/lib/session";
-import { draft, markCalled, send } from "../../actions";
+import { draft, handleRefill, markCalled, send } from "../../actions";
 
 const fmt = (iso: string) => new Date(iso).toLocaleString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit" });
 
@@ -15,6 +15,7 @@ export default async function HandoffPage({ params }: { params: Promise<{ id: st
   const h = d.handoff;
   const isUrgent = h.kind === "urgent_symptom" || h.kind === "crisis";
   const done = h.status === "sent" || h.status === "read" || h.status === "closed";
+  const isRefill = h.kind === "refill_request";
 
   return (
     <>
@@ -26,6 +27,8 @@ export default async function HandoffPage({ params }: { params: Promise<{ id: st
           <div className={`card ${isUrgent ? "urgent" : ""}`}>
             {isUrgent && <span className="pill p-red">{h.kind === "crisis" ? "Crisis: call now, share 988" : "Urgent: Pumpkin did not answer this"}</span>}
             <p style={{ fontSize: 17 }}>&ldquo;{h.patientMessage}&rdquo;</p>
+            {isRefill && <span className="pill p-sage">Refill request</span>}
+            {d.fromHerSpace && <p className="muted" style={{ fontSize: 13.5 }} data-testid="from-her-space">Sent from her own Pumpkin, which she connected to your clinic. She sees what you mark here, but can&apos;t read a written reply. Call her or use your portal if you need more.</p>}
             {h.triage.ruleIds.length > 0 && <p className="muted" style={{ fontSize: 13 }}>Safety rules matched: {h.triage.ruleIds.join(", ")}</p>}
           </div>
 
@@ -42,7 +45,23 @@ export default async function HandoffPage({ params }: { params: Promise<{ id: st
             </form>
           )}
 
-          {!done && !isUrgent && h.status === "open" && (
+          {!done && isRefill && (
+            <form className="card" action={handleRefill} data-testid="refill-handle">
+              <input type="hidden" name="handoffId" value={h.id} />
+              <b>What happened with this refill?</b>
+              <fieldset style={{ border: 0, padding: 0, margin: "10px 0", display: "grid", gap: 6 }}>
+                <label><input type="radio" name="outcome" value="sent" defaultChecked /> Sent to her pharmacy</label>
+                <label><input type="radio" name="outcome" value="call" /> We&apos;ll call her about it</label>
+                <label><input type="radio" name="outcome" value="visit" /> She needs a visit first</label>
+              </fieldset>
+              <label htmlFor="rnote">Note to {d.firstName} (optional)</label>
+              <textarea id="rnote" name="note" rows={2} placeholder="Ready for pickup after 3 pm." />
+              <p className="muted" style={{ fontSize: 13 }}>{d.firstName} sees your name, what happened and your note.</p>
+              <div style={{ marginTop: 10 }}><button className="btn btn-main" type="submit" data-testid="refill-done">Mark handled</button></div>
+            </form>
+          )}
+
+          {!done && !isUrgent && !d.fromHerSpace && h.status === "open" && (
             <form className="card" action={draft}>
               <input type="hidden" name="handoffId" value={h.id} />
               <p style={{ marginTop: 0 }}>Pumpkin can draft a reply from Bayside&apos;s approved protocol. Every draft is checked against that protocol, and you review and send it.</p>
@@ -51,7 +70,7 @@ export default async function HandoffPage({ params }: { params: Promise<{ id: st
             </form>
           )}
 
-          {!done && !isUrgent && h.status === "drafted" && (
+          {!done && !isUrgent && !d.fromHerSpace && h.status === "drafted" && (
             <form className="card" action={send}>
               <input type="hidden" name="handoffId" value={h.id} />
               <label htmlFor="text">Reply to {d.firstName} {d.lang === "es" && "(in Spanish)"}</label>

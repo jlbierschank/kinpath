@@ -12,6 +12,7 @@ import { askPermission, onDoseAction, remindersSupported, snoozeDose, syncRemind
 import { tick } from "./src/swipe";
 import { CostsCard, CostsScreen, PartnerCostsCard, ReceiptScreen } from "./src/money";
 import { SignupFlow } from "./src/solo";
+import { RefillAsk } from "./src/refillask";
 import { TestBanner, useAppInfo } from "./src/appinfo";
 import { clearSession, deviceName, loadSession, saveSession } from "./src/session";
 import { Bell, InboxScreen, NotificationSettingsScreen, SignInSection } from "./src/account";
@@ -276,7 +277,7 @@ function Signed({ api, initials, onSignOut, demo }: { api: Api; initials: string
       {screen.name === "walk" && <Walk doses={screen.doses} focus={screen.focus} api={api} lang={data.lang} t={t} done={home} quiet={data.wait.quietUntil !== null} somethingWrong={() => go({ name: "team" })} />}
       {screen.name === "missed" && <Missed dose={screen.dose} api={api} t={t} reload={load} afterSend={afterSend} done={home} />}
       {screen.name === "team" && <CareTeam data={data} api={api} t={t} reload={load} afterSend={afterSend} />}
-      {screen.name === "record" && <Record data={data} t={t} go={go} />}
+      {screen.name === "record" && <Record data={data} api={api} t={t} go={go} />}
       {screen.name === "costs" && <CostsScreen api={api} t={t} lang={data.lang} openReceipt={(id) => go({ name: "receipt", id })} />}
       {screen.name === "receipt" && <ReceiptScreen api={api} t={t} id={screen.id} />}
       {screen.name === "community" && <Community t={t} />}
@@ -937,7 +938,7 @@ function CareTeam({ data, api, t, reload, afterSend }: { data: TodayData; api: A
 }
 
 // ---------- Record ----------
-function Record({ data, t, go }: { data: TodayData; t: Tx; go: (s: Screen) => void }) {
+function Record({ data, api, t, go }: { data: TodayData; api: Api; t: Tx; go: (s: Screen) => void }) {
   return (
     <>
       <Today size={34}>{t("Your record", "Tu expediente")}</Today>
@@ -960,6 +961,7 @@ function Record({ data, t, go }: { data: TodayData; t: Tx; go: (s: Screen) => vo
             right={d.takenAt ? <Pill tone="sage" label={t("Logged", "Registrada")} /> : d.reportedMissed ? <Pill tone="clay" label={t("With Maria", "Con María")} /> : <Pill tone="stone" label={t("Not logged", "Sin registrar")} />} />
         ))}
       </Card>
+      <RefillAsk meds={[...data.schedule.recent, ...data.schedule.upcoming].map((d) => d.medication)} clinicName="Bayside" t={t} send={(m, n) => api.askRefill(m, n)} />
     </>
   );
 }

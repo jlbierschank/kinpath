@@ -10,7 +10,7 @@ import type { Lang } from "./ranges";
 import type { StaffRole } from "./permissions";
 import { triage, type ClinicTerm, type TriageResult } from "./triage";
 
-export type HandoffKind = "missed_dose" | "question" | "urgent_symptom" | "result_review" | "crisis";
+export type HandoffKind = "missed_dose" | "question" | "urgent_symptom" | "result_review" | "crisis" | "refill_request";
 export type HandoffStatus = "open" | "drafted" | "sent" | "read" | "closed";
 
 export interface DoseLogEntry {

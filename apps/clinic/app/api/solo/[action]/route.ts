@@ -3,7 +3,7 @@ import {
   addAppointment, addCapture, addCost, addMedication, addQuestion, addResult, askMyClinic, captureFile, deleteAppointment, deleteCost, deleteMyAccount, deleteQuestion,
   deleteResult, dismissItem, exportMyData, getReminderPrefs, itemsToCheck, newCalendarLink, SAMPLES, saveItem, setQuestionAsked, soloCosts, soloMeds, soloProfile,
   soloResults, soloToday, stopCalendarLink, stopMedication, setMedSupply, updateSoloProfile, visitQuestions, financePartners,
-  patientSharing, joinableClinics, myClinicLinks, requestClinicLink, updateClinicLink, shareCalendar, calendarShares, stopCalendarShare, saveKit, setMedLastDay, createPersonalShare, personalShares, stopSummaryShare, aboutMe, addTenderDate, deleteTenderDate, questionIdeas, saveAbout, setAlias, setQuiet, visitSummary, withdrawAboutConsent,
+  patientSharing, joinableClinics, myClinicLinks, requestClinicLink, updateClinicLink, shareCalendar, calendarShares, stopCalendarShare, saveKit, setMedLastDay, createPersonalShare, personalShares, stopSummaryShare, aboutMe, addTenderDate, deleteTenderDate, questionIdeas, saveAbout, setAlias, setQuiet, visitSummary, withdrawAboutConsent, requestLinkRefill, myLinkRefills,
 } from "@kinpath/db";
 import { getDb } from "@/lib/db";
 import { handle, preflight } from "@/lib/api";
@@ -29,6 +29,7 @@ export async function GET(req: Request, ctx: Ctx) {
         return { ...today, reminders: planReminders(today.schedule.upcoming, prefs, new Date(), "Pumpkin", { quiet: false }), prefs };
       }
       case "profile": return soloProfile(db, s, pid);
+      case "refills": return myLinkRefills(db, s);
       case "meds": return soloMeds(db, s, pid);
       case "results": return soloResults(db, s, pid);
       case "costs": return { ...(await soloCosts(db, s, pid)), partners: await financePartners(db, s) };
@@ -103,6 +104,7 @@ export async function POST(req: Request, ctx: Ctx) {
       case "quiet": return setQuiet(db, s, pid, { pauseDays: b.pauseDays === undefined ? undefined : (b.pauseDays as number | null), onBreak: typeof b.onBreak === "boolean" ? b.onBreak : undefined });
       case "kit": return saveKit(db, s, pid, obj("patch"));
       case "link-request": return requestClinicLink(db, s, str("clinicId"), obj("share"));
+      case "refill-request": return requestLinkRefill(db, s, { medication: str("medication"), note: typeof b.note === "string" ? b.note : "" });
       case "link-update": return updateClinicLink(db, s, str("id"), { share: obj("share"), stop: b.stop === true });
       case "med-last-day": return setMedLastDay(db, s, pid, str("medication"), str("lastDay"));
       case "share-summary": {

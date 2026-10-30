@@ -31,6 +31,7 @@ import { FeedbackScreen, PeopleScreen } from "./people";
 import { TestBanner } from "./appinfo";
 import { CalendarShareCard } from "./calshare";
 import { ClinicConnectCard } from "./connect";
+import { LinkedRefills } from "./refillask";
 import { AppLockSetting } from "./privacy";
 import { ItemAction, useUndo } from "./undo";
 import { addVisitToCalendar, nativeCalendar } from "./nativecal";
@@ -1464,6 +1465,7 @@ function RecordScreen({ api, d, go, reload }: { api: Api; d: SoloToday; go: (s: 
           </View>
         )) : <Muted style={{ fontSize: 15 }}>No meds yet. Snap your instruction sheet to add them.</Muted>}
         {d.refills.length ? <SupplyCard api={api} refills={d.refills} reload={reload} /> : null}
+        <LinkedRefills api={api} meds={meds.map((m) => m.medication)} />
       </Section>
       <Section icon="lab" title="Results" add="result">
         {results.length ? results.map((g) => (undo.hidden(g.points[0]!.id) ? null : <ResultCard key={g.key} g={g} api={api} reload={() => void load()} waitForMe={d.about.revealResults} onRemove={(id, label) => void undo.remove({ id, label, commit: () => api.removeMine("delete-result", id) })} />)) : <Muted style={{ fontSize: 15 }}>No results yet. A portal screenshot works.</Muted>}

@@ -184,7 +184,7 @@ export async function alertStaffOfMessage(db: Db, patientId: string, handoffId: 
   const p = await patientInfo(db, patientId);
   if (!p) return;
   const urgent = kind === "urgent_symptom" || kind === "crisis";
-  const what = kind === "crisis" ? "crisis: call now" : kind === "urgent_symptom" ? "urgent symptom: call now" : kind === "missed_dose" ? "missed dose" : "new message";
+  const what = kind === "crisis" ? "crisis: call now" : kind === "urgent_symptom" ? "urgent symptom: call now" : kind === "missed_dose" ? "missed dose" : kind === "refill_request" ? "refill request" : "new message";
   await notify(db, { clinicId: p.clinic_id, kind: urgent ? "urgent_message" : "new_message", title: `${p.first_name} ${p.last_name} · ${what}`, link: `/nurse/${handoffId}`, to: { clinicians: true } });
 }
 export async function alertStaffOfCall(db: Db, patientId: string, reason: string) {

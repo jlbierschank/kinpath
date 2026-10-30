@@ -80,7 +80,8 @@ export interface NotificationSettings {
   phone: string | null;
 }
 export interface Guide { medication: string; steps: Record<Lang, string>[]; videoUrl: string | null; approvedBy: string }
-export interface SendResult { handoffId: string; kind: "missed_dose" | "question" | "urgent_symptom" | "crisis" | "result_review" }
+export interface SendResult { handoffId: string; kind: "missed_dose" | "question" | "urgent_symptom" | "crisis" | "result_review" | "refill_request" }
+export interface MyRefill { id: string; clinicName: string; medication: string; status: "waiting" | "handled"; outcome: string | null; askedAt: string; handledAt: string | null }
 
 // ---------- Pumpkin on your own ----------
 export type SoloStage = "trying" | "just_starting" | "freezing_eggs" | "in_cycle" | "two_week_wait" | "pregnant" | "after_hard_result" | "between_cycles" | "storage";
@@ -151,6 +152,7 @@ export class Api {
   setSupply = (medication: string, doses: number | null) => this.call<Refill[]>("/api/solo/supply", { method: "POST", body: { medication, doses } });
   logDose = (id: string) => this.call<{ ok: boolean }>(`/api/patient/doses/${id}/log`, { method: "POST", body: {} });
   reportMissed = (id: string, note: string) => this.call<SendResult>(`/api/patient/doses/${id}/missed`, { method: "POST", body: { note } });
+  askRefill = (medication: string, note: string) => this.call<SendResult>("/api/patient/refills", { method: "POST", body: { medication, note } });
   sendMessage = (text: string) => this.call<SendResult>("/api/patient/messages", { method: "POST", body: { text } });
   markRead = (id: string) => this.call<{ ok: boolean }>(`/api/patient/messages/${id}/read`, { method: "POST", body: {} });
   setLockScreenDetail = (on: boolean) => this.call<{ ok: boolean }>("/api/patient/prefs", { method: "POST", body: { lockScreenDetail: on } });
@@ -191,6 +193,8 @@ export class Api {
   saveKit = (patch: Record<string, unknown>) => this.call<{ kit: StageKit; urgent: "urgent" | "crisis" | null }>("/api/solo/kit", { method: "POST", body: { patch } });
   setMedLastDay = (medication: string, lastDay: string) => this.call<{ lastDay: string }>("/api/solo/med-last-day", { method: "POST", body: { medication, lastDay } });
   joinableClinics = (q: string) => this.call<{ id: string; name: string }[]>(`/api/solo/joinable?q=${encodeURIComponent(q)}`);
+  linkRefill = (medication: string, note: string) => this.call<SendResult>("/api/solo/refill-request", { method: "POST", body: { medication, note } });
+  myRefills = () => this.call<MyRefill[]>("/api/solo/refills");
   clinicLinks = () => this.call<ClinicLink[]>("/api/solo/links");
   requestClinicLink = (clinicId: string, share: Partial<LinkShare>) => this.call<{ id: string }>("/api/solo/link-request", { method: "POST", body: { clinicId, share } });
   updateClinicLink = (id: string, change: { share?: Partial<LinkShare>; stop?: boolean }) => this.call<unknown>("/api/solo/link-update", { method: "POST", body: { id, ...change } });

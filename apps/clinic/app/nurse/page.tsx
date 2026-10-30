@@ -12,6 +12,7 @@ const KIND: Record<string, [string, string]> = {
   urgent_symptom: ["Urgent symptom", "p-red"],
   missed_dose: ["Missed dose", "p-clay"],
   result_review: ["Result to review", "p-clay"],
+  refill_request: ["Refill request", "p-sage"],
   question: ["Question", "p-lav"],
 };
 
@@ -32,7 +33,7 @@ export default async function NurseHome({ searchParams }: { searchParams: Promis
   const goesBy = (id: string) => { const n = names[id]; return n ? [n.preferredName && `goes by ${n.preferredName}`, n.pronouns].filter(Boolean).join(" · ") : ""; };
   return (
     <>
-      <p style={{ display: "flex", justifyContent: "flex-end", margin: 0 }}><Link href="/settings">Clinic settings →</Link></p>
+      <p style={{ display: "flex", justifyContent: "flex-end", margin: 0 }}><Link href="/pilot" style={{ marginRight: 16 }}>Pilot numbers →</Link><Link href="/settings">Clinic settings →</Link></p>
       <h1>Good morning, {s.name.split(" ")[0]}.</h1>
       <p className="muted">{queue.length === 0 ? "Nothing needs you right now." : `${queue.length} ${queue.length === 1 ? "item needs" : "items need"} you. Urgent items stay on top.`}</p>
       {sp.error && <div className="card urgent" role="alert"><b>Not saved.</b> {sp.error}</div>}
@@ -75,7 +76,7 @@ export default async function NurseHome({ searchParams }: { searchParams: Promis
               <div className="row" key={q.id}>
                 <div>
                   <b>{q.patientName}</b> {goesBy(q.patientId) && <span className="muted" style={{ fontSize: 13 }}>{goesBy(q.patientId)}</span>} {q.preferredLang === "es" && <span className="pill p-lav">Español</span>}
-                  <div className="muted" style={{ fontSize: 13.5 }}>{q.patientMessage}</div>
+                  <div className="muted" style={{ fontSize: 13.5 }}>{q.patientMessage}{q.fromHerSpace && <> · <i>from her own Pumpkin</i></>}</div>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <span className={`pill ${KIND[q.kind]![1]}`}>{KIND[q.kind]![0]}</span>

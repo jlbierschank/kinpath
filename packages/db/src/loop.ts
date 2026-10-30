@@ -23,6 +23,8 @@ export interface QueueItem {
   patientMessage: string;
   createdAt: string;
   priority: number; // 0 = crisis, 1 = urgent, 2 = everything else
+  /** Sent from her own Pumpkin through a clinic connection: she won't see a reply in the app. */
+  fromHerSpace: boolean;
 }
 
 interface HandoffRow {
@@ -85,8 +87,8 @@ async function sendPatientMessageTx(db: Db, actor: Actor, input: { patientId: st
 
 export async function nurseQueue(db: Db, actor: Actor): Promise<QueueItem[]> {
   return asActor(db, actor, async (tx) => {
-    const res = await tx.query<{ id: string; patient_id: string; first_name: string; last_name: string; preferred_lang: Lang; kind: Handoff["kind"]; status: Handoff["status"]; patient_message: string; created_at: Date }>(
-      `SELECT h.id, h.patient_id, p.first_name, p.last_name, p.preferred_lang, h.kind, h.status, h.patient_message, h.created_at
+    const res = await tx.query<{ id: string; patient_id: string; first_name: string; last_name: string; preferred_lang: Lang; kind: Handoff["kind"]; status: Handoff["status"]; patient_message: string; created_at: Date; via_link: string | null }>(
+      `SELECT h.id, h.patient_id, p.first_name, p.last_name, p.preferred_lang, h.kind, h.status, h.patient_message, h.created_at, h.via_link
          FROM handoffs h JOIN patients p ON p.id = h.patient_id
         WHERE h.status IN ('open','drafted')
         ORDER BY CASE h.kind WHEN 'crisis' THEN 0 WHEN 'urgent_symptom' THEN 1 ELSE 2 END, h.created_at`,
@@ -95,6 +97,7 @@ export async function nurseQueue(db: Db, actor: Actor): Promise<QueueItem[]> {
       id: r.id, patientId: r.patient_id, patientName: `${r.first_name} ${r.last_name}`, preferredLang: r.preferred_lang,
       kind: r.kind, status: r.status, patientMessage: r.patient_message, createdAt: new Date(r.created_at).toISOString(),
       priority: r.kind === "crisis" ? 0 : r.kind === "urgent_symptom" ? 1 : 2,
+      fromHerSpace: r.via_link !== null,
     }));
   });
 }
@@ -108,6 +111,8 @@ export interface HandoffDetail {
   /** How the draft was made: protocol text, an AI draft that passed every check, or protocol text after an AI draft was held back. */
   draftEngine: "protocol" | "ai" | "ai_held_back" | "ai_error" | null;
   draftProblems: string[];
+  /** Sent from her own Pumpkin through a clinic connection: reply by phone or portal, not here. */
+  fromHerSpace: boolean;
   doseLog: { medication: string; dose: string; scheduledFor: string; takenAt: string | null; reportedMissed: boolean }[];
 }
 
@@ -132,6 +137,7 @@ export async function handoffDetail(db: Db, actor: Actor, handoffId: string): Pr
       stimDay: c.rows[0]?.stim_day ?? null,
       draftEngine: (row as unknown as { draft_engine: HandoffDetail["draftEngine"] }).draft_engine ?? null,
       draftProblems: (row as unknown as { draft_problems: string[] | null }).draft_problems ?? [],
+      fromHerSpace: (row as unknown as { via_link: string | null }).via_link != null,
       doseLog: doses.rows.map((d) => ({
         medication: d.medication, dose: d.dose, scheduledFor: new Date(d.scheduled_for).toISOString(),
         takenAt: d.taken_at ? new Date(d.taken_at).toISOString() : null, reportedMissed: d.reported_missed_at !== null,
