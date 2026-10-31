@@ -114,8 +114,8 @@ const SERVER = 'http://localhost:3000', APP = process.env.APP ?? 'http://localho
   await byId('kit-ob-name').fill('Dr. Ana Reyes'); await byId('kit-ob-save').click();
   await byId('kit-ob-day').fill(day(14)); await byId('kit-ob-time').fill('09:00'); await byId('kit-ob-add').click();
   ok(await sees('Added to your visits'), 'First OB appointment added');
-  await byId('kit-share-meds').click(); // results only
-  await byId('kit-share').click();
+  await byId('kit-share-sec-meds').click(); // results only
+  await byId('kit-share-make').click();
   await byId('kit-share-url').waitFor();
   const url = (await byId('kit-share-url').innerText()).trim();
   await shot('kits-4-ob');

@@ -59,7 +59,7 @@ describe("the summary she shares with her OB", () => {
     expect(await openSummary(db, share.token)).toBeNull(); // the clinic-mode page never opens a personal link
     const s = await openAnySummary(db, share.token);
     if (s?.kind !== "personal") throw new Error("expected a personal summary");
-    expect(s.pregnancy).toEqual({ conceivedOn: "2026-10-01", how: "day5", dueDate: "2027-06-19", ob: "Dr. Ana Reyes" });
+    expect(s.pregnancy).toEqual({ conceivedOn: "2026-10-01", how: null, dueDate: "2027-06-19", ob: "Dr. Ana Reyes" });
     expect(s.results!.find((r) => r.analyte === "hcg")).toMatchObject({ value: 212, by: "you" });
     expect(s.meds).toBeNull();
     expect((await personalShares(db, alex, IDS.alex))[0]).toMatchObject({ recipient: "Dr. Ana Reyes", active: true, views: 1 });

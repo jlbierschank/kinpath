@@ -9,7 +9,7 @@
  */
 import {
   captureSystemPrompt, cleanItem, HandoffError, parseCaptureReply, readPlainText, triage,
-  type AppointmentItem, type CaptureItem, type CostItem, type MedicationItem, type ResultItem,
+  type AppointmentItem, type CaptureItem, type CostItem, type CoverageItem, type MedicationItem, type ResultItem,
 } from "@kinpath/core";
 import { asActor, audit, type Actor, type Db, type Tx } from "./client";
 import { AIServiceError } from "./ai";
@@ -170,8 +170,8 @@ export async function addCapture(db: Db, actor: Actor, patientId: string, input:
 
   await asActor(db, actor, async (tx) => {
     for (const it of items) {
-      await tx.query(`INSERT INTO capture_items (capture_id, clinic_id, patient_id, kind, data, unsure) VALUES ($1,$2,$3,$4,$5,$6)`,
-        [first.id, actor.clinicId, patientId, it.kind, JSON.stringify(it.data), it.unsure]);
+      await tx.query(`INSERT INTO capture_items (capture_id, clinic_id, patient_id, kind, data, unsure, source) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [first.id, actor.clinicId, patientId, it.kind, JSON.stringify(it.data), it.unsure, "from" in it && it.from ? JSON.stringify(it.from) : null]);
     }
     await tx.query(`UPDATE captures SET status = $2, problem = $3, engine = $4, ai_read = $5 WHERE id = $1`, [first.id, items.length ? "ready" : "failed", problem, engine, !!extractor && engine === extractor.name]);
   });
@@ -179,16 +179,20 @@ export async function addCapture(db: Db, actor: Actor, patientId: string, input:
   return { captureId: first.id, status: items.length ? "ready" : "failed", urgent: null, items: items.length, problem: items.length ? null : problem, engine, readsLeft: readsLeft(usedOne) };
 }
 
-export interface PendingItem { id: string; captureId: string; kind: CaptureItem["kind"]; data: Record<string, unknown>; unsure: string[]; source: { kind: CaptureInputKind; filename: string | null; at: string; hasFile: boolean; engine: string | null } }
+const sourceOf = (v: { page?: number; quote?: string } | string | null) => {
+  const o = (typeof v === "string" ? JSON.parse(v) : v) ?? {};
+  return { page: typeof o.page === "number" ? o.page : null, quote: typeof o.quote === "string" ? o.quote : null };
+};
+export interface PendingItem { id: string; captureId: string; kind: CaptureItem["kind"]; data: Record<string, unknown>; unsure: string[]; source: { kind: CaptureInputKind; filename: string | null; at: string; hasFile: boolean; engine: string | null; page: number | null; quote: string | null } }
 
 export async function itemsToCheck(db: Db, actor: Actor, patientId: string): Promise<PendingItem[]> {
   return asActor(db, actor, async (tx) => {
-    const r = await tx.query<{ id: string; capture_id: string; kind: CaptureItem["kind"]; data: Record<string, unknown>; unsure: string[]; ckind: CaptureInputKind; filename: string | null; created_at: Date; has_file: boolean; engine: string | null }>(
-      `SELECT i.id, i.capture_id, i.kind, i.data, i.unsure, c.kind AS ckind, c.filename, c.created_at, c.bytes IS NOT NULL AS has_file, c.engine
+    const r = await tx.query<{ id: string; capture_id: string; kind: CaptureItem["kind"]; data: Record<string, unknown>; unsure: string[]; ckind: CaptureInputKind; filename: string | null; created_at: Date; has_file: boolean; engine: string | null; isource: { page?: number; quote?: string } | string | null }>(
+      `SELECT i.id, i.capture_id, i.kind, i.data, i.unsure, i.source AS isource, c.kind AS ckind, c.filename, c.created_at, c.bytes IS NOT NULL AS has_file, c.engine
          FROM capture_items i JOIN captures c ON c.id = i.capture_id WHERE i.patient_id = $1 AND i.status = 'pending'
         ORDER BY c.created_at DESC, CASE i.kind WHEN 'medication' THEN 0 WHEN 'result' THEN 1 WHEN 'appointment' THEN 2 WHEN 'cost' THEN 3 ELSE 4 END, i.created_at`, [patientId]);
     return r.rows.map((x) => ({ id: x.id, captureId: x.capture_id, kind: x.kind, data: typeof x.data === "string" ? JSON.parse(x.data) : x.data, unsure: x.unsure ?? [],
-      source: { kind: x.ckind, filename: x.filename, at: new Date(x.created_at).toISOString(), hasFile: x.has_file, engine: x.engine } }));
+      source: { kind: x.ckind, filename: x.filename, at: new Date(x.created_at).toISOString(), hasFile: x.has_file, engine: x.engine, ...sourceOf(x.isource) } }));
   });
 }
 
@@ -222,6 +226,7 @@ export async function saveItem(db: Db, actor: Actor, patientId: string, itemId: 
     } else if (item.kind === "result") ref = await solo.insertResult(tx, actor, patientId, item.data as ResultItem, row.capture_id);
     else if (item.kind === "appointment") ref = await solo.insertAppointment(tx, actor, patientId, item.data as AppointmentItem);
     else if (item.kind === "cost") ref = await solo.insertCost(tx, actor, patientId, item.data as CostItem, row.capture_id);
+    else if (item.kind === "coverage") ref = await solo.insertCoverage(tx, actor, patientId, item.data as CoverageItem, row.capture_id);
     else ref = (await tx.query<{ id: string }>(`INSERT INTO visit_questions (clinic_id, patient_id, question) VALUES ($1,$2,$3) RETURNING id`, [actor.clinicId, patientId, (item.data as { text: string }).text])).rows[0]!.id;
     await tx.query(`UPDATE capture_items SET status = 'saved', data = $2, saved_ref = $3, decided_at = now() WHERE id = $1`, [itemId, JSON.stringify(item.data), ref]);
     return { savedId: ref, kind: item.kind };

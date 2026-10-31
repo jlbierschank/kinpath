@@ -1,1 +1,0 @@
-__d(function(g,r,i,a,m,e,d){"use strict";Object.defineProperty(e,'__esModule',{value:!0}),Object.defineProperty(e,"default",{enumerable:!0,get:function(){return u}});var t=r(d[0]),n=r(d[1]),c=r(d[2]);function u(){const{id:u,text:o}=(0,t.useLocalSearchParams)();return(0,c.jsx)(n.SoloScreen,{screen:{name:"original",captureId:u,text:o}})}},774,[804,802,6]);

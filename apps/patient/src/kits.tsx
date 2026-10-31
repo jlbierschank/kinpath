@@ -3,6 +3,7 @@
  * by cycle day, and getting ready to move from the fertility clinic to an OB (Pregnant after treatment).
  * Plain facts and timing only. Her clinic's instructions come first, and every screen says so.
  */
+import { SendRecordCard } from "./sendrecord";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { ActivityIndicator, Linking, Platform, Pressable, Share, Text, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
@@ -235,14 +236,8 @@ export function ObHandoffScreen({ api, initial, reload, notice }: { api: Api; in
   const [obName, setObName] = useState(o.obName);
   const [obDay, setObDay] = useState(""); const [obTime, setObTime] = useState("");
   const [obAdded, setObAdded] = useState(false);
-  const [results, setResults] = useState(true); const [withMeds, setWithMeds] = useState(true);
-  const [made, setMade] = useState<{ url: string } | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [shares, setShares] = useState<PersonalShare[]>([]);
-  const [shareErr, setShareErr] = useState<string | null>(null);
   const loadMeds = useCallback(() => { api.soloMeds().then(setMeds).catch(() => setMeds([])); }, [api]);
-  const loadShares = useCallback(() => { api.personalShares().then(setShares).catch(() => {}); }, [api]);
-  useEffect(() => { loadMeds(); loadShares(); }, [loadMeds, loadShares]);
+  useEffect(() => { loadMeds(); }, [loadMeds]);
   const groups = groupMeds(meds ?? []);
   const recipient = obName.trim() || "My OB";
 
@@ -252,12 +247,6 @@ export function ObHandoffScreen({ api, initial, reload, notice }: { api: Api; in
     try { await api.setMedLastDay(name, day); loadMeds(); reload(); notice(`Reminders for ${name} end after ${niceDate(day)}.`); }
     catch (e) { setMedErr((e as Error).message); }
   };
-  const share = async () => {
-    setShareErr(null);
-    try { setMade(await api.sharePersonalSummary({ recipient, includeResults: results, includeMeds: withMeds })); setCopied(false); loadShares(); }
-    catch (e) { setShareErr((e as Error).message); }
-  };
-  const message = made ? `Here is a summary of my fertility treatment and early pregnancy, from my own records: ${made.url} (the link works for 7 days).` : "";
 
   if (o.movedOn) return (
     <>
@@ -267,7 +256,7 @@ export function ObHandoffScreen({ api, initial, reload, notice }: { api: Api; in
         <T style={{ fontSize: 15 }}>Pumpkin is keeping Today light: your meds until their last day, and your visits.</T>
         <Button testID="kit-unmove" kind="line" label="I'm not there yet" onPress={() => void save({ ob: { movedOn: null } })} />
       </Card>
-      <ShareCard {...{ shares, made, copied, setCopied, message, share, results, setResults, withMeds, setWithMeds, recipient, shareErr }} stop={async (id) => { await api.stopPersonalShare(id); loadShares(); }} />
+      <Section title="Share a summary" testID="kit-share-section"><SendRecordCard api={api} recipient={recipient} defaults={["pregnancy", "visits", "results", "meds"]} testID="kit-share" intro={`A secure link for ${recipient}, with a PDF and a data file their system can take. It shows only what you choose and labels who entered each item.`} /></Section>
     </>
   );
 
@@ -318,7 +307,7 @@ export function ObHandoffScreen({ api, initial, reload, notice }: { api: Api; in
         </Card>
       </Section>
 
-      <ShareCard {...{ shares, made, copied, setCopied, message, share, results, setResults, withMeds, setWithMeds, recipient, shareErr }} stop={async (id) => { await api.stopPersonalShare(id); loadShares(); }} />
+      <Section title="Share a summary" testID="kit-share-section"><SendRecordCard api={api} recipient={recipient} defaults={["pregnancy", "visits", "results", "meds"]} testID="kit-share" intro={`A secure link for ${recipient}, with a PDF and a data file their system can take. It shows only what you choose and labels who entered each item.`} /></Section>
 
       <Section title="When you've moved">
         <Card style={{ gap: 8 }}>
@@ -330,35 +319,3 @@ export function ObHandoffScreen({ api, initial, reload, notice }: { api: Api; in
   );
 }
 
-function ShareCard(p: {
-  shares: PersonalShare[]; made: { url: string } | null; copied: boolean; setCopied: (v: boolean) => void; message: string; share: () => Promise<void>;
-  results: boolean; setResults: (v: boolean) => void; withMeds: boolean; setWithMeds: (v: boolean) => void; recipient: string; shareErr: string | null; stop: (id: string) => Promise<void>;
-}) {
-  const active = p.shares.filter((s) => s.active);
-  return (
-    <Section title="Share a summary" testID="kit-share-section">
-      <Card style={{ gap: 10 }}>
-        <T style={{ fontSize: 15 }}>{`A secure link for ${p.recipient}. It works for 7 days, shows only what you choose, labels who entered each item, and you can stop it anytime.`}</T>
-        <View style={st.row}><View style={{ flex: 1 }}><T style={{ fontFamily: F.sans600, fontSize: 15 }}>Results</T><Muted>Blood tests and other numbers</Muted></View><Toggle testID="kit-share-results" value={p.results} onChange={p.setResults} /></View>
-        <View style={st.row}><View style={{ flex: 1 }}><T style={{ fontFamily: F.sans600, fontSize: 15 }}>Medications</T><Muted>With their last days</Muted></View><Toggle testID="kit-share-meds" value={p.withMeds} onChange={p.setWithMeds} /></View>
-        <Muted style={{ fontSize: 13 }}>Your due date, OB and visits are always included.</Muted>
-        {p.made ? (
-          <View style={{ gap: 8 }}>
-            <Text testID="kit-share-url" selectable numberOfLines={2} style={{ fontFamily: F.sans500, fontSize: 14, color: C.lavInk }}>{p.made.url}</Text>
-            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-              <Button kind="line" label={p.copied ? "Copied" : "Copy link"} onPress={async () => { await Clipboard.setStringAsync(p.made!.url); p.setCopied(true); }} />
-              <Button kind="line" label={Platform.OS === "web" ? "Email it" : "Send it"} onPress={() => { if (Platform.OS === "web") void Linking.openURL(`mailto:?subject=${encodeURIComponent("My treatment summary")}&body=${encodeURIComponent(p.message)}`).catch(() => {}); else void Share.share({ message: p.message }); }} />
-            </View>
-          </View>
-        ) : <Button testID="kit-share" kind="esp" label="Create a secure link" onPress={() => void p.share()} />}
-        {p.shareErr ? <T style={{ color: C.red }}>{p.shareErr}</T> : null}
-        {active.map((s, i) => (
-          <View key={s.id} style={[st.row, { borderTopWidth: 1 }]}>
-            <View style={{ flex: 1 }}><T style={{ fontSize: 14.5 }}>{`Shared with ${s.recipient}`}</T><Muted style={{ fontSize: 13 }}>{`Until ${niceDate(s.expiresAt.slice(0, 10))}${s.views ? ` · opened ${s.views} time${s.views > 1 ? "s" : ""}` : ""}`}</Muted></View>
-            <Pressable testID={`kit-share-stop-${i}`} onPress={() => void p.stop(s.id)} style={{ minHeight: 44, justifyContent: "center" }}><T style={{ fontFamily: F.sans600, color: C.clayInk }}>Stop sharing</T></Pressable>
-          </View>
-        ))}
-      </Card>
-    </Section>
-  );
-}

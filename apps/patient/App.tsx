@@ -14,6 +14,7 @@ import { tick } from "./src/swipe";
 import { CostsCard, CostsScreen, PartnerCostsCard, ReceiptScreen } from "./src/money";
 import { SignupFlow } from "./src/solo";
 import { RefillAsk } from "./src/refillask";
+import { DataChoicesCard } from "./src/datachoices";
 import { TestBanner, useAppInfo } from "./src/appinfo";
 import { clearSession, deviceName, loadSession, saveSession } from "./src/session";
 import { Bell, InboxScreen, NotificationSettingsScreen, SignInSection } from "./src/account";
@@ -926,6 +927,7 @@ export function Settings({ data, api, t, reload, scheduled, onSignOut, go, demo,
         <Row testID="open-notif-settings" title={t("Notifications", "Notificaciones")} sub={t("Which alerts you get, and how", "Qué alertas recibes y cómo")} onPress={() => go({ name: "notif-settings" })} right={<T style={{ color: C.stone, fontSize: 18 }}>›</T>} />
       </Card>
       <AppearanceCard />
+      <DataChoicesCard api={api} clinic t={t} />
       <Cap>{t("Reminders", "Recordatorios")}</Cap>
       <Card style={{ gap: 8 }}>
         <Muted>{remindersSupported

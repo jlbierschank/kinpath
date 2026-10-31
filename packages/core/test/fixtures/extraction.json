@@ -1,0 +1,247 @@
+{
+  "about": "Labeled test set for document reading. Every document is made up (no real people, clinics or plans). The labels were written by hand from the text. Each type has two documents; add more before launch and keep the labels reviewed.",
+  "docs": [
+    {
+      "id": "lab-1",
+      "type": "lab",
+      "today": "2026-10-30",
+      "text": "Coastal Reference Lab\nPatient: Test Patient One\nCollected 2026-10-28 07:40\nEstradiol 412 pg/mL\nProgesterone 0.6 ng/mL\nLH 2.1 mIU/mL",
+      "expect": [
+        {
+          "kind": "result",
+          "data": {
+            "test": "Estradiol",
+            "value": 412,
+            "unit": "pg/mL",
+            "collectedOn": "2026-10-28"
+          }
+        },
+        {
+          "kind": "result",
+          "data": {
+            "test": "Progesterone",
+            "value": 0.6,
+            "unit": "ng/mL",
+            "collectedOn": "2026-10-28"
+          }
+        },
+        {
+          "kind": "result",
+          "data": {
+            "test": "LH",
+            "value": 2.1,
+            "unit": "mIU/mL",
+            "collectedOn": "2026-10-28"
+          }
+        }
+      ]
+    },
+    {
+      "id": "lab-2",
+      "type": "lab",
+      "today": "2026-10-30",
+      "text": "Results portal\nAMH 2.4 ng/mL on Sep 20, 2026\nFSH 7.8 mIU/mL on Sep 20, 2026",
+      "expect": [
+        {
+          "kind": "result",
+          "data": {
+            "test": "AMH",
+            "value": 2.4,
+            "unit": "ng/mL",
+            "collectedOn": "2026-09-20"
+          }
+        },
+        {
+          "kind": "result",
+          "data": {
+            "test": "FSH",
+            "value": 7.8,
+            "unit": "mIU/mL",
+            "collectedOn": "2026-09-20"
+          }
+        }
+      ]
+    },
+    {
+      "id": "med-1",
+      "type": "med_sheet",
+      "today": "2026-10-30",
+      "text": "Your stimulation medications\nGonal-F 225 IU at 8 pm starting 2026-10-31\nMenopur 75 IU at 8 pm starting 2026-10-31\nCetrotide 0.25 mg at 8 am starting 2026-11-04",
+      "expect": [
+        {
+          "kind": "medication",
+          "data": {
+            "name": "Gonal-F",
+            "dose": "225 IU",
+            "times": [
+              "20:00"
+            ],
+            "startsOn": "2026-10-31"
+          }
+        },
+        {
+          "kind": "medication",
+          "data": {
+            "name": "Menopur",
+            "dose": "75 IU",
+            "times": [
+              "20:00"
+            ],
+            "startsOn": "2026-10-31"
+          }
+        },
+        {
+          "kind": "medication",
+          "data": {
+            "name": "Cetrotide",
+            "dose": "0.25 mg",
+            "times": [
+              "08:00"
+            ],
+            "startsOn": "2026-11-04"
+          }
+        }
+      ]
+    },
+    {
+      "id": "med-2",
+      "type": "med_sheet",
+      "today": "2026-10-30",
+      "text": "Transfer prep\nEstrace 2 mg at 9 am starting Nov 2\nProgesterone in oil 1 ml at 7 pm starting Nov 10",
+      "expect": [
+        {
+          "kind": "medication",
+          "data": {
+            "name": "Estrace",
+            "dose": "2 mg",
+            "times": [
+              "09:00"
+            ],
+            "startsOn": "2026-11-02"
+          }
+        },
+        {
+          "kind": "medication",
+          "data": {
+            "name": "Progesterone in oil",
+            "dose": "1 ml",
+            "times": [
+              "19:00"
+            ],
+            "startsOn": "2026-11-10"
+          }
+        }
+      ]
+    },
+    {
+      "id": "receipt-1",
+      "type": "receipt",
+      "today": "2026-10-30",
+      "text": "Paid $250.00 on 2026-10-12 for monitoring visit",
+      "expect": [
+        {
+          "kind": "cost",
+          "data": {
+            "type": "payment",
+            "amount": 250,
+            "date": "2026-10-12"
+          }
+        }
+      ]
+    },
+    {
+      "id": "receipt-2",
+      "type": "receipt",
+      "today": "2026-10-30",
+      "text": "Pharmacy receipt\nI paid $1,340.55 on Oct 18 for stim meds",
+      "expect": [
+        {
+          "kind": "cost",
+          "data": {
+            "type": "payment",
+            "amount": 1340.55,
+            "date": "2026-10-18"
+          }
+        }
+      ]
+    },
+    {
+      "id": "bill-1",
+      "type": "bill",
+      "today": "2026-10-30",
+      "text": "Payment plan\nRetrieval deposit $3,000 due Nov 15",
+      "expect": [
+        {
+          "kind": "cost",
+          "data": {
+            "type": "charge",
+            "amount": 3000,
+            "dueOn": "2026-11-15"
+          }
+        }
+      ]
+    },
+    {
+      "id": "bill-2",
+      "type": "bill",
+      "today": "2026-10-30",
+      "text": "Statement from the clinic\nEmbryo storage annual fee $650 due 2026-12-01",
+      "expect": [
+        {
+          "kind": "cost",
+          "data": {
+            "type": "charge",
+            "amount": 650,
+            "dueOn": "2026-12-01"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ins-1",
+      "type": "insurance",
+      "today": "2026-10-30",
+      "text": "Explanation of benefits. This is not a bill.\nInsurer: Example Health Plan\nStatement date: 2026-10-20\nDeductible: $1,200 met of $2,000\nOut-of-pocket: $1,850 met of $6,000\nFertility benefit: $8,500 used of $25,000\nMonitoring ultrasound, amount billed $480, plan paid $300, you may owe $180",
+      "expect": [
+        {
+          "kind": "coverage",
+          "data": {
+            "payer": "Example Health Plan",
+            "asOf": "2026-10-20",
+            "deductibleMet": 1200,
+            "deductible": 2000,
+            "oopMet": 1850,
+            "oopMax": 6000,
+            "fertilityUsed": 8500,
+            "fertilityMax": 25000
+          }
+        },
+        {
+          "kind": "cost",
+          "data": {
+            "type": "charge",
+            "amount": 180
+          }
+        }
+      ]
+    },
+    {
+      "id": "ins-2",
+      "type": "insurance",
+      "today": "2026-10-30",
+      "text": "Benefits summary as of Oct 1, 2026\nCigna Open Access Plus\nDeductible $500 of $1,500\nFertility lifetime maximum $20,000",
+      "expect": [
+        {
+          "kind": "coverage",
+          "data": {
+            "payer": "Cigna",
+            "asOf": "2026-10-01",
+            "deductibleMet": 500,
+            "deductible": 1500,
+            "fertilityMax": 20000
+          }
+        }
+      ]
+    }
+  ]
+}

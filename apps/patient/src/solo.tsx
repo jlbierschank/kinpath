@@ -18,7 +18,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import Svg, { Circle, Path, Text as SvgText } from "react-native-svg";
-import { Api, auth, type CaptureInput, type ItemKind, type PendingItem, type Refill, type ResultGroup, type SignedInUser, type SoloCosts, type SoloMed, type SoloProfile, type SoloStage, type SoloToday } from "./api";
+import { Api, auth, type CaptureInput, type ItemKind, type PendingItem, type Refill, type ResultGroup, type SignedInUser, type SoloCosts, type Coverage, type SoloMed, type SoloProfile, type SoloStage, type SoloToday } from "./api";
 import { askPermission, onDoseAction, reminderPermission, remindersSupported, sendTestReminder, snoozeDose, syncReminders, type ReminderPermission } from "./reminders";
 import { SwipeRow, tick, usePointer } from "./swipe";
 import { deviceName, loadPref, savePref } from "./session";
@@ -32,6 +32,8 @@ import { TestBanner } from "./appinfo";
 import { CalendarShareCard } from "./calshare";
 import { ClinicConnectCard } from "./connect";
 import { LinkedRefills } from "./refillask";
+import { DataChoicesCard } from "./datachoices";
+import { SendRecordCard } from "./sendrecord";
 import { AppLockSetting } from "./privacy";
 import { ItemAction, useUndo } from "./undo";
 import { addVisitToCalendar, nativeCalendar } from "./nativecal";
@@ -191,7 +193,7 @@ export function SignupFlow({ onSignedIn, onBack }: { onSignedIn: (u: SignedInUse
 // ---------- the app ----------
 
 type Tab = "today" | "record" | "add" | "costs" | "more";
-type Screen = { name: Tab } | { name: "check" } | { name: "urgent"; crisis: boolean } | { name: "say" } | { name: "type" } | { name: "by-hand"; kind: ItemKind; test?: string; back?: boolean } | { name: "original"; captureId: string; text?: string } | { name: "about" } | { name: "talk" } | { name: "alias" } | { name: "summary" } | { name: "people" } | { name: "feedback" } | { name: "edit-today" } | { name: "consult" } | { name: "tests" } | { name: "ob" };
+type Screen = { name: Tab } | { name: "check" } | { name: "urgent"; crisis: boolean } | { name: "say" } | { name: "type" } | { name: "by-hand"; kind: ItemKind; test?: string; back?: boolean } | { name: "original"; captureId: string; text?: string } | { name: "about" } | { name: "talk" } | { name: "alias" } | { name: "summary" } | { name: "people" } | { name: "feedback" } | { name: "edit-today" } | { name: "consult" } | { name: "tests" } | { name: "ob" } | { name: "send" };
 
 // ---------- the app shell: shared state, and one route per screen (Expo Router) ----------
 
@@ -380,6 +382,7 @@ export function SoloScreen({ screen }: { screen: Screen }) {
         onUrgent={(crisis) => go({ name: "urgent", crisis })} onCapture={async (text) => { try { afterCapture(await api.capture({ kind: "text", text })); } catch (e) { setNotice((e as Error).message); } }} />}
       {screen.name === "tests" && <TestCalendarScreen api={api} initial={today.kit} reload={() => void load()} addResult={(test) => go({ name: "by-hand", kind: "result", test, back: true })} addReport={() => read(() => pickPhoto(false))} />}
       {screen.name === "ob" && <ObHandoffScreen api={api} initial={today.kit} reload={() => void load()} notice={setNotice} />}
+      {screen.name === "send" && <><Today size={30}>Send your record</Today><SendRecordCard api={api} defaults={["meds", "results", "visits"]} intro="They get a page, a PDF and a data file (FHIR) their system can take. No account needed. Each item says who entered it." /></>}
       {screen.name === "urgent" && <Urgent profile={today.profile} crisis={screen.crisis} back={() => home()} api={api} reload={load} />}
     </>
   );
@@ -1004,7 +1007,7 @@ function AddScreen({ api, profile, go, done }: { api: Api; profile: SoloProfile;
       <View testID="add-yourself" style={{ gap: 8 }}>
         <T style={{ fontFamily: F.sans600, fontSize: 15 }}>Or add it yourself</T>
         <Chips>
-          {([["appointment", "Appointment"], ["medication", "Medication"], ["result", "Test result"], ["cost", "Cost"], ["question", "Question"]] as [ItemKind, string][]).map(([k, label]) => (
+          {([["appointment", "Appointment"], ["medication", "Medication"], ["result", "Test result"], ["cost", "Cost"], ["question", "Question"], ["coverage", "Insurance"]] as [ItemKind, string][]).map(([k, label]) => (
             <Chip key={k} testID={`add-hand-${k}`} label={label} onPress={() => go({ name: "by-hand", kind: k })} />
           ))}
         </Chips>
@@ -1158,7 +1161,7 @@ function TypeScreen({ api, done, go }: { go: (s: Screen) => void; api: Api; done
       <View testID="type-forms" style={{ gap: 8 }}>
         <T style={{ fontFamily: F.sans600, fontSize: 15 }}>Or fill in the details</T>
         <Chips>
-          {([["medication", "Medication"], ["appointment", "Appointment"], ["result", "Test result"], ["cost", "Cost"], ["question", "Question"]] as [ItemKind, string][]).map(([k, label]) => (
+          {([["medication", "Medication"], ["appointment", "Appointment"], ["result", "Test result"], ["cost", "Cost"], ["question", "Question"], ["coverage", "Insurance"]] as [ItemKind, string][]).map(([k, label]) => (
             <Chip key={k} testID={`add-hand-${k}`} label={label} onPress={() => go({ name: "by-hand", kind: k })} />
           ))}
         </Chips>
@@ -1170,9 +1173,9 @@ function TypeScreen({ api, done, go }: { go: (s: Screen) => void; api: Api; done
 
 // ---------- checking what Pumpkin read ----------
 
-const KIND_LABEL: Record<ItemKind, string> = { medication: "Medication", result: "Test result", appointment: "Appointment", cost: "Cost", question: "Question for your visit" };
-const KIND_TINT = (): Record<ItemKind, [string, string]> => ({ medication: [C.lav, C.lavInk], result: [C.lav, C.lavInk], appointment: [C.oat, C.espresso], cost: [C.clay, C.clayInk], question: [C.sage, C.sageInk] });
-const KIND_ICON: Record<ItemKind, Parameters<typeof Icon>[0]["name"]> = { medication: "medication", result: "lab", appointment: "calendar", cost: "wallet", question: "message" };
+const KIND_LABEL: Record<ItemKind, string> = { medication: "Medication", result: "Test result", appointment: "Appointment", cost: "Cost", question: "Question for your visit", coverage: "Insurance coverage" };
+const KIND_TINT = (): Record<ItemKind, [string, string]> => ({ medication: [C.lav, C.lavInk], result: [C.lav, C.lavInk], appointment: [C.oat, C.espresso], cost: [C.clay, C.clayInk], question: [C.sage, C.sageInk], coverage: [C.clay, C.clayInk] });
+const KIND_ICON: Record<ItemKind, Parameters<typeof Icon>[0]["name"]> = { medication: "medication", result: "lab", appointment: "calendar", cost: "wallet", question: "message", coverage: "shield" };
 
 function CheckScreen({ api, go, done }: { api: Api; go: (s: Screen) => void; done: (msg: string) => void }) {
   const [items, setItems] = useState<PendingItem[] | null>(null);
@@ -1233,7 +1236,8 @@ function ItemCard({ item, api, go, onDone }: { item: PendingItem; api: Api; go: 
         ) : null}
       </View>
       <View style={{ padding: 16, gap: 12 }}>
-        <Muted style={{ fontSize: 13 }}>{`From: ${from}`}</Muted>
+        <T testID="item-from" style={{ fontSize: 13, color: C.stone }}>{`From: ${from}${item.source.page && item.source.hasFile ? `, page ${item.source.page}` : ""}`}</T>
+        {item.source.quote ? <T testID="item-quote" style={{ fontSize: 13, color: C.stone, fontStyle: "italic" }}>{`Read from: "${item.source.quote}"`}</T> : null}
         <ItemFields kind={item.kind} data={data} unsure={item.unsure} onChange={setData} />
         {item.kind === "medication" ? (
           <Pressable testID="med-checked" accessibilityRole="checkbox" accessibilityState={{ checked }} onPress={() => setChecked((c) => !c)} style={{ flexDirection: "row", gap: 12, alignItems: "center", backgroundColor: C.oat, borderRadius: 14, padding: 12, minHeight: 48 }}>
@@ -1311,6 +1315,25 @@ function ItemFields({ kind, data, unsure, onChange }: { kind: ItemKind; data: Re
       </>
     );
   }
+  if (kind === "coverage") {
+    const pair = (used: string, max: string, usedLabel: string, maxLabel: string) => (
+      <View style={{ flexDirection: "row", gap: 10 }}>
+        <View style={{ flex: 1 }}><Field testID={`f-${used}`} label={usedLabel} value={s(used)} onChange={(v) => set(used, v)} check={chk(used)} keyboard="decimal-pad" /></View>
+        <View style={{ flex: 1 }}><Field testID={`f-${max}`} label={maxLabel} value={s(max)} onChange={(v) => set(max, v)} check={chk(max)} keyboard="decimal-pad" /></View>
+      </View>
+    );
+    return (
+      <>
+        <Field testID="f-payer" label="Insurer or benefits company" value={s("payer")} onChange={(v) => set("payer", v)} check={chk("payer")} />
+        <Field label="Plan" value={s("plan")} onChange={(v) => set("plan", v)} placeholder="Optional" />
+        <DateField testID="f-asof" label="Date on the statement" value={s("asOf")} onChange={(v) => set("asOf", v)} check={chk("asOf")} />
+        {pair("fertilityUsed", "fertilityMax", "Fertility benefit used ($)", "Fertility maximum ($)")}
+        {pair("deductibleMet", "deductible", "Deductible met ($)", "Deductible ($)")}
+        {pair("oopMet", "oopMax", "Out-of-pocket met ($)", "Out-of-pocket max ($)")}
+        <Muted style={{ fontSize: 13 }}>Copy only what the statement prints. Leave the rest blank.</Muted>
+      </>
+    );
+  }
   return <Field testID="f-question" label="Your question" value={s("text")} onChange={(v) => set("text", v)} multiline />;
 }
 
@@ -1340,6 +1363,7 @@ const BLANK: Record<ItemKind, Record<string, unknown>> = {
   appointment: { title: "", startsAt: "", location: "" },
   cost: { type: "charge", description: "", amount: "", date: "", dueOn: "" },
   question: { text: "" },
+  coverage: { payer: "", plan: "", asOf: "", fertilityUsed: "", fertilityMax: "", deductible: "", deductibleMet: "", oopMax: "", oopMet: "" },
 };
 function ByHandScreen({ api, kind, test, done }: { api: Api; kind: ItemKind; test?: string; done: (msg: string) => void }) {
   const [data, setData] = useState<Record<string, unknown>>(() => ({ ...BLANK[kind], ...(kind === "result" && test ? { test } : {}) }));
@@ -1500,6 +1524,27 @@ function RecordScreen({ api, d, go, reload }: { api: Api; d: SoloToday; go: (s: 
 
 // ---------- costs ----------
 
+/** Her coverage, from her latest statement: what's used and what's left, copied as printed. */
+function CoverageCard({ v, go }: { v: Coverage; go: (s: Screen) => void }) {
+  const line = (label: string, used: number | null, max: number | null, word: string) => (used === null && max === null ? null : (
+    <View style={{ gap: 4 }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between" }}><T style={{ fontSize: 15 }}>{label}</T><T style={{ fontFamily: F.sans600, fontSize: 15 }}>{max !== null ? `${money(used ?? 0)} ${word} of ${money(max)}` : `${money(used ?? 0)} ${word}`}</T></View>
+      {max !== null && max > 0 ? <View style={{ height: 6, borderRadius: 3, backgroundColor: C.line, overflow: "hidden" }}><View style={{ width: `${Math.min(100, Math.round(((used ?? 0) / max) * 100))}%`, height: 6, backgroundColor: C.clayInk }} /></View> : null}
+    </View>
+  ));
+  return (
+    <Card testID="coverage-card" style={{ gap: 10 }}>
+      <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><Icon name="shield" /><T style={{ fontFamily: F.sans700, fontSize: 13, letterSpacing: 0.6 }}>YOUR COVERAGE</T></View>
+      <T style={{ fontFamily: F.sans600, fontSize: 15.5 }}>{`${v.payer ?? "Your insurer"}${v.plan ? `, ${v.plan}` : ""}`}</T>
+      {line("Fertility benefit", v.fertilityUsedCents, v.fertilityMaxCents, "used")}
+      {line("Deductible", v.deductibleMetCents, v.deductibleCents, "met")}
+      {line("Out-of-pocket", v.oopMetCents, v.oopMaxCents, "met")}
+      <Muted style={{ fontSize: 13 }}>{`From your statement${v.asOf ? ` of ${niceDate(v.asOf)}` : ""}. Your insurer has the final word on what's covered.`}</Muted>
+      {v.captureId ? <Pressable onPress={() => go({ name: "original", captureId: v.captureId! })}><T style={{ color: C.lavInk, fontSize: 13.5, fontFamily: F.sans600 }}>See statement</T></Pressable> : null}
+    </Card>
+  );
+}
+
 function CostsScreen({ api, go }: { api: Api; go: (s: Screen) => void }) {
   const [c, setC] = useState<SoloCosts | null>(null);
   const load = useCallback(async () => setC(await api.soloCosts()), [api]);
@@ -1516,6 +1561,7 @@ function CostsScreen({ api, go }: { api: Api; go: (s: Screen) => void }) {
         {c.nextDue ? <T style={{ fontSize: 15 }}>{c.nextDue.description}</T> : null}
         <T style={{ fontSize: 15 }}>{`Paid in ${c.year}: ${money(c.paidThisYearCents)} (handy for HSA, FSA and taxes)`}</T>
       </View>
+      {c.coverage.map((v) => <CoverageCard key={v.id} v={v} go={go} />)}
       <View style={{ flexDirection: "row", gap: 10 }}>
         <View style={{ flex: 1 }}><Button kind="esp" label="Add a bill" onPress={() => go({ name: "by-hand", kind: "cost" })} /></View>
         <View style={{ flex: 1 }}><Button kind="line" label="Snap a receipt" onPress={() => go({ name: "add" })} /></View>
@@ -1601,6 +1647,12 @@ function MoreScreen({ api, profile, reload, onSignOut, go }: { api: Api; profile
       {remindersSupported ? <Card style={{ gap: 8 }}><T style={{ fontFamily: F.sans600, fontSize: 15 }}>Dose reminders</T><Muted style={{ fontSize: 14 }}>A reminder 15 minutes before each dose. The lock screen says only "You have a reminder."</Muted><Button kind="line" label="Turn on reminders and test" onPress={() => act(async () => { if (!(await askPermission())) throw new Error("Reminders are off. Turn them on in your phone's Settings, under Pumpkin."); await sendTestReminder(); }, "Reminders are on. A test one will ring in a few seconds.")} /></Card>
         : <Card testID="reminders-where" style={{ gap: 6 }}><T style={{ fontFamily: F.sans600, fontSize: 15 }}>Dose reminders</T><Muted style={{ fontSize: 14 }}>Reminders ring on your phone, through the Pumpkin app. Sign in there with the same email and they start on that phone. Everything you add here shows up there too.</Muted></Card>}
       <AppearanceCard />
+      <Card style={{ gap: 8 }}>
+        <T style={{ fontFamily: F.sans600, fontSize: 15 }}>Send your record</T>
+        <Muted style={{ fontSize: 14 }}>To a new clinic, your OB or anyone you choose: a link with a page, a PDF and a data file their system can take. You pick what's in it.</Muted>
+        <Button testID="open-send" kind="esp" label="Send my record" onPress={() => go({ name: "send" })} />
+      </Card>
+      <DataChoicesCard api={api} />
       <Card style={{ gap: 10 }}>
         <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><Icon name="shield" /><T style={{ fontFamily: F.sans600, fontSize: 15 }}>Your data, your call</T></View>
         <AppLockSetting />
@@ -1612,6 +1664,13 @@ function MoreScreen({ api, profile, reload, onSignOut, go }: { api: Api; profile
             const a = g.document.createElement("a"); a.href = g.URL.createObjectURL(new Blob([json], { type: "application/json" })); a.download = "pumpkin-record.json"; a.click();
           } else await Share.share({ title: "My Pumpkin record", message: json });
         }, "Your record is downloaded.")} />
+        <Button testID="download-fhir" kind="line" label="Download as FHIR (for health systems)" onPress={() => act(async () => {
+          const json = JSON.stringify(await api.myFhir(), null, 2);
+          if (Platform.OS === "web") {
+            const g = globalThis as unknown as { document: { createElement: (t: string) => { href: string; download: string; click: () => void } }; URL: { createObjectURL: (b: Blob) => string } };
+            const a = g.document.createElement("a"); a.href = g.URL.createObjectURL(new Blob([json], { type: "application/fhir+json" })); a.download = "pumpkin-record.fhir.json"; a.click();
+          } else await Share.share({ title: "My Pumpkin record (FHIR)", message: json });
+        }, "Your record is downloaded in FHIR, the format health systems exchange.")} />
         <View style={{ height: 1, backgroundColor: C.line }} />
         <T style={{ fontFamily: F.sans600, fontSize: 15 }}>Delete my account</T>
         <Muted style={{ fontSize: 14 }}>This deletes everything in Pumpkin: meds, results, photos, costs, and anyone you shared with. It can't be undone. Download your record first if you want a copy.</Muted>

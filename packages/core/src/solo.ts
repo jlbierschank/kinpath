@@ -69,18 +69,28 @@ export function analyteKey(name: string): string {
 
 // ---------- "Add anything": proposed items ----------
 
-export type CaptureKind = "medication" | "result" | "appointment" | "cost" | "question";
+export type CaptureKind = "medication" | "result" | "appointment" | "cost" | "question" | "coverage";
 export interface MedicationItem { name: string; dose: string; times: string[]; startsOn?: string; endsOn?: string; instructions?: string }
 export interface ResultItem { test: string; value: number; unit: string; collectedOn?: string; refLow?: number; refHigh?: number; refText?: string }
 export interface AppointmentItem { title: string; startsAt: string; location?: string }
 export interface CostItem { type: "charge" | "payment"; description: string; amount: number; date?: string; dueOn?: string; method?: string }
 export interface QuestionItem { text: string }
+/**
+ * Insurance coverage, from a statement, an explanation of benefits or a benefits summary. Amounts in
+ * dollars, copied as printed; "used" and "met" are what the statement says has been used so far.
+ */
+export interface CoverageItem { payer: string; plan?: string; asOf?: string; fertilityUsed?: number; fertilityMax?: number; deductible?: number; deductibleMet?: number; oopMax?: number; oopMet?: number }
+export const COVERAGE_AMOUNTS = ["fertilityUsed", "fertilityMax", "deductible", "deductibleMet", "oopMax", "oopMet"] as const;
+/** Where an item was read from: the page of the file (1 for a photo) and a short exact quote. */
+export interface ItemSource { page?: number; quote?: string }
 export type CaptureItem =
   | { kind: "medication"; data: MedicationItem; unsure: string[] }
   | { kind: "result"; data: ResultItem; unsure: string[] }
   | { kind: "appointment"; data: AppointmentItem; unsure: string[] }
   | { kind: "cost"; data: CostItem; unsure: string[] }
-  | { kind: "question"; data: QuestionItem; unsure: string[] };
+  | { kind: "question"; data: QuestionItem; unsure: string[] }
+  | { kind: "coverage"; data: CoverageItem; unsure: string[] };
+export type CaptureItemWithSource = CaptureItem & { from?: ItemSource };
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -94,7 +104,21 @@ export const METHODS = ["card", "check", "cash", "bank", "financing", "insurance
  * Checks one proposed item (from the AI, the plain-text reader, or her edits). Returns null if
  * there's nothing usable. Anything missing that she must supply is listed in `unsure`.
  */
-export function cleanItem(raw: unknown): CaptureItem | null {
+export function cleanItem(raw: unknown): CaptureItemWithSource | null {
+  const item = cleanItemData(raw);
+  if (!item) return null;
+  const f = (raw as { from?: unknown }).from;
+  if (f && typeof f === "object") {
+    const page = num((f as Record<string, unknown>).page); const quote = str((f as Record<string, unknown>).quote, 160);
+    const from: ItemSource = {};
+    if (page !== null && Number.isInteger(page) && page >= 1 && page <= 500) from.page = page;
+    if (quote) from.quote = quote;
+    if (from.page || from.quote) return { ...item, from };
+  }
+  return item;
+}
+
+function cleanItemData(raw: unknown): CaptureItem | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   const d = (r.data && typeof r.data === "object" ? r.data : {}) as Record<string, unknown>;
@@ -153,14 +177,28 @@ export function cleanItem(raw: unknown): CaptureItem | null {
       const text = str(d.text, 500);
       return text ? { kind: "question", data: { text }, unsure: [] } : null;
     }
+    case "coverage": {
+      const data: CoverageItem = { payer: str(d.payer, 80) };
+      const plan = str(d.plan, 80); if (plan) data.plan = plan;
+      const asOf = realDate(d.asOf); if (asOf) data.asOf = asOf; else unsure.add("asOf");
+      for (const k of COVERAGE_AMOUNTS) { const v = num(d[k]); if (v !== null && v >= 0 && v <= 10_000_000) data[k] = Math.round(v * 100) / 100; }
+      const has = COVERAGE_AMOUNTS.some((k) => data[k] !== undefined);
+      if (!has && !data.payer) return null;
+      if (!data.payer) unsure.add("payer");
+      // "Used" can't be more than the maximum; if it reads that way, she checks both.
+      for (const [used, max] of [["fertilityUsed", "fertilityMax"], ["deductibleMet", "deductible"], ["oopMet", "oopMax"]] as const) {
+        if (data[used] !== undefined && data[max] !== undefined && data[used]! > data[max]!) { unsure.add(used); unsure.add(max); }
+      }
+      return { kind: "coverage", data, unsure: [...unsure] };
+    }
     default:
       return null;
   }
 }
 
-export function cleanItems(raw: unknown): CaptureItem[] {
+export function cleanItems(raw: unknown): CaptureItemWithSource[] {
   const list = Array.isArray(raw) ? raw : raw && typeof raw === "object" && Array.isArray((raw as { items?: unknown }).items) ? (raw as { items: unknown[] }).items : [];
-  return list.slice(0, 40).map(cleanItem).filter((x): x is CaptureItem => x !== null);
+  return list.slice(0, 40).map(cleanItem).filter((x): x is CaptureItemWithSource => x !== null);
 }
 
 /** "8 pm", "8:30pm", "20:00", "8:00 PM" → "20:00". */
@@ -213,28 +251,63 @@ const UNITS = "pg\\/ml|ng\\/ml|miu\\/ml|uiu\\/ml|µiu\\/ml|iu\\/l|ng\\/dl|pmol\\
  * A basic reader for typed or spoken notes, used when AI reading is off (and to double-check it).
  * One line, one item. It only proposes; she confirms.
  */
+const PAYERS = /\b(aetna|cigna|united ?healthcare|uhc|blue ?cross(?: blue ?shield)?|bcbs|anthem|humana|kaiser(?: permanente)?|progyny|carrot|maven|kindbody|oscar|ambetter|medicaid)\b/i;
+const COVERAGE_LINE = /\b(deductible|out[- ]of[- ]pocket|fertility benefit|lifetime max(?:imum)?|benefit used|plan paid|allowed amount|amount billed|billed amount|insurer|statement date|explanation of benefits|eob|plan name|member id)\b/i;
+const OWE = /\b(you (?:may )?owe|your responsibility|patient responsibility|amount you owe)\b/i;
+const usd = (v: string) => Number(v.replace(/[$,]/g, ""));
+
+/** Coverage totals from an insurance statement or benefits summary, read line by line. */
+function readCoverage(text: string, today: string): CaptureItem | null {
+  const d: Record<string, unknown> = {};
+  const two = (re: RegExp, line: string) => { const m = re.exec(line); return m ? [usd(m[1]!), usd(m[2]!)] as const : null; };
+  for (const raw of text.split("\n")) {
+    const line = raw.trim(); const low = line.toLowerCase();
+    if (!line) continue;
+    const payer = PAYERS.exec(line); if (payer && !d.payer) d.payer = payer[1]!.replace(/\b\w/g, (c) => c.toUpperCase()).replace(/^Uhc$/i, "UHC").replace(/^Bcbs$/i, "BCBS");
+    const insurer = /^(?:insurer|insurance company|payer)\s*:\s*(.+)$/i.exec(line); if (insurer) d.payer = insurer[1]!.trim();
+    const plan = /^plan(?: name)?\s*:\s*(.+)$/i.exec(line); if (plan) d.plan = plan[1]!.trim();
+    if (/\b(statement date|as of|date of statement|benefits as of)\b/.test(low)) { const on = findDate(low, today); if (on) d.asOf = on; }
+    // "$1,200 met of $2,000" or "$1,200 of $2,000 met" or "$2,000 deductible, $1,200 met"
+    const pair = /\$\s?([\d,]+(?:\.\d{1,2})?)[^$\n]*?(?:of|\/|out of)\s*\$\s?([\d,]+(?:\.\d{1,2})?)/i;
+    if (/fertility|lifetime max/.test(low)) { const p = two(pair, line); if (p) { d.fertilityUsed = p[0]; d.fertilityMax = p[1]; } else { const m = /\$\s?([\d,]+(?:\.\d{1,2})?)/.exec(line); if (m && /max/.test(low)) d.fertilityMax = usd(m[1]!); else if (m && /used/.test(low)) d.fertilityUsed = usd(m[1]!); } }
+    else if (/deductible/.test(low)) { const p = two(pair, line); if (p) { d.deductibleMet = p[0]; d.deductible = p[1]; } }
+    else if (/out[- ]of[- ]pocket/.test(low)) { const p = two(pair, line); if (p) { d.oopMet = p[0]; d.oopMax = p[1]; } }
+  }
+  if (!Object.keys(d).some((k) => k !== "payer" && k !== "asOf" && k !== "plan")) return null;
+  return cleanItem({ kind: "coverage", data: d });
+}
+
 export function readPlainText(text: string, today: string): CaptureItem[] {
   const out: CaptureItem[] = [];
+  const coverage = readCoverage(text, today);
+  if (coverage) out.push(coverage);
+  // A lab report usually prints the collection date once, at the top.
+  const dated = text.split("\n").find((l) => /\b(collected|drawn|specimen|date of service|resulted)\b/i.test(l));
+  const docDate = dated ? findDate(dated.toLowerCase(), today) : undefined;
   for (const raw of text.split(/\n|(?<=[.;])\s+(?=[A-Z])/)) {
     const line = raw.trim();
     if (!line) continue;
     const low = line.toLowerCase();
-    const money = /\$\s?([\d,]+(?:\.\d{1,2})?)/.exec(line);
+    // Totals and amounts the plan paid or billed aren't hers to pay; only "you may owe" lines become bills.
+    if (coverage && COVERAGE_LINE.test(line) && !OWE.test(line)) continue;
+    const owe = OWE.exec(line);
+    // On a statement, the amount she may owe is the one after "you may owe", not the billed amount.
+    const money = owe ? /\$\s?([\d,]+(?:\.\d{1,2})?)/.exec(line.slice(owe.index)) : /\$\s?([\d,]+(?:\.\d{1,2})?)/.exec(line);
     const result = new RegExp(`\\b(estradiol|e2|progesterone|p4|lh|fsh|beta hcg|hcg|amh|tsh|prolactin)\\b[^\\d$]{0,20}?(\\d+(?:\\.\\d+)?)\\s*(${UNITS})?`, "i").exec(line);
     const med = MEDS.find((m) => low.includes(m));
     if (money) {
-      const paid = /\b(paid|payment|i paid|charged my|refund)\b/.test(low);
+      const paid = !owe && /\b(paid|payment|i paid|charged my|refund)\b/.test(low);
       const due = /\bdue\b/.test(low) ? findDate(low.slice(low.indexOf("due")), today) : undefined;
       const DATEWORDS = "(?:[a-z]{3,9}\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?|\\d{1,2}\\/\\d{1,2}(?:\\/\\d{2,4})?|tomorrow|today)";
-      const description = line.replace(money[0], "")
+      const description = owe ? line.split(",")[0]!.trim().replace(/^\w/, (c) => c.toUpperCase()) : line.replace(money[0], "")
         .replace(new RegExp(`\\b(?:due|paid|i paid|on|by)\\b\\s*(?:on|by)?\\s*${DATEWORDS}`, "gi"), " ")
         .replace(/\b(i paid|paid|payment of)\b/gi, " ")
         .replace(/\s+/g, " ").replace(/^[\s,:-]+|[\s,:.-]+$/g, "").replace(/^(for|toward|towards)\s+/i, "")
         .replace(/^\w/, (c) => c.toUpperCase()) || (paid ? "Payment" : "Charge");
       const item = cleanItem({ kind: "cost", data: { type: paid ? "payment" : "charge", description, amount: money[1], date: paid ? findDate(low, today) ?? today : today, dueOn: due } });
       if (item) out.push(item);
-    } else if (result && !(med && /\b(mg|mcg|inject|shot|take)\b/.test(low))) {
-      const item = cleanItem({ kind: "result", data: { test: result[1], value: result[2], unit: result[3] ?? "", collectedOn: findDate(low, today) } });
+    } else if (result && !(med && /\b(mg|mcg|ml|cc|iu|units?|inject|shot|take)\b/.test(low))) {
+      const item = cleanItem({ kind: "result", data: { test: result[1], value: result[2], unit: result[3] ?? "", collectedOn: findDate(low, today) ?? docDate } });
       if (item) out.push(item);
     } else if (med) {
       const dose = new RegExp(`${med.replace(/[-]/g, "[- ]?")}\\D{0,10}?(\\d+(?:\\.\\d+)?\\s*(?:iu|units?|mg|mcg|ml|cc|tablets?|pills?))`, "i").exec(line);
@@ -256,7 +329,7 @@ export function readPlainText(text: string, today: string): CaptureItem[] {
 /** Instructions for the AI reader. It copies; it never interprets. */
 export function captureSystemPrompt(today: string): string {
   return [
-    "You read documents a fertility patient sends to her own private tracker: medication instruction sheets, lab reports, portal screenshots, payment plans, receipts, appointment emails, and her own notes.",
+    "You read documents a fertility patient sends to her own private tracker: medication instruction sheets, lab reports, portal screenshots, payment plans, bills, receipts, insurance statements and explanations of benefits, appointment emails, and her own notes.",
     "Copy what is written into structured items. You never interpret results, never say whether a number is normal, high or low, and never give medical advice.",
     `Today is ${today}. Use YYYY-MM-DD dates and 24-hour HH:MM times. Resolve relative dates (\"tomorrow\", \"day 3\" with a stated start date) only when the document makes them unambiguous.`,
     "If you can't read a value clearly, or it isn't written, leave it out and list the field name in \"unsure\". Never guess a medication name, dose or time.",
@@ -268,12 +341,15 @@ export function captureSystemPrompt(today: string): string {
     "- appointment: title, startsAt (YYYY-MM-DDTHH:MM local time), location.",
     "- cost: type (charge or payment), description, amount (dollars, number), date, dueOn (charges only), method (card, check, cash, bank, financing, insurance, other).",
     "- question: text (only questions she wrote for her care team).",
-    "Reply with JSON only, no other text: {\"items\":[{\"kind\":\"...\",\"data\":{...},\"unsure\":[\"field\", ...]}]}. If nothing fits, reply {\"items\":[]}.",
+    "- coverage: payer (insurer or benefits company), plan, asOf (the statement date), fertilityUsed and fertilityMax (fertility benefit used so far and its lifetime or yearly maximum, in dollars), deductible and deductibleMet, oopMax and oopMet (out-of-pocket maximum and how much is met). Copy only amounts printed on the statement.",
+    "Insurance statements and explanations of benefits: make one coverage item with whatever totals are printed. For each service line where the statement shows what she may owe, make a cost item (type charge) with that amount, the service as the description, the date of service as date, and dueOn only if a due date is printed. Never treat the billed amount, the allowed amount or the amount the plan paid as what she owes. An explanation of benefits is not a bill unless it says so: put \"dueOn\" in unsure if no due date is printed.",
+    "For every item, add \"from\": {\"page\": the page number it's on (1 for a photo or a one-page document), \"quote\": up to 12 words copied exactly from where you read it}.",
+    "Reply with JSON only, no other text: {\"items\":[{\"kind\":\"...\",\"data\":{...},\"unsure\":[\"field\", ...],\"from\":{\"page\":1,\"quote\":\"...\"}}]}. If nothing fits, reply {\"items\":[]}.",
   ].join("\n");
 }
 
 /** Pull the JSON object out of a model reply (tolerates code fences). */
-export function parseCaptureReply(reply: string): CaptureItem[] {
+export function parseCaptureReply(reply: string): CaptureItemWithSource[] {
   const s = reply.indexOf("{"), e = reply.lastIndexOf("}");
   if (s < 0 || e <= s) return [];
   try { return cleanItems(JSON.parse(reply.slice(s, e + 1))); } catch { return []; }

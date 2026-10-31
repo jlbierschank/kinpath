@@ -12,3 +12,5 @@ export * from "./about";
 export * from "./voice";
 export * from "./kit";
 export * from "./meds";
+export * from "./extraction-eval";
+export * from "./fhir";

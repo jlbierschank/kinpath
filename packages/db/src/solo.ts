@@ -7,7 +7,7 @@
 import { randomUUID } from "node:crypto";
 import {
   analyteKey, apptKindOf, cleanItem, cleanPronouns, cycleForStage, HandoffError, isSoloStage, SOLO_STAGES, testInfo,
-  type AppointmentItem, type CostItem, type MedicationItem, type ResultItem, type SoloStage,
+  type AppointmentItem, type CostItem, type CoverageItem, type MedicationItem, type ResultItem, type SoloStage,
 } from "@kinpath/core";
 import { newSignInCode, newToken, sha256 } from "@kinpath/core/server";
 import { asActor, audit, type Actor, type Db, type Tx } from "./client";
@@ -394,6 +394,36 @@ export async function insertCost(tx: Tx, actor: Actor, patientId: string, c: Cos
   await audit(tx, actor, "patient.added_cost", patientId, { kind: c.type, fromCapture: !!captureId });
   return o.rows[0]!.id;
 }
+/** Her coverage from a statement she sent. Each statement is kept; the newest one per insurer shows. */
+export async function insertCoverage(tx: Tx, actor: Actor, patientId: string, c: CoverageItem, captureId: string | null) {
+  const cents = (v: number | undefined) => (v === undefined ? null : Math.round(v * 100));
+  const o = await tx.query<{ id: string }>(
+    `INSERT INTO finance_coverage (clinic_id, patient_id, kind, payer_name, plan_name, lifetime_max_cents, lifetime_used_cents, deductible_cents, deductible_met_cents, oop_max_cents, oop_met_cents, source, capture_id, as_of, updated_by_name)
+     VALUES ($1,$2,'insurance',$3,$4,$5,coalesce($6,0),$7,coalesce($8,0),$9,coalesce($10,0),'patient',$11,$12,'You') RETURNING id`,
+    [actor.clinicId, patientId, c.payer || null, c.plan ?? null, cents(c.fertilityMax), cents(c.fertilityUsed), cents(c.deductible), cents(c.deductibleMet), cents(c.oopMax), cents(c.oopMet), captureId, c.asOf ?? null]);
+  await audit(tx, actor, "patient.added_coverage", patientId, { fromCapture: !!captureId });
+  return o.rows[0]!.id;
+}
+export interface SoloCoverage { id: string; payer: string | null; plan: string | null; asOf: string | null; fertilityUsedCents: number | null; fertilityMaxCents: number | null; deductibleCents: number | null; deductibleMetCents: number | null; oopMaxCents: number | null; oopMetCents: number | null; captureId: string | null }
+async function soloCoverage(tx: Tx, patientId: string): Promise<SoloCoverage[]> {
+  const r = await tx.query<{ id: string; payer_name: string | null; plan_name: string | null; as_of: string | null; lifetime_used_cents: string; lifetime_max_cents: string | null; deductible_cents: string | null; deductible_met_cents: string; oop_max_cents: string | null; oop_met_cents: string; capture_id: string | null }>(
+    `SELECT DISTINCT ON (lower(coalesce(payer_name, ''))) id, payer_name, plan_name, as_of::text, lifetime_used_cents::text, lifetime_max_cents::text, deductible_cents::text, deductible_met_cents::text, oop_max_cents::text, oop_met_cents::text,
+            (SELECT c.id FROM captures c WHERE c.id = finance_coverage.capture_id AND c.bytes IS NOT NULL) AS capture_id
+       FROM finance_coverage WHERE patient_id = $1 AND source = 'patient' AND active
+      ORDER BY lower(coalesce(payer_name, '')), coalesce(as_of, updated_at::date) DESC, updated_at DESC`, [patientId]);
+  const n = (v: string | null) => (v === null ? null : Number(v));
+  // "Used" only counts when the statement printed the matching maximum or it's above zero.
+  return r.rows.map((x) => ({ id: x.id, payer: x.payer_name, plan: x.plan_name, asOf: x.as_of, captureId: x.capture_id,
+    fertilityUsedCents: x.lifetime_max_cents !== null || Number(x.lifetime_used_cents) > 0 ? Number(x.lifetime_used_cents) : null, fertilityMaxCents: n(x.lifetime_max_cents),
+    deductibleCents: n(x.deductible_cents), deductibleMetCents: x.deductible_cents !== null || Number(x.deductible_met_cents) > 0 ? Number(x.deductible_met_cents) : null,
+    oopMaxCents: n(x.oop_max_cents), oopMetCents: x.oop_max_cents !== null || Number(x.oop_met_cents) > 0 ? Number(x.oop_met_cents) : null }));
+}
+
+export async function addCoverage(db: Db, actor: Actor, patientId: string, data: Record<string, unknown>) {
+  const item = cleanItem({ kind: "coverage", data });
+  if (!item) throw new HandoffError("Add the insurer or at least one amount.");
+  return asActor(db, actor, async (tx) => { await requirePersonal(tx); return { id: await insertCoverage(tx, actor, patientId, item.data as CoverageItem, null) }; });
+}
 export async function addCost(db: Db, actor: Actor, patientId: string, c: CostItem) {
   const item = cleanItem({ kind: "cost", data: c });
   if (!item) throw new HandoffError("Add the amount.");
@@ -421,7 +451,8 @@ export async function soloCosts(db: Db, actor: Actor, patientId: string) {
     const upcoming = entries.filter((e) => e.kind === "charge" && e.dueOn && e.dueOn >= today).sort((a, b) => a.dueOn!.localeCompare(b.dueOn!));
     const year = today.slice(0, 4);
     const paidThisYearCents = entries.filter((e) => e.kind === "payment" && e.occurredOn.startsWith(year)).reduce((s, e) => s + e.amountCents, 0);
-    return { entries, balanceCents, paidCents, paidThisYearCents, year, nextDue: upcoming[0] ? { dueOn: upcoming[0].dueOn!, amountCents: upcoming[0].amountCents, description: upcoming[0].description } : null };
+    const coverage = await soloCoverage(tx, patientId);
+    return { entries, coverage, balanceCents, paidCents, paidThisYearCents, year, nextDue: upcoming[0] ? { dueOn: upcoming[0].dueOn!, amountCents: upcoming[0].amountCents, description: upcoming[0].description } : null };
   });
 }
 
