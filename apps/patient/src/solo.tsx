@@ -8,6 +8,7 @@
  *   measures (never a verdict), visits with a calendar feed, costs with receipts, questions for her visit.
  * - Without a nurse on Pumpkin, urgent symptoms go to her clinic's after-hours line or 911.
  */
+import { DenialsCard, TaxPacketCard } from "./denials";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useFocusEffect, useIsFocused, useRouter, type Href } from "expo-router";
 import { WebSheet } from "./websheet";
@@ -1007,7 +1008,7 @@ function AddScreen({ api, profile, go, done }: { api: Api; profile: SoloProfile;
       <View testID="add-yourself" style={{ gap: 8 }}>
         <T style={{ fontFamily: F.sans600, fontSize: 15 }}>Or add it yourself</T>
         <Chips>
-          {([["appointment", "Appointment"], ["medication", "Medication"], ["result", "Test result"], ["cost", "Cost"], ["question", "Question"], ["coverage", "Insurance"]] as [ItemKind, string][]).map(([k, label]) => (
+          {([["appointment", "Appointment"], ["medication", "Medication"], ["result", "Test result"], ["cost", "Cost"], ["question", "Question"], ["coverage", "Insurance"], ["denial", "Denial letter"]] as [ItemKind, string][]).map(([k, label]) => (
             <Chip key={k} testID={`add-hand-${k}`} label={label} onPress={() => go({ name: "by-hand", kind: k })} />
           ))}
         </Chips>
@@ -1161,7 +1162,7 @@ function TypeScreen({ api, done, go }: { go: (s: Screen) => void; api: Api; done
       <View testID="type-forms" style={{ gap: 8 }}>
         <T style={{ fontFamily: F.sans600, fontSize: 15 }}>Or fill in the details</T>
         <Chips>
-          {([["medication", "Medication"], ["appointment", "Appointment"], ["result", "Test result"], ["cost", "Cost"], ["question", "Question"], ["coverage", "Insurance"]] as [ItemKind, string][]).map(([k, label]) => (
+          {([["medication", "Medication"], ["appointment", "Appointment"], ["result", "Test result"], ["cost", "Cost"], ["question", "Question"], ["coverage", "Insurance"], ["denial", "Denial letter"]] as [ItemKind, string][]).map(([k, label]) => (
             <Chip key={k} testID={`add-hand-${k}`} label={label} onPress={() => go({ name: "by-hand", kind: k })} />
           ))}
         </Chips>
@@ -1173,9 +1174,9 @@ function TypeScreen({ api, done, go }: { go: (s: Screen) => void; api: Api; done
 
 // ---------- checking what Pumpkin read ----------
 
-const KIND_LABEL: Record<ItemKind, string> = { medication: "Medication", result: "Test result", appointment: "Appointment", cost: "Cost", question: "Question for your visit", coverage: "Insurance coverage" };
-const KIND_TINT = (): Record<ItemKind, [string, string]> => ({ medication: [C.lav, C.lavInk], result: [C.lav, C.lavInk], appointment: [C.oat, C.espresso], cost: [C.clay, C.clayInk], question: [C.sage, C.sageInk], coverage: [C.clay, C.clayInk] });
-const KIND_ICON: Record<ItemKind, Parameters<typeof Icon>[0]["name"]> = { medication: "medication", result: "lab", appointment: "calendar", cost: "wallet", question: "message", coverage: "shield" };
+const KIND_LABEL: Record<ItemKind, string> = { medication: "Medication", result: "Test result", appointment: "Appointment", cost: "Cost", question: "Question for your visit", coverage: "Insurance coverage", denial: "Insurance denial" };
+const KIND_TINT = (): Record<ItemKind, [string, string]> => ({ medication: [C.lav, C.lavInk], result: [C.lav, C.lavInk], appointment: [C.oat, C.espresso], cost: [C.clay, C.clayInk], question: [C.sage, C.sageInk], coverage: [C.clay, C.clayInk], denial: [C.clay, C.clayInk] });
+const KIND_ICON: Record<ItemKind, Parameters<typeof Icon>[0]["name"]> = { medication: "medication", result: "lab", appointment: "calendar", cost: "wallet", question: "message", coverage: "shield", denial: "shield" };
 
 function CheckScreen({ api, go, done }: { api: Api; go: (s: Screen) => void; done: (msg: string) => void }) {
   const [items, setItems] = useState<PendingItem[] | null>(null);
@@ -1315,6 +1316,25 @@ function ItemFields({ kind, data, unsure, onChange }: { kind: ItemKind; data: Re
       </>
     );
   }
+  if (kind === "denial") {
+    return (
+      <>
+        <Field testID="f-payer" label="Insurer" value={s("payer")} onChange={(v) => set("payer", v)} check={chk("payer")} />
+        <Field testID="f-reason" label="Reason they gave" value={s("reason")} onChange={(v) => set("reason", v)} check={chk("reason")} multiline />
+        <Field testID="f-service" label="What was denied" value={s("service")} onChange={(v) => set("service", v)} check={chk("service")} placeholder="Like a transfer, a medication, or a test" />
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          <View style={{ flex: 1 }}><Field testID="f-claim" label="Claim or reference number" value={s("claimNumber")} onChange={(v) => set("claimNumber", v)} check={chk("claimNumber")} /></View>
+          <View style={{ flex: 1 }}><Field testID="f-amount" label="Amount denied ($)" value={s("amount")} onChange={(v) => set("amount", v)} check={chk("amount")} keyboard="decimal-pad" /></View>
+        </View>
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          <View style={{ flex: 1 }}><DateField testID="f-denied" label="Date of the letter" value={s("deniedOn")} onChange={(v) => set("deniedOn", v)} check={chk("deniedOn")} /></View>
+          <View style={{ flex: 1 }}><DateField testID="f-service-date" label="Date of service" value={s("serviceDate")} onChange={(v) => set("serviceDate", v)} check={chk("serviceDate")} /></View>
+        </View>
+        <DateField testID="f-appeal" label="Appeal by (as printed)" value={s("appealBy")} onChange={(v) => set("appealBy", v)} check={chk("appealBy")} />
+        <Muted style={{ fontSize: 13 }}>Copy the appeal date only if the letter prints one. If it says something like "within 180 days," leave it blank and ask your insurer for the date in writing.</Muted>
+      </>
+    );
+  }
   if (kind === "coverage") {
     const pair = (used: string, max: string, usedLabel: string, maxLabel: string) => (
       <View style={{ flexDirection: "row", gap: 10 }}>
@@ -1364,6 +1384,7 @@ const BLANK: Record<ItemKind, Record<string, unknown>> = {
   cost: { type: "charge", description: "", amount: "", date: "", dueOn: "" },
   question: { text: "" },
   coverage: { payer: "", plan: "", asOf: "", fertilityUsed: "", fertilityMax: "", deductible: "", deductibleMet: "", oopMax: "", oopMet: "" },
+  denial: { payer: "", reason: "", claimNumber: "", service: "", serviceDate: "", deniedOn: "", appealBy: "", amount: "" },
 };
 function ByHandScreen({ api, kind, test, done }: { api: Api; kind: ItemKind; test?: string; done: (msg: string) => void }) {
   const [data, setData] = useState<Record<string, unknown>>(() => ({ ...BLANK[kind], ...(kind === "result" && test ? { test } : {}) }));
@@ -1381,7 +1402,7 @@ function ByHandScreen({ api, kind, test, done }: { api: Api; kind: ItemKind; tes
   );
   return (
     <>
-      <Today size={32}>{`Add ${kind === "question" ? "a question" : kind === "appointment" ? "an appointment" : kind === "cost" ? "a cost" : kind === "result" ? "a result" : "a medication"}`}</Today>
+      <Today size={32}>{`Add ${({ question: "a question", appointment: "an appointment", cost: "a cost", result: "a result", medication: "a medication", coverage: "your coverage", denial: "a denial letter" } as Record<ItemKind, string>)[kind]}`}</Today>
       <Card style={{ gap: 12 }}>
         <ItemFields kind={kind} data={data} unsure={[]} onChange={setData} />
         {error ? <T testID="byhand-error" style={{ color: C.red }}>{error}</T> : null}
@@ -1562,6 +1583,7 @@ function CostsScreen({ api, go }: { api: Api; go: (s: Screen) => void }) {
         <T style={{ fontSize: 15 }}>{`Paid in ${c.year}: ${money(c.paidThisYearCents)} (handy for HSA, FSA and taxes)`}</T>
       </View>
       {c.coverage.map((v) => <CoverageCard key={v.id} v={v} go={go} />)}
+      <DenialsCard api={api} denials={c.denials ?? []} reload={() => void load()} openOriginal={(id) => go({ name: "original", captureId: id })} />
       <View style={{ flexDirection: "row", gap: 10 }}>
         <View style={{ flex: 1 }}><Button kind="esp" label="Add a bill" onPress={() => go({ name: "by-hand", kind: "cost" })} /></View>
         <View style={{ flex: 1 }}><Button kind="line" label="Snap a receipt" onPress={() => go({ name: "add" })} /></View>
@@ -1580,6 +1602,7 @@ function CostsScreen({ api, go }: { api: Api; go: (s: Screen) => void }) {
           </View>
         </View>
       ))}</Card> : <Muted style={{ fontSize: 15 }}>Snap your payment plan or a receipt, and Pumpkin keeps track of what's due.</Muted>}
+      <TaxPacketCard key={`${c.paidCents}-${c.entries.length}`} api={api} />
       <Muted style={{ fontSize: 13 }}>Pumpkin doesn't take payments. Pay your clinic the way they ask; keep the receipt here.</Muted>
     </>
   );

@@ -7,7 +7,7 @@
 import { randomUUID } from "node:crypto";
 import {
   analyteKey, apptKindOf, cleanItem, cleanPronouns, cycleForStage, HandoffError, isSoloStage, SOLO_STAGES, testInfo,
-  type AppointmentItem, type CostItem, type CoverageItem, type MedicationItem, type ResultItem, type SoloStage,
+  costCategory, groupPayments, type PacketPayment, type AppointmentItem, type CostItem, type CoverageItem, type DenialItem, type MedicationItem, type ResultItem, type SoloStage,
 } from "@kinpath/core";
 import { newSignInCode, newToken, sha256 } from "@kinpath/core/server";
 import { asActor, audit, type Actor, type Db, type Tx } from "./client";
@@ -437,6 +437,51 @@ export async function deleteCost(db: Db, actor: Actor, patientId: string, id: st
     await audit(tx, actor, "patient.deleted_cost", patientId, {});
   });
 }
+/** A denial letter she kept. The appeal deadline is only what the letter printed. */
+export async function insertDenial(tx: Tx, actor: Actor, patientId: string, d: DenialItem, captureId: string | null) {
+  const o = await tx.query<{ id: string }>(
+    `INSERT INTO insurance_denials (clinic_id, patient_id, payer, reason, claim_number, service, service_date, denied_on, appeal_by, amount_cents, capture_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+    [actor.clinicId, patientId, d.payer?.trim().slice(0, 80) || null, d.reason?.trim().slice(0, 500) || null, d.claimNumber?.trim().slice(0, 40) || null, d.service?.trim().slice(0, 160) || null,
+     d.serviceDate ?? null, d.deniedOn ?? null, d.appealBy ?? null, d.amount === undefined ? null : Math.round(d.amount * 100), captureId]);
+  await audit(tx, actor, "patient.added_denial", patientId, { fromCapture: !!captureId });
+  return o.rows[0]!.id;
+}
+export type DenialStatus = "open" | "appealed" | "resolved";
+export interface SoloDenial { id: string; payer: string | null; reason: string | null; claimNumber: string | null; service: string | null; serviceDate: string | null; deniedOn: string | null; appealBy: string | null; daysLeft: number | null; amountCents: number | null; status: DenialStatus; captureId: string | null }
+async function soloDenials(tx: Tx, patientId: string): Promise<SoloDenial[]> {
+  const today = await localToday(tx);
+  const r = await tx.query<{ id: string; payer: string | null; reason: string | null; claim_number: string | null; service: string | null; service_date: string | null; denied_on: string | null; appeal_by: string | null; days_left: number | null; amount_cents: string | null; status: DenialStatus; capture_id: string | null }>(
+    `SELECT id, payer, reason, claim_number, service, service_date::text, denied_on::text, appeal_by::text, amount_cents::text, status,
+            CASE WHEN appeal_by IS NULL THEN NULL ELSE (appeal_by - $2::date)::int END AS days_left,
+            (SELECT c.id FROM captures c WHERE c.id = insurance_denials.capture_id AND c.bytes IS NOT NULL) AS capture_id
+       FROM insurance_denials WHERE patient_id = $1
+      ORDER BY (status = 'open') DESC, appeal_by NULLS LAST, created_at DESC`, [patientId, today]);
+  return r.rows.map((x) => ({ id: x.id, payer: x.payer, reason: x.reason, claimNumber: x.claim_number, service: x.service, serviceDate: x.service_date, deniedOn: x.denied_on, appealBy: x.appeal_by,
+    daysLeft: x.days_left, amountCents: x.amount_cents === null ? null : Number(x.amount_cents), status: x.status, captureId: x.capture_id }));
+}
+export async function addDenial(db: Db, actor: Actor, patientId: string, data: Record<string, unknown>) {
+  const item = cleanItem({ kind: "denial", data });
+  if (!item) throw new HandoffError("Add the insurer or the reason they gave.");
+  return asActor(db, actor, async (tx) => { await requirePersonal(tx); return { id: await insertDenial(tx, actor, patientId, item.data as DenialItem, null) }; });
+}
+export async function setDenialStatus(db: Db, actor: Actor, patientId: string, id: string, status: DenialStatus) {
+  if (!["open", "appealed", "resolved"].includes(status)) throw new HandoffError("Pick open, appealed or resolved.");
+  return asActor(db, actor, async (tx) => {
+    await requirePersonal(tx);
+    const r = await tx.query(`UPDATE insurance_denials SET status = $3, status_changed_at = now() WHERE id = $1 AND patient_id = $2 RETURNING id`, [id, patientId, status]);
+    if (!r.rows[0]) throw new HandoffError("That letter is gone.");
+    await audit(tx, actor, "patient.denial_status", patientId, { status });
+  });
+}
+export async function deleteDenial(db: Db, actor: Actor, patientId: string, id: string) {
+  return asActor(db, actor, async (tx) => {
+    await requirePersonal(tx);
+    const r = await tx.query(`DELETE FROM insurance_denials WHERE id = $1 AND patient_id = $2 RETURNING id`, [id, patientId]);
+    if (!r.rows[0]) throw new HandoffError("That letter is already gone.");
+    await audit(tx, actor, "patient.deleted_denial", patientId, {});
+  });
+}
 export async function soloCosts(db: Db, actor: Actor, patientId: string) {
   return asActor(db, actor, async (tx) => {
     const r = await tx.query<{ id: string; kind: "charge" | "payment" | "adjustment" | "refund"; description: string; amount_cents: string; occurred_on: string; due_on: string | null; method: string | null; capture_id: string | null; source: string }>(
@@ -452,7 +497,27 @@ export async function soloCosts(db: Db, actor: Actor, patientId: string) {
     const year = today.slice(0, 4);
     const paidThisYearCents = entries.filter((e) => e.kind === "payment" && e.occurredOn.startsWith(year)).reduce((s, e) => s + e.amountCents, 0);
     const coverage = await soloCoverage(tx, patientId);
-    return { entries, coverage, balanceCents, paidCents, paidThisYearCents, year, nextDue: upcoming[0] ? { dueOn: upcoming[0].dueOn!, amountCents: upcoming[0].amountCents, description: upcoming[0].description } : null };
+    const denials = await soloDenials(tx, patientId);
+    return { entries, coverage, denials, balanceCents, paidCents, paidThisYearCents, year, nextDue: upcoming[0] ? { dueOn: upcoming[0].dueOn!, amountCents: upcoming[0].amountCents, description: upcoming[0].description } : null };
+  });
+}
+
+// ---------- year-end tax and HSA/FSA packet ----------
+
+/** Payments she made in a year (hers and her clinic's records), grouped, with which ones have a receipt. */
+export async function taxPacket(db: Db, actor: Actor, patientId: string, year: number, how: "view" | "pdf" | "csv" = "view") {
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) throw new HandoffError("Pick a year.");
+  return asActor(db, actor, async (tx) => {
+    const r = await tx.query<{ id: string; description: string; amount_cents: string; occurred_on: string; method: string | null; capture_id: string | null }>(
+      `SELECT id, description, amount_cents::text, occurred_on::text, method,
+              (SELECT c.id FROM captures c WHERE c.id = finance_ledger.capture_id AND c.bytes IS NOT NULL) AS capture_id
+         FROM finance_ledger WHERE patient_id = $1 AND kind = 'payment' AND voided_at IS NULL
+          AND occurred_on >= make_date($2, 1, 1) AND occurred_on < make_date($2 + 1, 1, 1) ORDER BY occurred_on, created_at`, [patientId, year]);
+    const payments: PacketPayment[] = r.rows.map((x) => ({ id: x.id, description: x.description, amountCents: Number(x.amount_cents), paidOn: x.occurred_on, method: x.method, captureId: x.capture_id, category: costCategory(x.description) }));
+    const years = (await tx.query<{ y: number }>(`SELECT DISTINCT extract(year FROM occurred_on)::int AS y FROM finance_ledger WHERE patient_id = $1 AND kind = 'payment' AND voided_at IS NULL ORDER BY 1 DESC`, [patientId])).rows.map((x) => x.y);
+    const who = (await tx.query<{ n: string }>(`SELECT first_name || ' ' || last_name AS n FROM patients WHERE id = $1`, [patientId])).rows[0]?.n ?? "";
+    if (how !== "view") await audit(tx, actor, how === "pdf" ? "patient.downloaded_tax_packet" : "patient.downloaded_tax_csv", patientId, { year });
+    return { year, years, patient: who, payments, ...groupPayments(payments) };
   });
 }
 

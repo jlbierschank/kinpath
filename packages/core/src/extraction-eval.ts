@@ -6,7 +6,7 @@
  */
 import type { CaptureItem } from "./solo";
 
-export interface LabeledDoc { id: string; type: "lab" | "med_sheet" | "receipt" | "bill" | "insurance"; today: string; text: string; expect: { kind: CaptureItem["kind"]; data: Record<string, unknown> }[] }
+export interface LabeledDoc { id: string; type: "lab" | "med_sheet" | "receipt" | "bill" | "insurance" | "denial"; today: string; text: string; expect: { kind: CaptureItem["kind"]; data: Record<string, unknown> }[] }
 export interface DocScore { id: string; type: LabeledDoc["type"]; fields: number; right: number; missingItems: number; extraItems: number; wrong: string[] }
 export interface EvalReport { docs: DocScore[]; fields: number; right: number; accuracy: number; missingItems: number; extraItems: number; byType: Record<string, { fields: number; right: number; accuracy: number }> }
 
@@ -23,6 +23,7 @@ const KEY: Record<CaptureItem["kind"], (d: Record<string, unknown>) => string> =
   cost: (d) => String(d.amount ?? ""),
   question: (d) => String(d.text ?? "").toLowerCase().slice(0, 20),
   coverage: () => "coverage",
+  denial: () => "denial",
 };
 
 export function scoreDoc(doc: LabeledDoc, got: { kind: CaptureItem["kind"]; data: object }[]): DocScore {

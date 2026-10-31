@@ -3,7 +3,7 @@
 Spec: "Pumpkin feature map - Phase 4 intelligence layer" (v1.3) in the Pumpkin project.
 
 ## 4.1 Reading documents
-- Five types read into structured items she checks: lab reports, med sheets, receipts, bills and
+- Six types read into structured items (denial letters below) she checks: lab reports, med sheets, receipts, bills and
   insurance statements (explanations of benefits and benefits summaries).
 - Insurance statements become **coverage** (insurer, plan, statement date, fertility benefit used and
   maximum, deductible met, out-of-pocket met). Only "you may owe" lines become bills; billed, allowed
@@ -18,6 +18,25 @@ Spec: "Pumpkin feature map - Phase 4 intelligence layer" (v1.3) in the Pumpkin p
   `KINPATH_EVAL_AI=1 KINPATH_AI_PROVIDER=anthropic ANTHROPIC_API_KEY=... pnpm --filter @kinpath/db exec vitest run test/extraction-ai.eval.test.ts`
   which writes `docs/EXTRACTION-ACCURACY.md`. Launch bar: 95% and no invented items. **Not run yet.**
   Grow the set with real-looking documents (still made up) before launch.
+
+## 4.8 Denial letters
+- A sixth document type. A letter that says a claim or prior authorization was denied becomes a
+  **denial** to check, never a bill: insurer, reason (in the letter's words), what was denied, claim or
+  reference number, letter date, date of service, amount denied, and the appeal deadline **only if the
+  letter prints a date**. "Within 180 days" is never turned into a date; the app asks her to get it
+  in writing. Stored in `insurance_denials` (her own Pumpkin only, migration 026).
+- Costs shows each one with days left to the printed date, "See letter", and "I appealed" / "It's
+  resolved". Copy says Pumpkin doesn't file appeals; her insurer must explain how, and her clinic's
+  billing team can often help. Appeal letters (templates, not legal advice) are later.
+
+## 4.2 Year-end packet
+- Costs, For taxes and HSA/FSA: her payments for a chosen year, grouped by a best guess from each
+  description (procedures, medications and pharmacy, tests and monitoring, visits, storage, donor,
+  travel, other). Downloads as a PDF with each captured receipt attached and numbered, or a CSV.
+  Both her own Pumpkin and clinic patients (`/api/patient/tax-packet`). Each download is audited.
+- It never says what qualifies. Copy: "Your tax preparer or HSA/FSA administrator decides what
+  qualifies." The PDF cites IRS Publication 502 by name only. On a phone app (not the web), the CSV
+  shares as text and the PDF is a browser download for now.
 
 ## Data choices
 - Research and estimates (predictions): two switches in You, for people on their own and clinic
@@ -34,7 +53,7 @@ Spec: "Pumpkin feature map - Phase 4 intelligence layer" (v1.3) in the Pumpkin p
 - **Codes (before Dec 15):** every lab result gets a LOINC code on the way in (`lab_codes` + trigger).
   Five codes were checked on loinc.org in October; AMH, TSH and prolactin are marked NOT YET CHECKED.
   Every medication gets an RxNorm code from `med_codes` (+ trigger). The table is empty until
-  `node scripts/rxnorm-codes.mjs > packages/db/migrations/026_med_codes.sql` is run somewhere that can
+  `node scripts/rxnorm-codes.mjs > packages/db/migrations/027_med_codes.sql` is run somewhere that can
   reach NLM's RxNav (this workspace can't); review its output, then commit.
 - **Tier 1 share:** You, then Send my record (and the OB handoff). She picks sections every time;
   embryo details are off by default; links last 30 days (or 7) and can be stopped; a plain warning

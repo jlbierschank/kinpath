@@ -6,9 +6,9 @@ import { cleanItem, readPlainText, scoreDoc, summarize, type LabeledDoc } from "
 const set = JSON.parse(readFileSync(join(__dirname, "fixtures/extraction.json"), "utf8")) as { docs: LabeledDoc[] };
 
 describe("the labeled test set for reading documents", () => {
-  it("covers the five December document types, two each, all made up", () => {
+  it("covers the December document types, two each, all made up", () => {
     const types = new Set(set.docs.map((d) => d.type));
-    expect([...types].sort()).toEqual(["bill", "insurance", "lab", "med_sheet", "receipt"]);
+    expect([...types].sort()).toEqual(["bill", "denial", "insurance", "lab", "med_sheet", "receipt"]);
     for (const t of types) expect(set.docs.filter((d) => d.type === t).length).toBeGreaterThanOrEqual(2);
   });
 
@@ -30,6 +30,13 @@ describe("the labeled test set for reading documents", () => {
   it("insurance statements: totals become coverage; only what she may owe becomes a bill", () => {
     const items = readPlainText(set.docs.find((d) => d.id === "ins-1")!.text, "2026-10-30");
     expect(items.filter((i) => i.kind === "cost").map((i) => (i.data as { amount: number }).amount)).toEqual([180]);
+  });
+
+  it("denial letters: never a bill, and no deadline the letter doesn't print", () => {
+    const items = readPlainText(set.docs.find((d) => d.id === "denial-2")!.text, "2026-10-30");
+    expect(items.map((i) => i.kind)).toEqual(["denial"]);
+    expect(items[0]!.data).not.toHaveProperty("appealBy");
+    expect(items[0]!.unsure).toContain("appealBy");
   });
 
   it("keeps where each item came from, and drops a page that makes no sense", () => {

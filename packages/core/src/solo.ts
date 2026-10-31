@@ -69,7 +69,7 @@ export function analyteKey(name: string): string {
 
 // ---------- "Add anything": proposed items ----------
 
-export type CaptureKind = "medication" | "result" | "appointment" | "cost" | "question" | "coverage";
+export type CaptureKind = "medication" | "result" | "appointment" | "cost" | "question" | "coverage" | "denial";
 export interface MedicationItem { name: string; dose: string; times: string[]; startsOn?: string; endsOn?: string; instructions?: string }
 export interface ResultItem { test: string; value: number; unit: string; collectedOn?: string; refLow?: number; refHigh?: number; refText?: string }
 export interface AppointmentItem { title: string; startsAt: string; location?: string }
@@ -81,6 +81,11 @@ export interface QuestionItem { text: string }
  */
 export interface CoverageItem { payer: string; plan?: string; asOf?: string; fertilityUsed?: number; fertilityMax?: number; deductible?: number; deductibleMet?: number; oopMax?: number; oopMet?: number }
 export const COVERAGE_AMOUNTS = ["fertilityUsed", "fertilityMax", "deductible", "deductibleMet", "oopMax", "oopMet"] as const;
+/**
+ * A denial: an insurer said no to a claim or a prior authorization. Copied as printed; Pumpkin never
+ * works out a deadline the letter doesn't state.
+ */
+export interface DenialItem { payer: string; reason: string; claimNumber?: string; service?: string; serviceDate?: string; deniedOn?: string; appealBy?: string; amount?: number }
 /** Where an item was read from: the page of the file (1 for a photo) and a short exact quote. */
 export interface ItemSource { page?: number; quote?: string }
 export type CaptureItem =
@@ -89,7 +94,8 @@ export type CaptureItem =
   | { kind: "appointment"; data: AppointmentItem; unsure: string[] }
   | { kind: "cost"; data: CostItem; unsure: string[] }
   | { kind: "question"; data: QuestionItem; unsure: string[] }
-  | { kind: "coverage"; data: CoverageItem; unsure: string[] };
+  | { kind: "coverage"; data: CoverageItem; unsure: string[] }
+  | { kind: "denial"; data: DenialItem; unsure: string[] };
 export type CaptureItemWithSource = CaptureItem & { from?: ItemSource };
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -176,6 +182,20 @@ function cleanItemData(raw: unknown): CaptureItem | null {
     case "question": {
       const text = str(d.text, 500);
       return text ? { kind: "question", data: { text }, unsure: [] } : null;
+    }
+    case "denial": {
+      const reason = str(d.reason, 500), payer = str(d.payer, 80);
+      if (!reason && !payer) return null;
+      const data: DenialItem = { payer, reason };
+      if (!payer) unsure.add("payer");
+      if (!reason) unsure.add("reason");
+      const claimNumber = str(d.claimNumber, 40); if (claimNumber) data.claimNumber = claimNumber;
+      const service = str(d.service, 160); if (service) data.service = service;
+      const serviceDate = realDate(d.serviceDate); if (serviceDate) data.serviceDate = serviceDate;
+      const deniedOn = realDate(d.deniedOn); if (deniedOn) data.deniedOn = deniedOn;
+      const appealBy = realDate(d.appealBy); if (appealBy) data.appealBy = appealBy; else unsure.add("appealBy");
+      const amount = num(d.amount); if (amount !== null && amount > 0 && amount <= 1_000_000) data.amount = Math.round(amount * 100) / 100;
+      return { kind: "denial", data, unsure: [...unsure] };
     }
     case "coverage": {
       const data: CoverageItem = { payer: str(d.payer, 80) };
@@ -277,8 +297,32 @@ function readCoverage(text: string, today: string): CaptureItem | null {
   return cleanItem({ kind: "coverage", data: d });
 }
 
+/** A denial letter, read line by line: who, why, which claim, and the appeal deadline only if printed. */
+function readDenial(text: string, today: string): CaptureItem | null {
+  const low = text.toLowerCase();
+  if (!/\b(denied|denial|not covered|adverse (?:benefit )?determination|not medically necessary|we cannot approve|is not approved)\b/.test(low)) return null;
+  const d: Record<string, unknown> = {};
+  for (const raw of text.split("\n")) {
+    const line = raw.trim(); const l = line.toLowerCase();
+    const field = (re: RegExp) => re.exec(line)?.[1]?.trim();
+    const payer = field(/^(?:insurer|insurance company|plan|from)\s*:\s*(.+)$/i) ?? PAYERS.exec(line)?.[1]; if (payer && !d.payer) d.payer = payer;
+    const claim = field(/\b(?:claim|reference|authorization|case)\s*(?:number|no\.?|#)\s*:?\s*([A-Za-z0-9-]{4,})/i); if (claim && !d.claimNumber) d.claimNumber = claim;
+    const reason = field(/^(?:reason(?: for (?:the )?denial)?|why we denied (?:this|it))\s*:\s*(.+)$/i); if (reason) d.reason = reason;
+    const service = field(/^(?:service|procedure|treatment|item)\s*:\s*(.+)$/i); if (service) d.service = service;
+    if (/\b(date of service|service date)\b/.test(l)) { const on = findDate(l, today); if (on) d.serviceDate = on; }
+    if (/\b(date of (?:this )?(?:letter|notice|decision)|decision date|letter date)\b/.test(l)) { const on = findDate(l, today); if (on) d.deniedOn = on; }
+    // Only a deadline the letter prints as a date. "Within 180 days" is left for her to check.
+    if (/\bappeal\b/.test(l) && /\b(by|before|no later than|deadline)\b/.test(l)) { const on = findDate(l, today); if (on) d.appealBy = on; }
+    if (/\b(amount denied|denied amount|amount not covered)\b/.test(l)) { const m = /\$\s?([\d,]+(?:\.\d{1,2})?)/.exec(line); if (m) d.amount = usd(m[1]!); }
+  }
+  if (!d.reason) { const m = /\b(?:because|reason:)\s+([^.\n]{8,200})/i.exec(text); if (m) d.reason = m[1]!.trim(); }
+  return cleanItem({ kind: "denial", data: d });
+}
+
 export function readPlainText(text: string, today: string): CaptureItem[] {
   const out: CaptureItem[] = [];
+  const denial = readDenial(text, today);
+  if (denial) return [denial];
   const coverage = readCoverage(text, today);
   if (coverage) out.push(coverage);
   // A lab report usually prints the collection date once, at the top.
@@ -329,7 +373,7 @@ export function readPlainText(text: string, today: string): CaptureItem[] {
 /** Instructions for the AI reader. It copies; it never interprets. */
 export function captureSystemPrompt(today: string): string {
   return [
-    "You read documents a fertility patient sends to her own private tracker: medication instruction sheets, lab reports, portal screenshots, payment plans, bills, receipts, insurance statements and explanations of benefits, appointment emails, and her own notes.",
+    "You read documents a fertility patient sends to her own private tracker: medication instruction sheets, lab reports, portal screenshots, payment plans, bills, receipts, insurance statements and explanations of benefits, denial letters, appointment emails, and her own notes.",
     "Copy what is written into structured items. You never interpret results, never say whether a number is normal, high or low, and never give medical advice.",
     `Today is ${today}. Use YYYY-MM-DD dates and 24-hour HH:MM times. Resolve relative dates (\"tomorrow\", \"day 3\" with a stated start date) only when the document makes them unambiguous.`,
     "If you can't read a value clearly, or it isn't written, leave it out and list the field name in \"unsure\". Never guess a medication name, dose or time.",
@@ -343,6 +387,8 @@ export function captureSystemPrompt(today: string): string {
     "- question: text (only questions she wrote for her care team).",
     "- coverage: payer (insurer or benefits company), plan, asOf (the statement date), fertilityUsed and fertilityMax (fertility benefit used so far and its lifetime or yearly maximum, in dollars), deductible and deductibleMet, oopMax and oopMet (out-of-pocket maximum and how much is met). Copy only amounts printed on the statement.",
     "Insurance statements and explanations of benefits: make one coverage item with whatever totals are printed. For each service line where the statement shows what she may owe, make a cost item (type charge) with that amount, the service as the description, the date of service as date, and dueOn only if a due date is printed. Never treat the billed amount, the allowed amount or the amount the plan paid as what she owes. An explanation of benefits is not a bill unless it says so: put \"dueOn\" in unsure if no due date is printed.",
+    "- denial: payer, reason (copied exactly, short), claimNumber (claim, reference or authorization number), service, serviceDate, deniedOn (the letter's date), appealBy (only if the letter prints a date to appeal by), amount (dollars denied, if printed).",
+    "Denial letters (a claim or prior authorization was denied, an adverse benefit determination): make one denial item. Never work out an appeal deadline from a number of days; if the letter only says \"within 180 days\", leave appealBy out and list it in unsure. A denial letter is not a bill: don't make cost items from it.",
     "For every item, add \"from\": {\"page\": the page number it's on (1 for a photo or a one-page document), \"quote\": up to 12 words copied exactly from where you read it}.",
     "Reply with JSON only, no other text: {\"items\":[{\"kind\":\"...\",\"data\":{...},\"unsure\":[\"field\", ...],\"from\":{\"page\":1,\"quote\":\"...\"}}]}. If nothing fits, reply {\"items\":[]}.",
   ].join("\n");

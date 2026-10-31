@@ -242,6 +242,44 @@
           }
         }
       ]
+    },
+    {
+      "id": "denial-1",
+      "type": "denial",
+      "today": "2026-10-30",
+      "text": "Notice of adverse benefit determination\nInsurer: Example Health Plan\nDate of this letter: 2026-10-22\nClaim number: EX-448812\nService: Frozen embryo transfer\nDate of service: 2026-09-30\nReason: Prior authorization was not obtained before the service.\nAmount denied: $3,200\nYou may appeal by 2027-04-20.",
+      "expect": [
+        {
+          "kind": "denial",
+          "data": {
+            "payer": "Example Health Plan",
+            "claimNumber": "EX-448812",
+            "service": "Frozen embryo transfer",
+            "serviceDate": "2026-09-30",
+            "deniedOn": "2026-10-22",
+            "reason": "Prior authorization was not obtained before the service.",
+            "amount": 3200,
+            "appealBy": "2027-04-20"
+          }
+        }
+      ]
+    },
+    {
+      "id": "denial-2",
+      "type": "denial",
+      "today": "2026-10-30",
+      "text": "We cannot approve your request.\nPlan: Sample Benefits Co\nReference number: R-90211\nTreatment: IVF retrieval\nReason for denial: The plan's definition of infertility is not met.\nYou have 180 days to file an appeal.",
+      "expect": [
+        {
+          "kind": "denial",
+          "data": {
+            "payer": "Sample Benefits Co",
+            "claimNumber": "R-90211",
+            "service": "IVF retrieval",
+            "reason": "The plan's definition of infertility is not met."
+          }
+        }
+      ]
     }
   ]
 }

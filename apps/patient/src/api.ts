@@ -116,8 +116,11 @@ export interface PersonalShare { id: string; recipient: string; includeResults: 
 export interface Refill { medication: string; dosesLeft: number | null; perDay: number; enough: boolean; runOutOn: string | null; orderBy: string | null; daysLeft: number | null; countedAt: string | null }
 export interface SoloMed { id: string; medication: string; dose: string; time: string; startsOn: string; endsOn: string | null; instructions: string | null; mine: boolean; nextAt: string | null }
 export interface ResultGroup { key: string; name: string; unit: string; measures: string | null; inTreatment: string | null; reviewed: boolean; points: { id: string; value: number; unit: string; on: string; refLow: number | null; refHigh: number | null; refText: string | null; mine: boolean }[] }
-export interface SoloCosts { entries: { id: string; kind: "charge" | "payment" | "adjustment" | "refund"; description: string; amountCents: number; occurredOn: string; dueOn: string | null; method: string | null; captureId: string | null; mine: boolean }[]; coverage: Coverage[]; balanceCents: number; paidCents: number; paidThisYearCents: number; year: string; nextDue: { dueOn: string; amountCents: number; description: string } | null }
-export type ItemKind = "medication" | "result" | "appointment" | "cost" | "question" | "coverage";
+export interface SoloCosts { entries: { id: string; kind: "charge" | "payment" | "adjustment" | "refund"; description: string; amountCents: number; occurredOn: string; dueOn: string | null; method: string | null; captureId: string | null; mine: boolean }[]; coverage: Coverage[]; denials: Denial[]; balanceCents: number; paidCents: number; paidThisYearCents: number; year: string; nextDue: { dueOn: string; amountCents: number; description: string } | null }
+export type ItemKind = "medication" | "result" | "appointment" | "cost" | "question" | "coverage" | "denial";
+export interface Denial { id: string; payer: string | null; reason: string | null; claimNumber: string | null; service: string | null; serviceDate: string | null; deniedOn: string | null; appealBy: string | null; daysLeft: number | null; amountCents: number | null; status: "open" | "appealed" | "resolved"; captureId: string | null }
+export interface TaxPacket { year: number; years: number[]; totalCents: number; groups: { category: string; label: string; totalCents: number; payments: { id: string; description: string; amountCents: number; paidOn: string; captureId: string | null }[] }[] }
+export type PacketFile = { filename: string; mime: string; text?: string; base64?: string };
 export type ShareSection = "meds" | "results" | "visits" | "costs" | "coverage" | "pregnancy" | "embryo";
 export interface DataChoices { research: boolean; researchChangedAt: string | null; predictions: boolean; predictionsChangedAt: string | null }
 export interface Coverage { id: string; payer: string | null; plan: string | null; asOf: string | null; fertilityUsedCents: number | null; fertilityMaxCents: number | null; deductibleCents: number | null; deductibleMetCents: number | null; oopMaxCents: number | null; oopMetCents: number | null; captureId: string | null }
@@ -209,6 +212,9 @@ export class Api {
   stopPersonalShare = (id: string) => this.call<unknown>("/api/solo/stop-share", { method: "POST", body: { id } });
   soloResults = () => this.call<ResultGroup[]>("/api/solo/results");
   soloCosts = () => this.call<SoloCosts>("/api/solo/costs");
+  setDenialStatus = (id: string, status: Denial["status"]) => this.call<void>("/api/solo/denial-status", { method: "POST", body: { id, status } });
+  taxPacket = (year: number, clinic = false) => this.call<TaxPacket>(`${clinic ? "/api/patient/tax-packet" : "/api/solo/tax-packet"}?year=${year}`);
+  taxPacketFile = (year: number, format: "pdf" | "csv", clinic = false) => this.call<PacketFile>(`${clinic ? "/api/patient/tax-packet" : "/api/solo/tax-packet"}?year=${year}&format=${format}`);
   questions = () => this.call<{ id: string; question: string; asked: boolean }[]>("/api/solo/questions");
   itemsToCheck = () => this.call<PendingItem[]>("/api/solo/items");
   samples = () => this.call<{ id: string; label: string; description: string }[]>("/api/solo/samples");
@@ -216,7 +222,7 @@ export class Api {
   capture = (input: CaptureInput) => this.call<CaptureResult>("/api/solo/capture", { method: "POST", body: input });
   saveItem = (id: string, data: Record<string, unknown> | null, checked = false) => this.call<{ savedId: string }>("/api/solo/save-item", { method: "POST", body: { id, data, checked } });
   dismissItem = (id: string) => this.call<unknown>("/api/solo/dismiss-item", { method: "POST", body: { id } });
-  addByHand = (kind: ItemKind, data: Record<string, unknown>) => this.call<{ id: string }>(`/api/solo/${{ medication: "add-med", result: "add-result", appointment: "add-appointment", cost: "add-cost", question: "add-question", coverage: "add-coverage" }[kind]}`, { method: "POST", body: kind === "question" ? { text: data.text } : { data } });
+  addByHand = (kind: ItemKind, data: Record<string, unknown>) => this.call<{ id: string }>(`/api/solo/${{ medication: "add-med", result: "add-result", appointment: "add-appointment", cost: "add-cost", question: "add-question", coverage: "add-coverage", denial: "add-denial" }[kind]}`, { method: "POST", body: kind === "question" ? { text: data.text } : { data } });
   removeMine = (kind: "stop-med" | "delete-result" | "delete-appointment" | "delete-cost" | "delete-question", id: string) => this.call<unknown>(`/api/solo/${kind}`, { method: "POST", body: { id } });
   setQuestionAsked = (id: string, asked: boolean) => this.call<unknown>("/api/solo/question-asked", { method: "POST", body: { id, asked } });
   calendarShares = () => this.call<{ id: string; label: string; detail: boolean; createdAt: string }[]>("/api/solo/calendar-shares");

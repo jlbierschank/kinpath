@@ -2,6 +2,7 @@
  * Costs in the phone app: what she owes and when, her estimate, her coverage, receipts, ways to pay,
  * and questions for the financial counselor. Support people see a read-only summary if she shares it.
  */
+import { TaxPacketCard } from "./denials";
 import { useCallback, useEffect, useState } from "react";
 import { Linking, Pressable, Share, TextInput, View } from "react-native";
 import type { Api, Money, Receipt } from "./api";
@@ -140,6 +141,7 @@ export function CostsScreen({ api, t, lang, openReceipt, partner = false, herNam
         </>
       )}
 
+      {!partner && lang === "en" ? <TaxPacketCard api={api} clinic /> : null}
       {!partner && (
         <>
           <Cap>{t("Questions about costs", "Preguntas sobre costos")}</Cap>

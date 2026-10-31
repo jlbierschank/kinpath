@@ -9,7 +9,7 @@
  */
 import {
   captureSystemPrompt, cleanItem, HandoffError, parseCaptureReply, readPlainText, triage,
-  type AppointmentItem, type CaptureItem, type CostItem, type CoverageItem, type MedicationItem, type ResultItem,
+  type AppointmentItem, type CaptureItem, type CostItem, type CoverageItem, type DenialItem, type MedicationItem, type ResultItem,
 } from "@kinpath/core";
 import { asActor, audit, type Actor, type Db, type Tx } from "./client";
 import { AIServiceError } from "./ai";
@@ -226,6 +226,7 @@ export async function saveItem(db: Db, actor: Actor, patientId: string, itemId: 
     } else if (item.kind === "result") ref = await solo.insertResult(tx, actor, patientId, item.data as ResultItem, row.capture_id);
     else if (item.kind === "appointment") ref = await solo.insertAppointment(tx, actor, patientId, item.data as AppointmentItem);
     else if (item.kind === "cost") ref = await solo.insertCost(tx, actor, patientId, item.data as CostItem, row.capture_id);
+    else if (item.kind === "denial") ref = await solo.insertDenial(tx, actor, patientId, item.data as DenialItem, row.capture_id);
     else if (item.kind === "coverage") ref = await solo.insertCoverage(tx, actor, patientId, item.data as CoverageItem, row.capture_id);
     else ref = (await tx.query<{ id: string }>(`INSERT INTO visit_questions (clinic_id, patient_id, question) VALUES ($1,$2,$3) RETURNING id`, [actor.clinicId, patientId, (item.data as { text: string }).text])).rows[0]!.id;
     await tx.query(`UPDATE capture_items SET status = 'saved', data = $2, saved_ref = $3, decided_at = now() WHERE id = $1`, [itemId, JSON.stringify(item.data), ref]);

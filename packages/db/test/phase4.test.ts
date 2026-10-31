@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { addCapture, dataChoices, exportMyData, IDS, itemsToCheck, migrate, openDb, saveItem, seed, setDataChoice, soloCosts, type Db, type Extractor } from "../src";
+import { addCapture, dataChoices, exportMyData, IDS, itemsToCheck, migrate, openDb, saveItem, seed, taxPacket, addCost, setDataChoice, setDenialStatus, soloCosts, addDenial, type Db, type Extractor } from "../src";
 
 let db: Db;
 const alex = { userId: IDS.alexUser, clinicId: IDS.alexSpace, role: "patient" as const };
@@ -109,5 +109,53 @@ describe("sending her record (tier 1)", () => {
     const rec = await myRecordForFhir(db, alex, IDS.alex);
     expect(checkFhirBundle(recordToFhirBundle(rec))).toEqual([]);
     await expect(myRecordForFhir(db, maria, IDS.alex)).rejects.toThrow();
+  });
+});
+
+const DENIAL = "Notice of adverse determination\nInsurer: Example Health Plan\nClaim number: EX-20419\nDate of letter: 2026-10-21\nService: Frozen embryo transfer\nDate of service: 2026-09-30\nAmount denied: $3,200.00\nReason: Not medically necessary under your plan's fertility benefit.\nYou may appeal. Your appeal must be received by 2027-04-20.";
+
+describe("denial letters", () => {
+  it("are kept with the reason and the deadline the letter printed, never as a bill", async () => {
+    const r = await addCapture(db, alex, IDS.alex, { kind: "text", text: DENIAL }, { extractor: null });
+    const items = (await itemsToCheck(db, alex, IDS.alex)).filter((i) => i.captureId === r.captureId);
+    expect(items.map((i) => i.kind)).toEqual(["denial"]);
+    await saveItem(db, alex, IDS.alex, items[0]!.id, null);
+    const c = await soloCosts(db, alex, IDS.alex);
+    expect(c.denials).toEqual([expect.objectContaining({ payer: "Example Health Plan", claimNumber: "EX-20419", appealBy: "2027-04-20", amountCents: 320000, status: "open" })]);
+    expect(c.denials[0]!.daysLeft).toBeGreaterThan(0);
+    expect(c.entries.some((e) => e.amountCents === 320000)).toBe(false);
+  });
+
+  it("no deadline is worked out from 'within 180 days'; she can mark one appealed", async () => {
+    const { id } = await addDenial(db, alex, IDS.alex, { payer: "Example Health Plan", reason: "Prior authorization was not on file." });
+    let c = await soloCosts(db, alex, IDS.alex);
+    expect(c.denials[0]).toMatchObject({ appealBy: null, daysLeft: null });
+    await setDenialStatus(db, alex, IDS.alex, id, "appealed");
+    c = await soloCosts(db, alex, IDS.alex);
+    expect(c.denials[0]!.status).toBe("appealed");
+  });
+
+  it("are only in her own Pumpkin", async () => {
+    await expect(addDenial(db, maya, IDS.maya, { payer: "Example Health Plan", reason: "x" })).rejects.toThrow();
+    await expect(addDenial(db, maria, IDS.alex, { payer: "Example Health Plan", reason: "x" })).rejects.toThrow();
+  });
+});
+
+describe("year-end packet", () => {
+  it("lists the year's payments by group, and records each download", async () => {
+    await addCost(db, alex, IDS.alex, { type: "payment", description: "Specialty pharmacy: Menopur", amount: 640, date: "2026-03-02", method: "card" });
+    await addCost(db, alex, IDS.alex, { type: "payment", description: "Egg retrieval cycle fee", amount: 9800, date: "2026-04-10", method: "card" });
+    await addCost(db, alex, IDS.alex, { type: "payment", description: "Monitoring ultrasound", amount: 300, date: "2025-12-20", method: "card" });
+    await addCost(db, alex, IDS.alex, { type: "charge", description: "Embryo storage", amount: 800, date: "2026-05-01" });
+    const before = (await taxPacket(db, alex, IDS.alex, 2026)).payments.length;
+    const p = await taxPacket(db, alex, IDS.alex, 2026, "pdf");
+    expect(p.payments.length).toBe(before);
+    expect(p.payments.some((x) => x.paidOn.startsWith("2025"))).toBe(false);
+    expect(p.payments.some((x) => x.description === "Embryo storage")).toBe(false);
+    expect(p.groups.find((g) => g.category === "procedure")!.payments.map((x) => x.description)).toContain("Egg retrieval cycle fee");
+    expect(p.groups.find((g) => g.category === "medication")!.totalCents).toBeGreaterThanOrEqual(64000);
+    expect(p.years).toEqual(expect.arrayContaining([2026, 2025]));
+    const log = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM audit_events WHERE action = 'patient.downloaded_tax_packet'`);
+    expect(log.rows[0]!.n).toBe(1);
   });
 });

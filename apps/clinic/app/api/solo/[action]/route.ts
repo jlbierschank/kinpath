@@ -3,11 +3,12 @@ import {
   addAppointment, addCapture, addCost, addMedication, addQuestion, addResult, askMyClinic, captureFile, deleteAppointment, deleteCost, deleteMyAccount, deleteQuestion,
   deleteResult, dismissItem, exportMyData, getReminderPrefs, itemsToCheck, newCalendarLink, SAMPLES, saveItem, setQuestionAsked, soloCosts, soloMeds, soloProfile,
   soloResults, soloToday, stopCalendarLink, stopMedication, setMedSupply, updateSoloProfile, visitQuestions, financePartners,
-  patientSharing, joinableClinics, myClinicLinks, requestClinicLink, updateClinicLink, shareCalendar, calendarShares, stopCalendarShare, saveKit, setMedLastDay, createPersonalShare, personalShares, stopSummaryShare, aboutMe, addTenderDate, deleteTenderDate, questionIdeas, saveAbout, setAlias, setQuiet, visitSummary, withdrawAboutConsent, requestLinkRefill, myLinkRefills, dataChoices, setDataChoice, myRecordForFhir, addCoverage,
+  patientSharing, joinableClinics, myClinicLinks, requestClinicLink, updateClinicLink, shareCalendar, calendarShares, stopCalendarShare, saveKit, setMedLastDay, createPersonalShare, personalShares, stopSummaryShare, aboutMe, addTenderDate, deleteTenderDate, questionIdeas, saveAbout, setAlias, setQuiet, visitSummary, withdrawAboutConsent, requestLinkRefill, myLinkRefills, dataChoices, setDataChoice, myRecordForFhir, addCoverage, addDenial, setDenialStatus, deleteDenial,
 } from "@kinpath/db";
 import { getDb } from "@/lib/db";
 import { handle, preflight } from "@/lib/api";
 import { baseUrl } from "@/lib/session";
+import { taxPacketResponse } from "@/lib/tax-pdf";
 
 /**
  * Pumpkin on your own: the phone app's API for a patient in her own space.
@@ -31,6 +32,7 @@ export async function GET(req: Request, ctx: Ctx) {
       case "profile": return soloProfile(db, s, pid);
       case "refills": return myLinkRefills(db, s);
       case "choices": return dataChoices(db, s, pid);
+      case "tax-packet": return taxPacketResponse(db, s, pid, req.url);
       case "fhir-export": return recordToFhirBundle(await myRecordForFhir(db, s, pid));
       case "meds": return soloMeds(db, s, pid);
       case "results": return soloResults(db, s, pid);
@@ -108,6 +110,9 @@ export async function POST(req: Request, ctx: Ctx) {
       case "link-request": return requestClinicLink(db, s, str("clinicId"), obj("share"));
       case "choice": return setDataChoice(db, s, pid, str("choice") as "research" | "predictions", b.on === true);
       case "add-coverage": return addCoverage(db, s, pid, obj("data"));
+      case "add-denial": return addDenial(db, s, pid, obj("data"));
+      case "denial-status": return setDenialStatus(db, s, pid, str("id"), str("status") as "open" | "appealed" | "resolved");
+      case "denial-delete": return deleteDenial(db, s, pid, str("id"));
       case "refill-request": return requestLinkRefill(db, s, { medication: str("medication"), note: typeof b.note === "string" ? b.note : "" });
       case "link-update": return updateClinicLink(db, s, str("id"), { share: obj("share"), stop: b.stop === true });
       case "med-last-day": return setMedLastDay(db, s, pid, str("medication"), str("lastDay"));
